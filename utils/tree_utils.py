@@ -87,6 +87,7 @@ def gen_tree(n_branch=20, n_child = 2, n_dim_per_branch = 4, branch_length=500, 
     C : branch labels for each point (length n_branch * branch_length)
     root: idx of the root
     '''
+    np.random.seed(seed)
     
     # here inside the function, i set the length of the branches. this affects the relative impact of sigma. this value may be too small
     norm = 100 # length i.e. euclidean norm of the branches 
