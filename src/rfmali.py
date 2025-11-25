@@ -131,9 +131,8 @@ class RFMALI(object):
         # Square the JS metric if desired, though standard JS is a metric
         # cost_matrix = cost_matrix ** 2 
         
-        self.T = ot.emd(p_a, p_b, cost_matrix)  # Look at Sinkhorn for entropic regularization options
-        #TODO Look at coarse graining (MSPHATE) instead of full OT for large datasets
-        # or hierachical OT approaches
+        self.T = ot.emd(p_a, p_b, cost_matrix)  #TODO: Look at Sinkhorn / Hierarchical OT for scalability
+        #TODO Look at coarse graining (MSPHATE) for refinement of OT
         
         # Convert T to sparse for memory efficiency in fusion
         T_sparse = sparse.csr_matrix(self.T)
@@ -156,6 +155,8 @@ class RFMALI(object):
         W_ab = (prox_a.dot(T_sparse) + T_sparse.dot(prox_b)) / 2
         W_ba = W_ab.T
 
+        #TODO Handle partially labeled target domain: we cannot compute unlabeled-unlabeled RFGAP affinities directly.
+        #NOTE Suggestion: Use only labeled points as anchors, then project via Landmark PHATE
         # Build the giant block matrix
         # [ mu * P_a      (1-mu) * W_ab ]
         # [ (1-mu) * W_ba   mu * P_b    ]
