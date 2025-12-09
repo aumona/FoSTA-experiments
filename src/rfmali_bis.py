@@ -43,51 +43,6 @@ class RFMALI(object):
         self.rfgap_a = None
         self.rfgap_b = None
 
-    def _get_rfgap_posteriors(self, prox, y, all_labels):
-        """
-        Compute Manifold-Smoothed Posteriors using RF proximities.
-        
-        P(y=c | x_i) approx sum_{j in Class c} Proximity(i, j)
-        
-        This acts as a Kernel Density Estimator on the RF manifold.
-        """
-        # Helper to zero out diagonal safely
-        def get_diag_zero_copy(P):
-            if P.shape[0] != P.shape[1]: return P
-            P_mod = P.copy()
-            P_mod.setdiag(0)
-            P_mod.eliminate_zeros()
-            return P_mod
-        
-        prox_working = get_diag_zero_copy(prox)
-        n_samples = prox.shape[0]
-        n_classes = len(all_labels)
-        label_to_col = {lab: i for i, lab in enumerate(all_labels)}
-        
-        posteriors = np.zeros((n_samples, n_classes), dtype=float)
-        
-        # Class-wise summation (KDE)
-        for lab in all_labels:
-            col_idx = label_to_col[lab]
-            class_mask = (y == lab)
-            if not np.any(class_mask):
-                continue
-            # Sum affinities to all neighbors of specific class
-            if sparse.issparse(prox_working):
-                # Slicing columns is efficient in CSC, calculating row sums
-                vec = prox_working[:, class_mask].sum(axis=1).A.ravel()
-            else:
-                vec = prox_working[:, class_mask].sum(axis=1)
-            posteriors[:, col_idx] = vec
-            
-        # Force Normalize rows to sum to 1 (Probability distribution) even though rfgap already does this
-        row_sums = posteriors.sum(axis=1, keepdims=True)
-        # Avoid divide by zero
-        mask = row_sums[:, 0] > 0
-        posteriors[mask] /= row_sums[mask]
-        
-        return posteriors
-
     def fit(self, x_a, y_a, x_b, y_b):
         """
         Fits the alignment model.
