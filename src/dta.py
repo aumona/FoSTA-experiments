@@ -9,7 +9,7 @@ import scipy
 from sklearn.neighbors import NearestNeighbors
 import pdb
 import sklearn
-import utils
+from utils.utils import kernel2Dist
 import logging, os
 from scipy.spatial import distance
 import warnings 
@@ -242,6 +242,7 @@ class DTA():
         w, rv = scipy.sparse.linalg.eigs(self.p1, k = 1)
         w, lv = scipy.sparse.linalg.eigs(self.p1.transpose(), k = 1)
         P = self.p1.toarray()
+        # MATRIX INVERSION is EXPENSIVE O(N^3), not scalable for large datasets
         self.M1 = np.linalg.inv(np.eye(P.shape[0]) - (P - np.outer(rv.real, lv.real))) - np.eye(P.shape[0])
         
         w, rv = scipy.sparse.linalg.eigs(self.p2, k = 1)
@@ -451,7 +452,7 @@ class DTA():
         elif emb =="UMAP":
             #embedding = UMAP(knn_dist='precomputed_affinity')
 
-            DistM = utils.kernel2Dist(self.W)
+            DistM = kernel2Dist(self.W)
 
             embedding_joint = umap.UMAP(
                 metric='precomputed').fit_transform(DistM)
