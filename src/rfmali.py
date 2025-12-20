@@ -41,12 +41,13 @@ class RFMALI(object):
 
         self.rfgap_params = {
             'random_state': random_state,
-            'prediction_type': 'classification',
+            'prediction_type': 'classification',  # force classification mode, more robust to y dtype
             'prox_method': 'rfgap',
             'model_type': 'rf',
             'oob_score': False,
             'non_zero_diagonal': True,
             'force_symmetric': True,
+            'max_normalize': True,  # ensures consistent scaling across datasets with unequal sizes
             'verbose': 0,
             'n_jobs': -1,
         }
@@ -292,7 +293,7 @@ class RFMALI(object):
     # ------------------------------------------------------------
     # Main API
     # ------------------------------------------------------------
-    def fit(self, x_a, y_a, x_b, y_b):
+    def fit(self, x_a, x_b, y_a, y_b):
         self.n = x_a.shape[0]
         y_a = np.asarray(y_a).ravel()
         y_b = np.asarray(y_b).ravel()
@@ -318,11 +319,11 @@ class RFMALI(object):
 
         print("Building C-dim vectors...")
         if not self.dpt:
-            # ---- current behavior: RF-GAP posteriors ----
+            # ---- Simply use RF-GAP affinities (no diffusion)----
             post_a = self._get_semantic_vectors(prox_a, y_a, labels, clusters=None)
             post_b = self._get_semantic_vectors(prox_b, y_b, labels, clusters=None)
         else:
-            # ---- DPT behavior: LandmarkGraph -> DPT -> balanced posteriors ----
+            # ---- DPT behavior: LandmarkGraph -> DPT (multi-step aggregation) -> balanced posteriors ----
             P_NM_a, P_MM_a, clusters_a = self._get_diffusion_operators(prox_a, random_state=self.random_state, verbose=True)
             P_NM_b, P_MM_b, clusters_b = self._get_diffusion_operators(prox_b, random_state=self.random_state, verbose=True)
 
@@ -362,10 +363,10 @@ class RFMALI(object):
         print("Model fit complete.")
         return self
 
-    def fit_transform(self, x_a, y_a, x_b, y_b):
-        self.fit(x_a, y_a, x_b, y_b)
+    def fit_transform(self, x_a, x_b, y_a, y_b):
+        self.fit(x_a, x_b, y_a, y_b)
 
-        if self.embedder == 'phate':
+        if self.embedder == 'PHATE':
             phate_op = PageRankPHATE(
                 n_components=self.n_components,
                 t='auto',
@@ -388,7 +389,7 @@ class RFMALI(object):
             self.embedding_ = embedder.fit_transform(self.W_combined)
             return self.embedding_
 
-        elif self.embedder == 'umap':
+        elif self.embedder == 'UMAP':
             DistM = kernel2Dist(self.W_combined.toarray())
             self.embedding_ = UMAP(n_components=self.n_components, metric='precomputed', random_state=self.random_state).fit_transform(DistM)
             return self.embedding_

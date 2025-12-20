@@ -18,11 +18,13 @@ import time
 from sklearn import preprocessing
 from copy import deepcopy
 from sklearn.manifold import SpectralEmbedding
-import phate
+from rfphate import PageRankPHATE
 import umap
 
 class DTA():
     def __init__(self,
+             n_components=2,
+             embedder = "spectral",
              knn=5,
              decay=40,
              t=10,
@@ -60,7 +62,8 @@ class DTA():
         
         '''
         
-        
+        self.n_components = n_components
+        self.embedder = embedder
         self.decay = decay
         self.knn = knn
         self.t = t
@@ -441,28 +444,29 @@ class DTA():
         self.cost = np.sum(self.Distances12[:self.N1, :self.N2] * self.T[:self.N1, :self.N2])/self.m
 
 
-    def embed(self, emb = "spectral"):
+    def embed(self):
         
-        if emb == "spectral" :
+        if self.embedder == "spectral" :
             embedding = SpectralEmbedding(
-            n_components=10, affinity='precomputed')
+            n_components=self.n_components, affinity='precomputed', random_state=self.random_state)
 
             embedding_joint = embedding.fit_transform(self.W)
 
-        elif emb =="UMAP":
+        elif self.embedder =="UMAP":
             #embedding = UMAP(knn_dist='precomputed_affinity')
 
             DistM = kernel2Dist(self.W)
 
-            embedding_joint = umap.UMAP(
-                metric='precomputed').fit_transform(DistM)
+            embedding_joint = umap.UMAP(n_components=self.n_components,
+                metric='precomputed', random_state=self.random_state).fit_transform(DistM)
 
-        elif emb =="PHATE":
+        elif self.embedder =="PHATE":
 
-            embedding = phate.PHATE(knn_dist='precomputed_affinity', t=2)
+            embedding = PageRankPHATE(n_components=self.n_components, knn_dist='precomputed_affinity',
+                                      beta=0.5, t='auto', random_state=self.random_state)
             embedding_joint = embedding.fit_transform(self.W)
 
-        elif emb == "barycentric":
+        elif self.embedder == "barycentric":
 #             import ipdb
 #             ipdb.set_trace()
 
