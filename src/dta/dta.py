@@ -57,6 +57,7 @@ class DTA():
         
         m: default=1, 0 < m < 1 computes Partial transport 
             Percentage of mass from domain 1 to be transported to the second domain 
+            Set to m>1 for auto selection of m (useful for uneven dataset sizes)
         
  
         
