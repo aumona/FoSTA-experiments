@@ -2,7 +2,7 @@ import numpy as np
 from scipy import sparse
 from sklearn import preprocessing
 
-# Graph tools
+# Graph tools for DPT
 import graphtools
 
 # RF-GAP
@@ -13,9 +13,11 @@ from rfphate import PageRankPHATE
 from sklearn.manifold import SpectralEmbedding
 from umap import UMAP
 
+# Utils
 from utils.utils import kernel2Dist
+from utils.labels import LabelUtils
 
-# OT machinery
+# OT solver
 from .hiref import HiRef_fast as HiRef
 from .hiref import rank_annealing
 
@@ -26,7 +28,7 @@ class RFMALI(object):
     def __init__(self,
                  mu=0.5,
                  dpt=False,
-                 embedder='phate',
+                 embedder='spectral',
                  n_components=2,
                  verbose=0,
                  random_state=None,
@@ -64,59 +66,6 @@ class RFMALI(object):
         self._clusters_a = None
         self._clusters_b = None
 
-    # ------------------------------------------------------------
-    # Missing-label handling
-    # ------------------------------------------------------------
-    def _unlabeled_mask(self, y: np.ndarray) -> np.ndarray:
-        """True for NaN/None OR sentinel -1. Works for int/float/object."""
-        y = np.asarray(y).ravel()
-        mask = np.zeros(y.shape[0], dtype=bool)
-
-        # sentinel -1
-        try:
-            mask |= (y == -1)
-        except Exception:
-            pass
-
-        # NaN/None
-        if np.issubdtype(y.dtype, np.number):
-            mask |= np.isnan(y)
-        else:
-            for i, v in enumerate(y):
-                if v is None:
-                    mask[i] = True
-                else:
-                    try:
-                        if v != v:  # NaN check for object
-                            mask[i] = True
-                    except Exception:
-                        pass
-        return mask
-
-    def _labeled_unique(self, y: np.ndarray) -> np.ndarray:
-        y = np.asarray(y).ravel()
-        mask_unl = self._unlabeled_mask(y)
-        return np.unique(y[~mask_unl])
-
-    def _assert_same_label_space(self, y_a: np.ndarray, y_b: np.ndarray) -> np.ndarray:
-        labels_a = self._labeled_unique(y_a)
-        labels_b = self._labeled_unique(y_b)
-
-        set_a, set_b = set(labels_a.tolist()), set(labels_b.tolist())
-        if set_a != set_b:
-            only_a = sorted(set_a - set_b)
-            only_b = sorted(set_b - set_a)
-            raise ValueError(
-                "Domain label mismatch (shared semantic space violated).\n"
-                f"  Labels only in domain A: {only_a}\n"
-                f"  Labels only in domain B: {only_b}\n"
-                f"  Labels in A: {sorted(set_a)}\n"
-                f"  Labels in B: {sorted(set_b)}"
-            )
-
-        labels = np.array(sorted(set_a), dtype=labels_a.dtype)
-        self.classes_ = labels
-        return labels
 
     # ------------------------------------------------------------
     # Posterior builders
@@ -138,7 +87,7 @@ class RFMALI(object):
         Unlabeled samples in y (-1/NaN/None) are ignored when estimating class statistics.
         """
         y = np.asarray(y).ravel()
-        mask_unl = self._unlabeled_mask(y)
+        mask_unl = LabelUtils.get_unlabeled_mask(y)
         N = W.shape[0]
         C = len(labels)
     
@@ -298,23 +247,17 @@ class RFMALI(object):
         y_a = np.asarray(y_a).ravel()
         y_b = np.asarray(y_b).ravel()
 
-        # enforce shared label space (ignoring unlabeled)
-        labels = self._assert_same_label_space(y_a, y_b)
-
-        # IMPORTANT: RFGAP is classification here; ensure no NaNs are passed to sklearn
-        y_a_fit = y_a.copy()
-        y_b_fit = y_b.copy()
-        y_a_fit[self._unlabeled_mask(y_a_fit)] = -1
-        y_b_fit[self._unlabeled_mask(y_b_fit)] = -1
+        labels = LabelUtils.validate_shared_labels(y_a, y_b, strict=True)  # validate and get shared labels
+        self.classes_ = labels
 
         print("Fitting RFGAP on Domain A...")
         self.rfgap_a = RFGAP(**self.rfgap_params)
-        self.rfgap_a.fit(x_a, y_a_fit)
+        self.rfgap_a.fit(x_a, y_a)
         prox_a = self.rfgap_a.get_proximities()
 
         print("Fitting RFGAP on Domain B...")
         self.rfgap_b = RFGAP(**self.rfgap_params)
-        self.rfgap_b.fit(x_b, y_b_fit)
+        self.rfgap_b.fit(x_b, y_b)
         prox_b = self.rfgap_b.get_proximities()
 
         print("Building C-dim vectors...")
