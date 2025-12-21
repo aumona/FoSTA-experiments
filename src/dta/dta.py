@@ -9,7 +9,7 @@ import scipy
 from sklearn.neighbors import NearestNeighbors
 import pdb
 import sklearn
-import utils
+from utils.utils import kernel2Dist
 import logging, os
 from scipy.spatial import distance
 import warnings 
@@ -18,11 +18,13 @@ import time
 from sklearn import preprocessing
 from copy import deepcopy
 from sklearn.manifold import SpectralEmbedding
-import phate
+from rfphate import PageRankPHATE
 import umap
 
 class DTA():
     def __init__(self,
+             n_components=2,
+             embedder = "spectral",
              knn=5,
              decay=40,
              t=10,
@@ -55,12 +57,14 @@ class DTA():
         
         m: default=1, 0 < m < 1 computes Partial transport 
             Percentage of mass from domain 1 to be transported to the second domain 
+            Set to m>1 for auto selection of m (useful for uneven dataset sizes)
         
  
         
         '''
         
-        
+        self.n_components = n_components
+        self.embedder = embedder
         self.decay = decay
         self.knn = knn
         self.t = t
@@ -242,6 +246,7 @@ class DTA():
         w, rv = scipy.sparse.linalg.eigs(self.p1, k = 1)
         w, lv = scipy.sparse.linalg.eigs(self.p1.transpose(), k = 1)
         P = self.p1.toarray()
+        # MATRIX INVERSION is EXPENSIVE O(N^3), not scalable for large datasets
         self.M1 = np.linalg.inv(np.eye(P.shape[0]) - (P - np.outer(rv.real, lv.real))) - np.eye(P.shape[0])
         
         w, rv = scipy.sparse.linalg.eigs(self.p2, k = 1)
@@ -440,28 +445,29 @@ class DTA():
         self.cost = np.sum(self.Distances12[:self.N1, :self.N2] * self.T[:self.N1, :self.N2])/self.m
 
 
-    def embed(self, emb = "spectral"):
+    def embed(self):
         
-        if emb == "spectral" :
+        if self.embedder == "spectral" :
             embedding = SpectralEmbedding(
-            n_components=10, affinity='precomputed')
+            n_components=self.n_components, affinity='precomputed', random_state=self.random_state)
 
             embedding_joint = embedding.fit_transform(self.W)
 
-        elif emb =="UMAP":
+        elif self.embedder =="UMAP":
             #embedding = UMAP(knn_dist='precomputed_affinity')
 
-            DistM = utils.kernel2Dist(self.W)
+            DistM = kernel2Dist(self.W)
 
-            embedding_joint = umap.UMAP(
-                metric='precomputed').fit_transform(DistM)
+            embedding_joint = umap.UMAP(n_components=self.n_components,
+                metric='precomputed', random_state=self.random_state).fit_transform(DistM)
 
-        elif emb =="PHATE":
+        elif self.embedder =="PHATE":
 
-            embedding = phate.PHATE(knn_dist='precomputed_affinity', t=2)
+            embedding = PageRankPHATE(n_components=self.n_components, knn_dist='precomputed_affinity',
+                                      beta=0.5, t='auto', random_state=self.random_state)
             embedding_joint = embedding.fit_transform(self.W)
 
-        elif emb == "barycentric":
+        elif self.embedder == "barycentric":
 #             import ipdb
 #             ipdb.set_trace()
 

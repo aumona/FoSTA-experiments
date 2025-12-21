@@ -1,6 +1,15 @@
 import os
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
+import numpy as np
+
+
+def kernel2Dist(K):
+    D = np.diag(np.diag(K))
+    Di = np.linalg.inv(D)
+    Kn = np.dot(Di**(1/2), np.dot(K, Di**(1/2)))
+    Kn = np.clip(Kn, a_min = 0, a_max = 1)
+    return 1 - Kn
 
 def dataprep(data, label_col_idx=0, transform='normalize', global_transform=False, cat_to_numeric=True):
     """
