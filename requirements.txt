@@ -1,2 +1,5 @@
-umap-learn
 # rf-phate
+# torch
+# umap-learn
+# jax
+# pot
