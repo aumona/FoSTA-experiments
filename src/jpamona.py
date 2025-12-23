@@ -97,7 +97,7 @@ class JPamona(Pamona_original):
         # Assemble the Block Matrix
         # [ mu * Wa        (1-mu) * Wab ]
         # [ (1-mu) * Wba    mu * Wb     ]
-        self.W_combined = np.block([
+        self.W = np.block([
             [self.mu * prox_a, (1 - self.mu) * W_ab],
             [(1 - self.mu) * W_ba, self.mu * prox_b]
         ])
@@ -117,7 +117,7 @@ class JPamona(Pamona_original):
                 n_jobs=-1,
                 beta=0.5,
             )
-            self.embedding_ = phate_op.fit_transform(self.W_combined)
+            self.embedding_ = phate_op.fit_transform(self.W)
             return self.embedding_
     
         elif self.embedder == 'spectral':
@@ -127,17 +127,15 @@ class JPamona(Pamona_original):
                 random_state=self.manual_seed,
                 n_jobs=-1,
             )
-            self.embedding_ = embedder.fit_transform(self.W_combined)
+            self.embedding_ = embedder.fit_transform(self.W)
             return self.embedding_
     
         elif self.embedder == 'UMAP':
-            DistM = kernel2Dist(self.W_combined)
+            DistM = kernel2Dist(self.W)
             self.embedding_ = UMAP(n_components=self.n_components, metric='precomputed', random_state=self.manual_seed).fit_transform(DistM)
             return self.embedding_
         
-        elif self.embedder == "barycentric":
-            # --- CORRECTED BARYCENTRIC LOGIC ---
-            
+        elif self.embedder == "barycentric":            
             if self.n_a > self.n_b: 
                 # Case: A is the Anchor (Larger). Project B onto A.
                 # Operation: B_proj = T.T * A
