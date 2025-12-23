@@ -1,6 +1,7 @@
 import numpy as np
 from scipy import sparse
 from sklearn import preprocessing
+import pandas as pd
 
 # Graph tools for DPT
 import graphtools
@@ -18,7 +19,7 @@ from utils.utils import kernel2Dist
 from utils.labels import LabelUtils
 
 # OT solver
-from .hiref import HiRef_fast as HiRef
+from .hiref import HiRef_fast_sparse_out as HiRef
 from .hiref import rank_annealing
 
 import sys
@@ -55,7 +56,7 @@ class RFMALI(object):
         }
 
         self.T_sparse = None
-        self.W_combined = None
+        self.W = None
         self.embedding_ = None
         self.classes_ = None
         self.n = None
@@ -284,18 +285,90 @@ class RFMALI(object):
 
         print("Computing Optimal Transport...")
         rank_schedule = rank_annealing.optimal_rank_schedule(n=self.n)
-        frontier = HiRef.hiref_lr_fast(post_a, post_b, rank_schedule=rank_schedule)
+        (rows, cols, data), _ = HiRef.hiref_lr_fast(post_a, post_b, rank_schedule=rank_schedule, return_coupling=True)
+        rows = np.asarray(rows, dtype=np.int64)
+        cols = np.asarray(cols, dtype=np.int64)
+        data = np.asarray(data, dtype=np.float64)
+        self.T_sparse = sparse.coo_matrix(
+            (data, (rows, cols)),
+            shape=(self.n, self.n)
+        ).tocsr()
 
-        row_idx = np.array([int(p[0][0]) for p in frontier], dtype=np.int64)
-        col_idx = np.array([int(p[1][0]) for p in frontier], dtype=np.int64)
-        data = np.ones_like(row_idx, dtype=float)
-        self.T_sparse = sparse.csr_matrix((data, (row_idx, col_idx)), shape=(self.n, self.n))
+        # rank_schedule = rank_annealing.optimal_rank_schedule(n=self.n)
+        # T_dense = HiRef.hiref_lr_fast(post_a, post_b, rank_schedule=rank_schedule, return_coupling=True, dense_coupling=True)
+        # T_dense = np.asarray(T_dense)
+
+        # ---------- DENSE ----------
+        # T = T_dense
+        # n = T.shape[0]
+        
+        # row_nnz = np.count_nonzero(T, axis=1)
+        # col_nnz = np.count_nonzero(T, axis=0)
+        
+        # row_sums = T.sum(axis=1)
+        # col_sums = T.sum(axis=0)
+        
+        # print("\nDENSE COUPLING")
+        # print("--------------")
+        # print("Empty rows:", np.sum(row_nnz == 0), "/", n)
+        # print("Empty cols:", np.sum(col_nnz == 0), "/", n)
+        
+        # print("Rows with >1 nonzero:", np.sum(row_nnz > 1), "/", n)
+        # print("Cols with >1 nonzero:", np.sum(col_nnz > 1), "/", n)
+        
+        # vals = T[T != 0]
+        # print("Unique nonzero values:", np.unique(vals))
+        # print("All nonzero == 1:", np.all(vals == 1))
+        
+        # print("Row sums: min =", row_sums.min(), "max =", row_sums.max())
+        # print("Col sums: min =", col_sums.min(), "max =", col_sums.max())
+        # print("Total mass:", T.sum())
+
+
+        # ---------- SPARSE ----------
+        T = self.T_sparse.tocsr()
+        n = T.shape[0]
+        
+        row_nnz = np.diff(T.indptr)
+        row_sums = np.asarray(T.sum(axis=1)).ravel()
+        
+        Tc = T.tocsc()
+        col_nnz = np.diff(Tc.indptr)
+        col_sums = np.asarray(Tc.sum(axis=0)).ravel()
+        
+        print("\nSPARSE COUPLING")
+        print("---------------")
+        print("Empty rows:", np.sum(row_nnz == 0), "/", n)
+        print("Empty cols:", np.sum(col_nnz == 0), "/", n)
+        
+        print("Rows with >1 nonzero:", np.sum(row_nnz > 1), "/", n)
+        print("Cols with >1 nonzero:", np.sum(col_nnz > 1), "/", n)
+        
+        print("Unique nonzero values:", np.unique(T.data))
+        print("All nonzero == 1:", np.all(T.data == 1))
+        
+        print("Row sums: min =", row_sums.min(), "max =", row_sums.max())
+        print("Col sums: min =", col_sums.min(), "max =", col_sums.max())
+        print("Total mass:", T.sum())
+
+
+        ## COMPARISON
+        # diff = self.T_sparse - T_dense
+        # print("max |T_sparse - T_dense| =", np.abs(diff).max())
+        # print(
+        #     "exact equality:",
+        #     np.allclose(self.T_sparse.toarray(), T_dense, atol=0.0)
+        # )
+
+
+        # Row normalize
+        self.T_sparse = preprocessing.normalize(self.T_sparse, norm="l1", axis=1)
 
         print("Building joint affinity matrix...")
         W_ab = (prox_a.dot(self.T_sparse) + self.T_sparse.dot(prox_b)) / 2
         W_ba = W_ab.T
 
-        self.W_combined = sparse.bmat(
+        self.W = sparse.bmat(
             [
                 [self.mu * prox_a, (1 - self.mu) * W_ab],
                 [(1 - self.mu) * W_ba, self.mu * prox_b]
@@ -308,7 +381,7 @@ class RFMALI(object):
 
     def fit_transform(self, x_a, x_b, y_a, y_b):
         self.fit(x_a, x_b, y_a, y_b)
-
+        print("Computing joint embedding...")
         if self.embedder == 'PHATE':
             phate_op = PageRankPHATE(
                 n_components=self.n_components,
@@ -319,7 +392,7 @@ class RFMALI(object):
                 n_jobs=-1,
                 beta=0.5,
             )
-            self.embedding_ = phate_op.fit_transform(self.W_combined)
+            self.embedding_ = phate_op.fit_transform(self.W)
             return self.embedding_
 
         elif self.embedder == 'spectral':
@@ -329,13 +402,16 @@ class RFMALI(object):
                 random_state=self.random_state,
                 n_jobs=self.n_jobs,
             )
-            self.embedding_ = embedder.fit_transform(self.W_combined)
+            self.embedding_ = embedder.fit_transform(self.W)
             return self.embedding_
 
         elif self.embedder == 'UMAP':
-            DistM = kernel2Dist(self.W_combined.toarray())
+            DistM = kernel2Dist(self.W.toarray())
             self.embedding_ = UMAP(n_components=self.n_components, metric='precomputed', random_state=self.random_state).fit_transform(DistM)
             return self.embedding_
+        
+        elif self.embedder == 'barycentric':
+            raise NotImplementedError("Barycentric embedding not implemented yet in RFMALI.")
 
         else:
             raise ValueError(f"Unknown embedder={self.embedder}")
