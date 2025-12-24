@@ -143,6 +143,7 @@ def split_by_capacity_device(scores: jnp.ndarray, cap: int) -> jnp.ndarray:
     _, idx = lax.top_k(scores.T, k=cap)   # idx: (r, cap) in [0, N)
     return idx.astype(jnp.int32)
 
+
 def _per_block(A_full: Array, B_full: Array,
                idxX: IndexArray, idxY: IndexArray,
                r: int, iters: int, gamma: float):
@@ -165,6 +166,7 @@ def hiref_lr_fast(
     gamma: float = 60.0,
     rescale_cost: bool = False,
     return_coupling: bool = False,
+    dense_coupling: bool = False,
 ):
     n = int(X.shape[0])
     A_full, B_full = lr_sqeuclidean_factors(X, Y, rescale=rescale_cost)
@@ -197,16 +199,71 @@ def hiref_lr_fast(
     if not return_coupling:
         return frontier
 
-    # assemble dense permutation; leaves are assumed size-1
-    P = jnp.zeros((n, n), X.dtype)
+    if dense_coupling:
+        # assemble dense permutation; leaves are assumed size-1
+        P = jnp.zeros((n, n), X.dtype)
+        for idxX, idxY in frontier:
+            if idxX.size == 1 and idxY.size == 1:
+                P = P.at[(int(idxX[0]), int(idxY[0]))].set(1.0)
+            else:
+                # if a leaf is larger than 1, spread uniformly (optional)
+                size = int(min(idxX.size, idxY.size))
+                P = P.at[(idxX[:size, None], idxY[:size][None, :])].set(1.0 / size)
+        return P
+
+
+    
+    # ---- Build sparse COO representation with EXACT same values as dense code ----
+    rows_list = []
+    cols_list = []
+    data_list = []
+    
     for idxX, idxY in frontier:
-        if idxX.size == 1 and idxY.size == 1:
-            P = P.at[(int(idxX[0]), int(idxY[0]))].set(1.0)
+        sx = int(idxX.size)
+        sy = int(idxY.size)
+        if sx == 0 or sy == 0:
+            continue
+    
+        if sx == 1 and sy == 1:
+            # Single entry: value = 1.0
+            rows_list.append(jnp.asarray(idxX, dtype=jnp.int32))
+            cols_list.append(jnp.asarray(idxY, dtype=jnp.int32))
+            data_list.append(jnp.asarray([1.0], dtype=X.dtype))
+    
         else:
-            # if a leaf is larger than 1, spread uniformly (optional)
-            size = int(min(idxX.size, idxY.size))
-            P = P.at[(idxX[:size, None], idxY[:size][None, :])].set(1.0 / size)
-    return P / n
+            size = int(min(sx, sy))
+            ix = idxX[:size]
+            iy = idxY[:size]
+    
+            # Cartesian block: value = (1/size)
+            rr = jnp.repeat(ix, size)                 # (size*size,)
+            cc = jnp.tile(iy, size)                   # (size*size,)
+            vv = jnp.full(
+                (size * size,),
+                1.0 / (size),
+                dtype=X.dtype
+            )
+    
+            rows_list.append(rr.astype(jnp.int32))
+            cols_list.append(cc.astype(jnp.int32))
+            data_list.append(vv)
+    
+    rows = (
+        jnp.concatenate(rows_list)
+        if rows_list else jnp.zeros((0,), dtype=jnp.int32)
+    )
+    cols = (
+        jnp.concatenate(cols_list)
+        if cols_list else jnp.zeros((0,), dtype=jnp.int32)
+    )
+    data = (
+        jnp.concatenate(data_list)
+        if data_list else jnp.zeros((0,), dtype=X.dtype)
+    )
+    
+    # Return sparse representation instead of dense matrix
+    # (rows, cols, data) is COO format
+    return (rows, cols, data), frontier
 
 
 # =========================
