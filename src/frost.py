@@ -32,6 +32,7 @@ class FROST(object):
                  mu=0.5,
                  dpt=False,
                  n_landmark=2000,
+                 prior_correct=True,
                  dist='cosine',  # distance metric for HiRef (supports 'hellinger' and 'cosine')
                  embedder='spectral',
                  n_components=2,
@@ -41,6 +42,7 @@ class FROST(object):
         self.mu = mu
         self.dpt = dpt
         self.n_landmark = n_landmark  # number of landmarks for DPT
+        self.prior_correct = prior_correct
         self.dist = dist
         self.embedder = embedder
         self.n_components = n_components
@@ -57,6 +59,7 @@ class FROST(object):
             'non_zero_diagonal': True,
             'force_symmetric': True,
             'max_normalize': True,
+            'class_weight': 'balanced',  # handle class imbalance in RF
             'verbose': 0,
             'n_jobs': -1,
         }
@@ -116,7 +119,10 @@ class FROST(object):
                 else:
                     vec = W[:, class_mask].sum(axis=1)
 
-                post[:, k] = vec / cnt
+                if prior_correct:
+                    post[:, k] = vec / cnt
+                else:
+                    post[:, k] = vec
 
         # Case 2: Landmark DPT weights (N x M)
         else:
@@ -165,6 +171,9 @@ class FROST(object):
             # L1 normalize and sqrt transform for Squared Hellinger in HiRef
             post = preprocessing.normalize(post, norm="l1", axis=1)
             post = np.sqrt(post) / np.sqrt(2)
+        
+        else:
+            raise ValueError(f"Unknown dist={self.dist}, must be 'cosine' or 'hellinger'.")
 
         return post
 
@@ -315,34 +324,14 @@ class FROST(object):
     # ------------------------------------------------------------
     def _build_balanced_affinity(self, prox_a, prox_b, T):
         """
-        Constructs a joint affinity matrix using independent pre-normalization.
-        
-        Robustness:
-        - Works if N_a > N_b
-        - Works if N_b > N_a
-        - Works if N_a ~ N_b
-    
-        More efficient symmetrization:
-        - Avoids building full P then doing (P + P.T)/2.
-        - Builds symmetric blocks directly:
-            W_sym = [[sym(A), sym_off(B,C)], [sym_off(C,B), sym(D)]]
+        Constructs a joint affinity matrix just like in MALI, with T the OT coupling, max normalized.
         """
-    
-        T_ab = preprocessing.normalize(T, norm="l1", axis=1)  # T_ab: Probability of jumping A -> B (Row-stochastic)
-        T_ba = preprocessing.normalize(T.transpose(), norm="l1", axis=1)  # T_ba: Probability of jumping B -> A (Row-stochastic)
-    
-        # Cross blocks (sparse)
-        W_ab = (prox_a.dot(T_ab) + T_ab.dot(prox_b)) / 2   # (n_a x n_b)
-        W_ba = (prox_b.dot(T_ba) + T_ba.dot(prox_a)) / 2   # (n_b x n_a)
-    
-        # Symmetrize off-diagonal blocks without building full W
-        UR = (W_ab + W_ba.transpose()) * 0.5
-        LL = UR.transpose()
-    
+        W_ab = (prox_a.dot(T) + T.dot(prox_b))   # (n_a x n_b)
+        W_ba = W_ab.transpose()
         W_sym = sparse.bmat(
             [
-                [self.mu * prox_a, (1-self.mu) * UR],
-                [(1-self.mu) * LL,   self.mu * prox_b]
+                [self.mu * prox_a, (1-self.mu) * W_ab],
+                [(1-self.mu) * W_ba,   self.mu * prox_b]
             ],
             format="csr"
         )
@@ -373,8 +362,8 @@ class FROST(object):
 
         print("Building C-dim vectors...") if self.verbose > 0 else None
         if not self.dpt:
-            post_a = self._get_semantic_vectors(prox_a, y_a, labels, clusters=None)
-            post_b = self._get_semantic_vectors(prox_b, y_b, labels, clusters=None)
+            post_a = self._get_semantic_vectors(prox_a, y_a, labels, clusters=None, prior_correct=self.prior_correct)
+            post_b = self._get_semantic_vectors(prox_b, y_b, labels, clusters=None, prior_correct=self.prior_correct)
         else:
             P_NM_a, P_MM_a, clusters_a = self._get_diffusion_operators(
                 prox_a, random_state=self.random_state, verbose=True
@@ -389,14 +378,14 @@ class FROST(object):
             
             trans_a = P_NM_a.dot(M_a)
             trans_b = P_NM_b.dot(M_b)
-            post_a = self._get_semantic_vectors(trans_a, y_a, labels, clusters=clusters_a)
-            post_b = self._get_semantic_vectors(trans_b, y_b, labels, clusters=clusters_b)
+            post_a = self._get_semantic_vectors(trans_a, y_a, labels, clusters=clusters_a, prior_correct=self.prior_correct)
+            post_b = self._get_semantic_vectors(trans_b, y_b, labels, clusters=clusters_b, prior_correct=self.prior_correct)
 
         print("Computing Optimal Transport...") if self.verbose > 0 else None
         n_a, n_b = self.n_a, self.n_b
 
         if n_a == n_b:
-            # --- Balanced Case ---
+            # --- Balanced Case (equivelent to m=1 in MALI) ---
             rank_schedule = rank_annealing.optimal_rank_schedule(n=n_a)
             (rows, cols, data), _ = HiRef.hiref_lr_fast(
                 post_a, post_b,
@@ -407,6 +396,7 @@ class FROST(object):
                 (data, (rows, cols)), shape=(n_a, n_b)
             ).tocsr()
 
+        # Imbalanced cases, correspond to n_a =! n_b with m=1 in MALI
         elif n_a < n_b:
             # --- Compress B -> A ---
             # Returns T (n_a x n_b) directly
@@ -426,6 +416,11 @@ class FROST(object):
             print(f"Empty rows: {np.sum(np.diff(T.indptr) == 0)} / {T.shape[0]}")
             print(f"Empty cols: {np.sum(np.diff(T.tocsc().indptr) == 0)} / {T.shape[1]}")
             print("Total mass:", T.sum())
+            # print row/col sums
+            row_sums = np.asarray(T.sum(axis=1)).ravel()
+            col_sums = np.asarray(T.sum(axis=0)).ravel()
+            print(f"Row sums: min={row_sums.min():.4f}, max={row_sums.max():.4f}, mean={row_sums.mean():.4f}")
+            print(f"Col sums: min={col_sums.min():.4f}, max={col_sums.max():.4f}, mean={col_sums.mean():.4f}")
             print("Building joint affinity matrix...")
 
         self.W = self._build_balanced_affinity(prox_a, prox_b, self.T_sparse)
