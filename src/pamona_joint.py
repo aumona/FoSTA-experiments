@@ -11,7 +11,11 @@ import graphtools
 import scipy.sparse as sparse
 
 class JPamona(Pamona_original):
-    def __init__(self, mu=0.5, gamma=0.5, n_components=2, embedder='spectral', random_state=None, **kwargs):
+    def __init__(self, mu=0.5, gamma=0.5, n_components=2, embedder='spectral',
+                 random_state=None,
+                 n_neighbors=10, n_pca=None, decay=40, knn_dist='euclidean',
+                 virtual_cells=0,
+                 **kwargs):
         """
         Wrapper for Pamona with Semi-Supervised support.
 
@@ -30,8 +34,13 @@ class JPamona(Pamona_original):
         self.gamma = gamma
         self.embedder = embedder
         self.n_components = n_components
+        self.n_neighbors = n_neighbors
+        self.n_pca = n_pca
+        self.decay = decay
+        self.knn_dist = knn_dist
         self.manual_seed = random_state
         self.integrated_data = None
+        self.virtual_cells = virtual_cells
 
     def fit(self, x_a, x_b, y_a, y_b):
         """
@@ -82,15 +91,19 @@ class JPamona(Pamona_original):
             self.M = None
         
         self.T = self.run_Pamona([x_a, x_b])[0]
-        self.T_norm = self.T / (self.T.max() + 1e-12) # Add small epsilon for safety
+        self.T_norm = self.T / (self.T.max())
 
 
         # Build clean kNN graphs for the diagonal blocks
         # Note: 'connectivity' mode gives 0/1. If you want distances, use mode='distance'
-        prox_a = graphtools.Graph(x_a, random_state=self.manual_seed).K.toarray()
-        prox_b = graphtools.Graph(x_b, random_state=self.manual_seed).K.toarray()
+        prox_a = graphtools.Graph(x_a, n_pca=self.n_pca, knn=self.n_neighbors, 
+                              decay=self.decay, distance=self.knn_dist,
+                              n_jobs=1, verbose=False).K.toarray()
+        prox_b = graphtools.Graph(x_b, n_pca=self.n_pca, knn=self.n_neighbors, 
+                              decay=self.decay, distance=self.knn_dist,
+                              n_jobs=1, verbose=False).K.toarray()
 
-        W_ab = (np.dot(prox_a, self.T_norm) + np.dot(self.T_norm, prox_b)) / 2
+        W_ab = (np.dot(prox_a, self.T_norm) + np.dot(self.T_norm, prox_b))
 
         W_ba = W_ab.T
 
