@@ -340,7 +340,20 @@ class DTA():
         else:
             raise ValueError("Not implemented")
             
-        self.T[self.T < 1e-5] = 0    
+        self.T[self.T < 1e-5] = 0
+        if self.verbose > 0:
+            T = self.T
+            print("\nCOUPLING MATRIX")
+            print("---------------")
+            print(f"Transport sum: {T.sum()}")
+            print(f"Empty rows: {np.sum(T.sum(axis=1) == 0)} / {T.shape[0]}")
+            print(f"Empty cols: {np.sum(T.sum(axis=0) == 0)} / {T.shape[1]}")
+            print("Total mass:", T.sum())
+            # print row/col sums
+            row_sums = T.sum(axis=1)
+            col_sums = T.sum(axis=0)
+            print(f"Row sums: min={row_sums.min():.4f}, max={row_sums.max():.4f}, mean={row_sums.mean():.4f}")
+            print(f"Col sums: min={col_sums.min():.4f}, max={col_sums.max():.4f}, mean={col_sums.mean():.4f}")
 
     def fit(self, domain1, domain2, sharedD1 = None, sharedD2 = None, 
             labels1 = None, labels2 = None, labelsh1 = None, labelsh2 = None):
