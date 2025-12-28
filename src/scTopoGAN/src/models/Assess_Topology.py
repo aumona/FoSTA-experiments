@@ -7,8 +7,8 @@ import random
 from torch import nn, optim
 from torch.utils.data import Dataset, DataLoader, ConcatDataset
 from torch.autograd.variable import Variable
-from src.topology import PersistentHomologyCalculation
-from src.models.approx_based import TopologicalSignatureDistance
+from src.scTopoGAN.src.topology import PersistentHomologyCalculation
+from src.scTopoGAN.src.models.approx_based import TopologicalSignatureDistance
 
 # Define function to compute distance matrix
 def compute_distance_matrix(x, p=2):

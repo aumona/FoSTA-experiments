@@ -4,8 +4,8 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 from torchvision.utils import save_image
 
-from src.evaluation.utils import get_space
-from src.visualization import visualize_latents
+from src.scTopoGAN.src.evaluation.utils import get_space
+from src.scTopoGAN.src.visualization import visualize_latents
 
 # Hush the linter, child callbacks will always have different parameters than
 # the overwritten method of the parent class. Further kwargs will mostly be an

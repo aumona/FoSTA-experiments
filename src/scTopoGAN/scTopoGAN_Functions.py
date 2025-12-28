@@ -1,7 +1,7 @@
 # Import modules
 from copy import deepcopy
 from sklearn.model_selection import train_test_split
-from src.models.approx_based import TopologicallyRegularizedAutoencoder
+from src.scTopoGAN.src.models.approx_based import TopologicallyRegularizedAutoencoder
 import matplotlib.pyplot as plt
 import torch
 if torch.cuda.is_available():
@@ -13,9 +13,9 @@ import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader
 import random
-from Manifold_Alignment_GAN import GeneratorNet, DiscriminatorNet, train
-from src.models.Assess_Topology import compute_topological_error
-from src.models.submodules import VAE_PBMC, AE_PBMC
+from src.scTopoGAN.Manifold_Alignment_GAN import GeneratorNet, DiscriminatorNet, train
+from src.scTopoGAN.src.models.Assess_Topology import compute_topological_error
+from src.scTopoGAN.src.models.submodules import VAE_PBMC, AE_PBMC
 import os
 
 def prepare_manifold_data(Manifold_Data, batch_size):
@@ -166,47 +166,61 @@ def get_AE_Embeddings(Manifold_Data, batch_size, model_type, AE_arch, initial_LR
 
     return latent_data
 
+
 def run_scTopoGAN(source_tech, target_tech, source_tech_name, target_tech_name, batch_size, 
                   topology_batch_size, total_epochs, num_iterations, checkpoint_epoch, 
-                  g_learning_rate, d_learning_rate, path_prefix):
-    epochs = [500, 600, 700, 800, 900, 1000]
+                  g_learning_rate, d_learning_rate, path_prefix, seed=42):
+    
+    if torch.backends.mps.is_available():
+        device = torch.device("mps")
+        print("Using Apple MPS (Metal Performance Shaders) acceleration.")
+    elif torch.cuda.is_available():
+        device = torch.device("cuda:0")
+        print("Using CUDA acceleration.")
+    else:
+        device = torch.device("cpu")
+        print("Using CPU.")
+        
+    epochs = [500, 600, 700, 800, 900, 1000] 
+    # NOTE: If you lowered gan_epochs in your class init, ensure these epochs exist!
+    # Ideally, replace this hardcoded list with:
+    # epochs = [e for e in [500, 600, 700, 800, 900, 1000] if e <= total_epochs]
+    # If total_epochs is small (e.g. 200), we just take the last one.
+    # FIX: Ensure we look for a checkpoint that ACTUALLY exists
+    # If total_epochs is 201 and checkpoint_epoch is 20, we want 200, not 201.
+    if total_epochs < 500:
+        last_saved = (total_epochs // checkpoint_epoch) * checkpoint_epoch
+        epochs = [last_saved]
+
     core_suffix = "TopoGAN_Generation01"
     isExist = os.path.exists(path_prefix)
     if not isExist:
-        # Create a new directory because it does not exist
         os.makedirs(path_prefix)
         os.makedirs("{}/Models".format(path_prefix))
         os.makedirs("{}/Evaluation Results".format(path_prefix))
 
     source_indices = list(source_tech.index.values)
     latent_dimensions = source_tech.shape[1]
-    source_tech = source_tech.to_numpy()
-    source_tech = source_tech.astype(float)
-    print("Source Technology: ", np.shape(source_tech))
-    target_tech = target_tech.to_numpy()
-    target_tech = target_tech.astype(float)
-    print("Target Technology: ", np.shape(target_tech))
+    source_tech = source_tech.to_numpy().astype(float)
+    target_tech = target_tech.to_numpy().astype(float)
 
     print("=======================================================================")
     print("Training first generation")
     print("=======================================================================")
     techs = [source_tech_name, target_tech_name]
-
     aggregate_topo_error = []
 
     for random_seed in range(num_iterations):
-        # Set random seed for model uniqueness and reproducibility
         np.random.seed(random_seed)
         torch.manual_seed(random_seed)
         random.seed(random_seed)
-        #tf.random.set_seed(random_seed)
         path_suffix = "{}_MODEL_{}".format(core_suffix, str(random_seed))
         
         generator = GeneratorNet(input_dim=latent_dimensions, output_dim=latent_dimensions)
         discriminator = DiscriminatorNet(input_dim=latent_dimensions)
         
-        generator = generator.to("cuda:0")
-        discriminator = discriminator.to("cuda:0")
+        generator = generator.to(device)
+        discriminator = discriminator.to(device)
         
         generator.train()
         discriminator.train()
@@ -222,59 +236,48 @@ def run_scTopoGAN(source_tech, target_tech, source_tech_name, target_tech_name, 
         topo_errors = []
 
         for epoch in epochs:
-
-            print("#########################################################")
-            print("#########################################################")
-            print("")
-            print("Evaluating for epoch: ", epoch)
+            print(f"Evaluating for epoch: {epoch}")
             path = "{}/Models/{}_to_{}_Generator_{}_{}.pt".format(path_prefix,
                                                                   source_tech_name,
                                                                   target_tech_name,
                                                                   epoch,
                                                                   path_suffix)
-            print("Model path: ", path)
-
-            # Project source into target space
-            model = torch.load(path, map_location="cpu")  # Load trained model
+            
+            # ### FIX 1: weights_only=False
+            model = torch.load(path, map_location=device, weights_only=False) 
             model.eval()
-            source_to_target = torch.empty(0)
-
-            source_tech = torch.tensor(source_tech).float()
-            data_loader = DataLoader(source_tech, batch_size=1)
+            
+            source_to_target = torch.empty(0).to("cpu")
+            source_tech_t = torch.tensor(source_tech).float().to("cpu")
+            data_loader = DataLoader(source_tech_t, batch_size=1)
+            
             for index, original_sample in enumerate(data_loader):
-                projected_tensor = model(original_sample.float()).reshape(1, latent_dimensions)
+                input_sample = original_sample.float().to(device)
+                projected_tensor = model(input_sample).reshape(1, latent_dimensions).to("cpu")
                 source_to_target = torch.cat((source_to_target, projected_tensor))
 
             source_to_target = source_to_target.detach().numpy()
-            print("source data shape: ", source_to_target.shape)
             source_projected_numpy = np.concatenate((source_tech, source_to_target), axis=1)
-            source_projected_tensor = torch.tensor(source_projected_numpy).float()  # Convert to tensor
-            # Define data loader
+            source_projected_tensor = torch.tensor(source_projected_numpy).float()
+            
             data_loader_source_projected = DataLoader(source_projected_tensor, batch_size=topology_batch_size,
                                                       shuffle=False, num_workers=0)
 
-            # Evaluate topology between source and projected
             total_topo_loss_source_projected = 0
             for n_batch, data in enumerate(data_loader_source_projected):
                 first_dim = data.shape[0]
                 source_batch = data[0:first_dim,0:latent_dimensions]
                 source_to_target_batch = data[0:first_dim,latent_dimensions:(latent_dimensions*2)]
-                # source_batch = tf.slice(data, [0, 0], [first_dim, latent_dimensions])
-                # source_to_target_batch = tf.slice(data, [0, latent_dimensions], [first_dim, latent_dimensions])
 
-                # Convert source and target from eager tensor to native tensor
-                source_to_target_batch = source_to_target_batch.numpy()
-                source_to_target_batch = torch.tensor(source_to_target_batch)
-                source_batch = source_batch.numpy()
-                source_batch = torch.tensor(source_batch)
-
-                topo_error = compute_topological_error(source_batch, source_to_target_batch)
+                topo_error = compute_topological_error(torch.tensor(source_batch.numpy()), 
+                                                     torch.tensor(source_to_target_batch.numpy()))
                 total_topo_loss_source_projected += topo_error.item()
 
             evaluation_results.append(["GAN", source_tech_name, target_tech_name, path_suffix, epoch,
-                                       total_topo_loss_source_projected])
+                                     total_topo_loss_source_projected])
             topo_errors.append(total_topo_loss_source_projected)
-        mean_topo_error = sum(topo_errors) / len(topo_errors)
+            
+        mean_topo_error = sum(topo_errors) / len(topo_errors) if topo_errors else 0
         aggregate_topo_error.append([random_seed, mean_topo_error])
 
         # Save evaluation results
@@ -282,34 +285,34 @@ def run_scTopoGAN(source_tech, target_tech, source_tech_name, target_tech_name, 
         evaluation_results.to_csv(
             path_or_buf="{}/Evaluation Results/Topological Assessment {}.csv".format(path_prefix, path_suffix),
             header=True, index=False)
-    # </editor-fold>
 
     aggregate_topo_error = pd.DataFrame(data=aggregate_topo_error, columns=["Seed", "Mean Error"]).sort_values(
         by="Mean Error", ascending=True)
-    print("Recommended model number for second generation of training: ")
+    
+    print("Recommended model number for second generation: ")
     print(aggregate_topo_error.head(1))
     aggregate_topo_error.to_csv(
         path_or_buf="{}/Evaluation Results/Aggregate Topological Assessment First Generation.csv".format(path_prefix),
         header=True, index=False)
 
     model_01 = aggregate_topo_error.head(1)["Seed"].values[0]
-    epoch_01 = 1000
-    random_seed = 1
+    
+    # Use the last epoch we actually trained for
+    epoch_01 = epochs[-1]
+    
+    random_seed = seed
     np.random.seed(random_seed)
     torch.manual_seed(random_seed)
     random.seed(random_seed)
-    #tf.random.set_seed(random_seed)
 
     model_01_name = "{}_to_{}_Generator_{}_{}_MODEL_{}".format(source_tech_name, target_tech_name, epoch_01, core_suffix, model_01)
-
     path_01 = "{}/Models/{}.pt".format(path_prefix, model_01_name)
 
-    # Load model
-    generator_1 = torch.load(path_01, map_location="cuda:0")
+    # ### FIX 2: weights_only=False
+    generator_1 = torch.load(path_01, map_location=device, weights_only=False)
 
     discriminator = DiscriminatorNet(input_dim=latent_dimensions)
-    
-    discriminator = discriminator.to("cuda:0")
+    discriminator = discriminator.to(device)
     
     generator_1.train()
     discriminator.train()
@@ -328,8 +331,9 @@ def run_scTopoGAN(source_tech, target_tech, source_tech_name, target_tech_name, 
     trained_generator.eval()
     
     source_aligned = torch.empty(0)
-    source_tech = torch.tensor(source_tech).float()
-    data_loader = DataLoader(source_tech, batch_size=1)
+    source_tech_t = torch.tensor(source_tech).float()
+    data_loader = DataLoader(source_tech_t, batch_size=1)
+    
     for index, original_sample in enumerate(data_loader):
         projected_tensor = trained_generator(original_sample.float()).reshape(1, latent_dimensions)
         source_aligned = torch.cat((source_aligned, projected_tensor))

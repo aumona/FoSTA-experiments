@@ -1,7 +1,7 @@
 """Vanilla models."""
 import torch.nn as nn
 
-from src.models import submodules
+from src.scTopoGAN.src.models import submodules
 from .base import AutoencoderModel
 
 

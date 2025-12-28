@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 from .base import AutoencoderModel
 #from .submodules import ConvolutionalAutoencoder
-from src.models import submodules
+from src.scTopoGAN.src.models import submodules
 import sys
 
 # Hush the linter: Warning W0221 corresponds to a mismatch between parent class

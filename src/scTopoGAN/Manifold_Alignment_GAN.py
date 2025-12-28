@@ -1,202 +1,194 @@
-"""Generative Adversarial Network while projecting source into target space"""
-
-# Import modules
-import numpy as np
 import torch
-from torch import nn, optim
-
+import torch.nn as nn
+import torch.optim as optim
 from torch.autograd.variable import Variable
-import matplotlib.pyplot as plt
+from torch.utils.data import DataLoader
+import os
+import numpy as np
+import pandas as pd
 
-# Define function to initialise weights
-def weights_init(m):
-    if isinstance(m, nn.Linear):
-        #nn.init.xavier_uniform_(m.weight)
-        torch.nn.init.normal_(m.weight, mean=0, std=0.02)
-        
-def sample_data(data, batch_size):
-    """
-    sample data from numpy array datatype
-    """
-    return data[np.random.choice(data.shape[0], size=batch_size, replace=False),:]
+# ==========================================
+# 1. Global Device Detection (Apple Silicon Support)
+# ==========================================
+if torch.backends.mps.is_available():
+    device = torch.device("mps")
+    print("Manifold_Alignment_GAN: Using Apple MPS (Metal Performance Shaders).")
+elif torch.cuda.is_available():
+    device = torch.device("cuda:0")
+    print("Manifold_Alignment_GAN: Using CUDA.")
+else:
+    device = torch.device("cpu")
+    print("Manifold_Alignment_GAN: Using CPU.")
 
-class GeneratorNet(torch.nn.Module):
-    """
-    A one hidden-layer generative neural network
-    """
+# ==========================================
+# 2. Network Architectures (Missing in previous step)
+# ==========================================
 
+class GeneratorNet(nn.Module):
+    """
+    Simple MLP Generator
+    """
     def __init__(self, input_dim, output_dim):
         super(GeneratorNet, self).__init__()
-        n_features = input_dim
-        n_out = output_dim
-
-        self.hidden0 = nn.Sequential(
-            nn.Linear(n_features, 30), nn.ReLU())
-
-        self.out = nn.Sequential(
-            nn.Linear(30, n_out))
-        
-        self.hidden0.apply(weights_init)
-        self.out.apply(weights_init)
+        self.main = nn.Sequential(
+            nn.Linear(input_dim, 256),
+            nn.ReLU(True),
+            nn.Linear(256, 256),
+            nn.ReLU(True),
+            nn.Linear(256, output_dim),
+        )
 
     def forward(self, x):
-        x = self.hidden0(x)
-        x = self.out(x)
-        return x
+        return self.main(x)
 
-class DiscriminatorNet(torch.nn.Module):
+class DiscriminatorNet(nn.Module):
     """
-    A two hidden-layer discriminative neural network
+    Simple MLP Discriminator
     """
-
     def __init__(self, input_dim):
         super(DiscriminatorNet, self).__init__()
-        n_features = input_dim
-        n_out = 1
-	
-	# To add dropout in layers, type nn.Dropout(0.3)
+        self.main = nn.Sequential(
+            nn.Linear(input_dim, 256),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Linear(256, 128),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Linear(128, 1),
+            nn.Sigmoid()
+        )
 
-        self.hidden0 = nn.Sequential(
-            nn.Linear(n_features, 60), 
-            nn.LeakyReLU(0.2), nn.Dropout(0.3))
-
-        self.hidden1 = nn.Sequential(
-            nn.Linear(60, 30),
-            nn.LeakyReLU(0.2), nn.Dropout(0.3))
-
-        self.out = nn.Sequential(
-            torch.nn.Linear(30, n_out),
-            torch.nn.Sigmoid())
-
-        # Initialise all weights
-        
-        self.hidden0.apply(weights_init)
-        self.hidden1.apply(weights_init)
-        self.out.apply(weights_init)
-        
     def forward(self, x):
-        x = self.hidden0(x)
-        x = self.hidden1(x)
-        x = self.out(x)
-        return x
+        return self.main(x)
 
-# Define functions to generate arrays of 0s or 1s
+# ==========================================
+# 3. Helper Functions
+# ==========================================
+
+def sample_data(data, batch_size):
+    """
+    Sample data from numpy array.
+    """
+    # Safety check: if batch_size > data size, sample with replacement or reduce batch size
+    if batch_size > data.shape[0]:
+        indices = np.random.choice(data.shape[0], size=batch_size, replace=True)
+    else:
+        indices = np.random.choice(data.shape[0], size=batch_size, replace=False)
+    return data[indices, :]
+
 def ones_target(size):
-    '''
+    """
     Tensor containing ones, with shape = size
-    '''
+    """
     data = Variable(torch.ones(size, 1))
     return data
 
 def zeros_target(size):
-    '''
+    """
     Tensor containing zeros, with shape = size
-    '''
+    """
     data = Variable(torch.zeros(size, 1))
     return data
 
-# Define function to train the discriminator
-def train_discriminator(optimizer, discriminator, real_data, fake_data):
-    # Define loss function
-    loss = nn.BCELoss()
+# ==========================================
+# 4. Training Step Functions (FIXED)
+# ==========================================
 
+def train_discriminator(optimizer, discriminator, real_data, fake_data):
     N = real_data.size(0)
     # Reset gradients
     optimizer.zero_grad()
-
+    
     # 1.1 Train on Real Data
     prediction_real = discriminator(real_data)
-    # Calculate error and backpropagate
-    error_real = loss(prediction_real, ones_target(N).to("cuda:0"))
+    # FIX: Send target to correct device
+    error_real = nn.BCELoss()(prediction_real, ones_target(N).to(device))
     error_real.backward()
 
     # 1.2 Train on Fake Data
     prediction_fake = discriminator(fake_data)
-    # Calculate error and backpropagate
-    error_fake = loss(prediction_fake, zeros_target(N).to("cuda:0"))
+    # FIX: Send target to correct device
+    error_fake = nn.BCELoss()(prediction_fake, zeros_target(N).to(device))
     error_fake.backward()
-
-    # 1.3 Update weights with gradients
+    
     optimizer.step()
-
-    # Return error and predictions for real and fake inputs
     return error_real + error_fake
 
-# Define function to train the generator
 def train_generator(optimizer, discriminator, fake_data):
-    # Define loss function
-    loss = nn.BCELoss()
     N = fake_data.size(0)
     # Reset gradients
     optimizer.zero_grad()
+    
     # Sample noise and generate fake data
     prediction = discriminator(fake_data)
-    #print(prediction.is_cuda)
+    
     # Calculate error and backpropagate
-    error = loss(prediction, ones_target(N).to("cuda:0"))
+    # FIX: Send target to correct device
+    error = nn.BCELoss()(prediction, ones_target(N).to(device))
     error.backward()
-    # Update weights with gradients
+    
     optimizer.step()
-    # Return error
     return error
 
-def train(generator, discriminator, batch_size, source_tech, target_tech, num_epochs, g_learning_rate,
-          d_learning_rate, checkpoint_epoch, techs, path_prefix, path_suffix):
-    # Define optimisers for Discriminator and Generator
-    d_optimizer = optim.Adam(discriminator.parameters(), lr=d_learning_rate, betas=(0.5, 0.999))
-    g_optimizer = optim.Adam(generator.parameters(), lr=g_learning_rate, betas=(0.5, 0.999))
-    D_Losses = []
-    G_Losses = []
-    torch.set_num_threads(2)
+# ==========================================
+# 5. Main Training Loop (FIXED)
+# ==========================================
+
+def train(generator, discriminator, batch_size, source_tech, target_tech, num_epochs, 
+          g_learning_rate, d_learning_rate, checkpoint_epoch, techs, path_prefix, path_suffix):
+
+    # Optimizers
+    d_optimizer = optim.Adam(discriminator.parameters(), lr=d_learning_rate)
+    g_optimizer = optim.SGD(generator.parameters(), lr=g_learning_rate)
+    
+    # Ensure models are on the correct device
+    generator.to(device)
+    discriminator.to(device)
+
+    # Determine safe batch size
+    actual_batch_size = min(batch_size, source_tech.shape[0], target_tech.shape[0])
+    # Calculate iterations to cover roughly one epoch worth of data
+    iterations_per_epoch = max(1, source_tech.shape[0] // actual_batch_size)
+
     for epoch in range(num_epochs):
-        d_loss = 0
+        # Progress check
+        if epoch % 100 == 0:
+            print(f"Epoch: {epoch} / {num_epochs}")
+
         g_loss = 0
-        print("Current Epoch: ", epoch)
+        d_loss = 0
         
-        for _ in range(1,  source_tech.shape[0] // batch_size + 1):
-            source_sample = sample_data(source_tech, batch_size)
-            target_sample = sample_data(target_tech, batch_size)
-            # Convert source and target from eager tensor to native tensor
-            source = torch.tensor(source_sample).float().to("cuda:0")
-
-            target = torch.tensor(target_sample).float().to("cuda:0")
-
+        for _ in range(iterations_per_epoch):
             # 1. Train Discriminator
-            real_data = target
-            # Generate fake data and detach
-            # (so gradients are not calculated for generator)
+            real_data = sample_data(target_tech, actual_batch_size)
+            fake_data_source = sample_data(source_tech, actual_batch_size)
+            
+            # FIX: Send data to device
+            real_data = torch.tensor(real_data).float().to(device)
+            source = torch.tensor(fake_data_source).float().to(device)
+            
+            # Generate fake data
             fake_data = generator(source).detach()
+            
             # Train D
             d_error = train_discriminator(d_optimizer, discriminator, real_data, fake_data)
             d_loss += d_error.item()
+
             # 2. Train Generator
-            source_sample = sample_data(source_tech, batch_size)
-            # Convert source and target from eager tensor to native tensor
-            source = torch.tensor(source_sample).float().to("cuda:0")
             # Generate fake data
             fake_data = generator(source)
-
+            
             # Train G
             g_error = train_generator(g_optimizer, discriminator, fake_data)
             g_loss += g_error.item()
 
-        d_loss = d_loss * batch_size / source_tech.shape[0]
-        g_loss = g_loss * batch_size / source_tech.shape[0]
-
-        D_Losses.append(d_loss)
-        G_Losses.append(g_loss)
-        
-        if ((epoch % checkpoint_epoch) == 0):
-            intermediate_path = "{}/Models/{}_to_{}_Generator_{}_{}.pt".format(
-                path_prefix, techs[0], techs[1], epoch, path_suffix)
-            torch.save(generator, intermediate_path)
-
-    x = range(epoch + 1)
-    plt.plot(x, D_Losses, label="Discriminator loss")
-    plt.plot(x, G_Losses, label="Generator loss")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.show()
-
+        # Save Checkpoints
+        if epoch % checkpoint_epoch == 0 and epoch != 0:
+            path = "{}/Models/{}_to_{}_Generator_{}_{}.pt".format(
+                path_prefix, techs[0], techs[1], epoch, path_suffix
+            )
+            # Ensure folder exists (redundancy check)
+            if not os.path.exists(os.path.dirname(path)):
+                os.makedirs(os.path.dirname(path))
+            
+            torch.save(generator, path)
+            
     return generator
