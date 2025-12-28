@@ -160,18 +160,30 @@ class Pamona(object):
 
 
 	def entropic_gromov_wasserstein(self, C1, C2, p, q, m, M=None, loss_fun='square_loss'):
-
+		
 		C1 = np.asarray(C1, dtype=np.float32)
 		C2 = np.asarray(C2, dtype=np.float32)
 
 		T0 = np.outer(p, q)  # Initialization
 
-		dim_G_extended = (len(p) + self.virtual_cells, len(q) + self.virtual_cells)
-		q_extended = np.append(q, [(np.sum(p) - m) / self.virtual_cells] * self.virtual_cells)
-		p_extended = np.append(p, [(np.sum(q) - m) / self.virtual_cells] * self.virtual_cells)
+		# --- Handle virtual_cells=0 (Standard Gromov-Wasserstein) ---
+		if self.virtual_cells > 0:
+			# Partial GW Logic (Original)
+			dim_G_extended = (len(p) + self.virtual_cells, len(q) + self.virtual_cells)
+			
+			# This logic caused the divide by zero error
+			q_extended = np.append(q, [(np.sum(p) - m) / self.virtual_cells] * self.virtual_cells)
+			p_extended = np.append(p, [(np.sum(q) - m) / self.virtual_cells] * self.virtual_cells)
 
-		q_extended = q_extended/np.sum(q_extended)
-		p_extended = p_extended/np.sum(p_extended)
+			q_extended = q_extended / np.sum(q_extended)
+			p_extended = p_extended / np.sum(p_extended)
+		else:
+			# Standard GW Logic (Forces full alignment)
+			# We ignore 'm' and force probability distributions to sum to 1
+			p_extended = p / np.sum(p)
+			q_extended = q / np.sum(q)
+			dim_G_extended = (len(p), len(q))
+		# -----------------------------------------------------------------
 
 		constC, hC1, hC2 = init_matrix(C1, C2, p, q, loss_fun)
 
@@ -182,22 +194,32 @@ class Pamona(object):
 
 			Gprev = T0
 			# compute the gradient
-			if abs(m-1)<1e-10: # full match
+			if abs(m - 1) < 1e-10:  # full match
 				Ck = gwggrad(constC, hC1, hC2, T0)
-			else: # partial match
+			else:  # partial match
 				Ck = gwgrad_partial(C1, C2, T0)
-		
-			if M is not None:
-				Ck = Ck*M
 
-			Ck_emd = np.zeros(dim_G_extended)
-			Ck_emd[:len(p), :len(q)] = Ck
-			Ck_emd[-self.virtual_cells:, -self.virtual_cells:] = 100*np.max(Ck_emd)
+			if M is not None:
+				Ck = Ck * M
+
+			# --- FIX: Construct Ck_emd based on whether we use virtual cells ---
+			if self.virtual_cells > 0:
+				Ck_emd = np.zeros(dim_G_extended)
+				Ck_emd[:len(p), :len(q)] = Ck
+				Ck_emd[-self.virtual_cells:, -self.virtual_cells:] = 100 * np.max(Ck_emd)
+			else:
+				Ck_emd = Ck # No extension needed
+			
 			Ck_emd = np.asarray(Ck_emd, dtype=np.float64)
 
-			# T = sinkhorn(p, q, Ck, epsilon, method = 'sinkhorn')
-			T = sinkhorn(p_extended, q_extended, Ck_emd, self.epsilon, method = 'sinkhorn')
-			T0 = T[:len(p), :len(q)]
+			# Compute Sinkhorn
+			T = sinkhorn(p_extended, q_extended, Ck_emd, self.epsilon, method='sinkhorn')
+			
+			# Extract relevant part of T
+			if self.virtual_cells > 0:
+				T0 = T[:len(p), :len(q)]
+			else:
+				T0 = T # The whole matrix is relevant
 
 			if cpt % 10 == 0:
 				err = np.linalg.norm(T0 - Gprev)
@@ -208,8 +230,8 @@ class Pamona(object):
 							'Epoch.', 'Loss') + '\n' + '-' * 19)
 					print('{:5d}|{:8e}|'.format(cpt, err))
 			cpt += 1
-	
-		return T
+
+		return T0 # Ensure we return the cropped matrix T0, not T
 
 	def project_func(self, data):
 
