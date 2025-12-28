@@ -7,7 +7,7 @@ import gc
 
 class KEMA(BaseEstimator, TransformerMixin):
     def __init__(self, n_components=2, mu=0.5, reg=1e-3,
-                 n_neighbors=10, n_pca=None, decay=40, knn_dist='euclidean',
+                 n_neighbors=10, n_pca=100, decay=40, knn_dist='euclidean',
                  n_jobs=1, verbose=True, max_iter=100, tol=1e-5,
                  kernel='rbf', unlabeled_value=0, random_state=None):
 
@@ -41,10 +41,16 @@ class KEMA(BaseEstimator, TransformerMixin):
         if self.verbose:
             print("Building Graphtools Kernels... (The skeleton of your data)")
 
-        G1 = graphtools.Graph(X1, n_pca=self.n_pca, knn=self.n_neighbors,
+        n_pca_a = min(self.n_pca, X1.shape[1]) if self.n_pca is not None else None
+        if n_pca_a is not None and n_pca_a < 100:
+            n_pca_a = None
+        G1 = graphtools.Graph(X1, n_pca=n_pca_a, knn=self.n_neighbors,
                               decay=self.decay, distance=self.knn_dist,
                               n_jobs=1, verbose=False)
-        G2 = graphtools.Graph(X2, n_pca=self.n_pca, knn=self.n_neighbors,
+        n_pca_b = min(self.n_pca, X2.shape[1]) if self.n_pca is not None else None
+        if n_pca_b is not None and n_pca_b < 100:
+            n_pca_b = None
+        G2 = graphtools.Graph(X2, n_pca=n_pca_b, knn=self.n_neighbors,
                               decay=self.decay, distance=self.knn_dist,
                               n_jobs=1, verbose=False)
 

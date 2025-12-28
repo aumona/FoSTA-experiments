@@ -12,8 +12,8 @@ import scipy.sparse as sparse
 
 class JPamona(Pamona_original):
     def __init__(self, mu=0.5, gamma=0.5, n_components=2, embedder='spectral',
-                 random_state=None,
-                 n_neighbors=10, n_pca=None, decay=40, knn_dist='euclidean',
+                 random_state=None, verbose=0,
+                 n_neighbors=10, n_pca=100, decay=40, knn_dist='euclidean',
                  virtual_cells=0,
                  **kwargs):
         """
@@ -26,6 +26,7 @@ class JPamona(Pamona_original):
                            0.9 = Strong supervision (Forces same-label alignment).
             n_components (int): Number of dimensions for the final embedding (default 2).
             random_state (int or None): Random seed for reproducibility.
+            verbose (int): Verbosity level (default 0).
             **kwargs: Arguments passed to the original Pamona class
         """
         # Initialize the parent Pamona class
@@ -39,6 +40,7 @@ class JPamona(Pamona_original):
         self.decay = decay
         self.knn_dist = knn_dist
         self.manual_seed = random_state
+        self.verbose = verbose
         self.integrated_data = None
         self.virtual_cells = virtual_cells
 
@@ -93,13 +95,33 @@ class JPamona(Pamona_original):
         self.T = self.run_Pamona([x_a, x_b])[0]
         self.T_norm = self.T / (self.T.max())
 
+        T = sparse.csr_matrix(self.T)
+        if self.verbose:
+            print("\nSPARSE COUPLING")
+            print("---------------")
+            print(f"Empty rows: {np.sum(np.diff(T.indptr) == 0)} / {T.shape[0]}")
+            print(f"Empty cols: {np.sum(np.diff(T.tocsc().indptr) == 0)} / {T.shape[1]}")
+            print("Total mass:", T.sum())
+            # print row/col sums
+            row_sums = np.asarray(T.sum(axis=1)).ravel()
+            col_sums = np.asarray(T.sum(axis=0)).ravel()
+            print(f"Row sums: min={row_sums.min():.4f}, max={row_sums.max():.4f}, mean={row_sums.mean():.4f}")
+            print(f"Col sums: min={col_sums.min():.4f}, max={col_sums.max():.4f}, mean={col_sums.mean():.4f}")
+            print("Building joint affinity matrix...")
+
 
         # Build clean kNN graphs for the diagonal blocks
         # Note: 'connectivity' mode gives 0/1. If you want distances, use mode='distance'
-        prox_a = graphtools.Graph(x_a, n_pca=self.n_pca, knn=self.n_neighbors, 
+        n_pca_a = min(self.n_pca, x_a.shape[1]) if self.n_pca is not None else None
+        if n_pca_a is not None and n_pca_a < 100:
+            n_pca_a = None
+        prox_a = graphtools.Graph(x_a, n_pca=n_pca_a, knn=self.n_neighbors, 
                               decay=self.decay, distance=self.knn_dist,
                               n_jobs=1, verbose=False).K.toarray()
-        prox_b = graphtools.Graph(x_b, n_pca=self.n_pca, knn=self.n_neighbors, 
+        n_pca_b = min(self.n_pca, x_b.shape[1]) if self.n_pca is not None else None
+        if n_pca_b is not None and n_pca_b < 100:
+            n_pca_b = None
+        prox_b = graphtools.Graph(x_b, n_pca=n_pca_b, knn=self.n_neighbors, 
                               decay=self.decay, distance=self.knn_dist,
                               n_jobs=1, verbose=False).K.toarray()
 
