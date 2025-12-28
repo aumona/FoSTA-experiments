@@ -33,7 +33,7 @@ class FROST(object):
                  dpt=False,
                  n_landmark=2000,
                  prior_correct=True,
-                 dist='cosine',  # distance metric for HiRef (supports 'hellinger' and 'cosine')
+                 semantic_norm='l1',  # normalization method for semantic vectors (supports 'l1' and 'l2')
                  embedder='spectral',
                  n_components=2,
                  verbose=0,
@@ -43,7 +43,7 @@ class FROST(object):
         self.dpt = dpt
         self.n_landmark = n_landmark  # number of landmarks for DPT
         self.prior_correct = prior_correct
-        self.dist = dist
+        self.semantic_norm = semantic_norm
         self.embedder = embedder
         self.n_components = n_components
         self.random_state = random_state
@@ -59,9 +59,9 @@ class FROST(object):
             'non_zero_diagonal': True,
             'force_symmetric': True,
             'max_normalize': True,
-            'class_weight': 'balanced',  # handle class imbalance in RF
+            # 'class_weight': 'balanced',  # handle class imbalance in RF
             'verbose': 0,
-            'n_jobs': -1,
+            'n_jobs': n_jobs,
         }
 
         self.T_sparse = None
@@ -80,100 +80,108 @@ class FROST(object):
 
     # ------------------------------------------------------------
     # Posterior builders
-    # ------------------------------------------------------------
+    # ------------------------------------------------------------        
     def _get_semantic_vectors(
         self,
-        W,                 # (N, N) prox OR (N, M) landmark weights
-        y,                 # (N,) labels (may include -1/NaN)
-        labels,            # canonical labels (same across domains)
-        clusters=None,     # None OR (N,) landmark id per point in [0..M-1]
+        W,                     # (N, K) Adjacency. K=N (Full, sparse) or K=M (Landmarks, dense)
+        y,                     # (N,) Labels
+        labels,                # List of unique canonical labels
+        clusters=None,         # (N,) Landmark IDs (optional, only for landmark path)
         eps=1e-12,
         prior_correct=True
     ):
         """
-        Build C-dim semantic vectors (posteriors).
+        Builds C-dim semantic vectors (posteriors) via unified matrix diffusion.
+        
+        Logic:
+        1. Construct Signal Basis Y_encoded (K x C): 
+            - If Full: One-hot encoding of labeled points.
+            - If Landmarks: Probability distribution P(class | landmark).
+        2. Diffuse: Post = W @ Y_encoded
+        3. Correct: Divide by class priors to handle imbalance.
+        4. Transform: Apply Metric scaling (Cosine/Hellinger).
         """
+        # --- Setup Data & Labels ---
         y = np.asarray(y).ravel()
         mask_unl = LabelUtils.get_unlabeled_mask(y)
-        N = W.shape[0]
+        
+        N, K = W.shape
         C = len(labels)
-
+        
         # Map labels -> [0..C-1]
         lab2idx = {lab: k for k, lab in enumerate(labels)}
-
-        # --------------------------------------------------------
-        # Compute Raw Posteriors
-        # --------------------------------------------------------
         
-        # Case 1: Full proximity (N x N)
+        # Filter strictly to labeled data
+        y_lab = y[~mask_unl]
+        if y_lab.size == 0:
+            return np.zeros((N, C), dtype=float)
+
+        try:
+            y_idx = np.array([lab2idx[v] for v in y_lab], dtype=int)
+        except KeyError as e:
+            raise ValueError(f"Found label {e} in y that is not in `labels`.")
+
+        # --- Compute Priors (for correction) ---
+        # We compute this regardless of path to support prior_correct
+        counts_c = np.bincount(y_idx, minlength=C).astype(float)
+        n_lab = float(counts_c.sum())
+        
+        # p_c = count / total
+        class_prior = counts_c / max(n_lab, 1.0)
+        # 1/p_c (used to normalize "Total Affinity" to "Average Affinity")
+        inv_prior = 1.0 / np.maximum(class_prior, eps)
+
+        # --- Construct Signal Basis Y_encoded (K x C) ---
+        # This matrix represents the initial class signal on the graph nodes (points or landmarks)
+        Y_encoded = np.zeros((K, C), dtype=np.float64)
+
         if clusters is None:
-            post = np.zeros((N, C), dtype=float)
-            for lab, k in lab2idx.items():
-                class_mask = (~mask_unl) & (y == lab)
-                cnt = int(class_mask.sum())
-                if cnt == 0:
-                    continue
-
-                if sparse.issparse(W):
-                    vec = W[:, class_mask].sum(axis=1).A.ravel()
-                else:
-                    vec = W[:, class_mask].sum(axis=1)
-
-                if prior_correct:
-                    post[:, k] = vec / cnt
-                else:
-                    post[:, k] = vec
-
-        # Case 2: Landmark DPT weights (N x M)
-        else:
-            clusters = np.asarray(clusters).ravel()
-            if clusters.shape[0] != N:
-                raise ValueError(f"clusters must have shape (N,), got {clusters.shape}")
-
-            M = W.shape[1]
-            # use only labeled points to estimate Q and prior
-            y_lab = y[~mask_unl]
-            cl_lab = clusters[~mask_unl]
-
-            if y_lab.size == 0:
-                raise ValueError("No labeled samples in y. Cannot build semantic vectors.")
-
-            try:
-                y_idx = np.array([lab2idx[v] for v in y_lab], dtype=int)
-            except KeyError as e:
-                raise ValueError(f"Found label {e} in y that is not in `labels`.")
-
-            # landmark class counts: counts[m, c]
-            counts = np.zeros((M, C), dtype=float)
-            np.add.at(counts, (cl_lab, y_idx), 1.0)
-
-            # Q[m,c] = p(c | landmark m)
-            row_sums = np.maximum(counts.sum(axis=1, keepdims=True), 1.0)
-            Q = counts / row_sums  # (M, C)
-
-            # point posteriors: post = W @ Q
-            post = W.dot(Q) if sparse.issparse(W) else (W @ Q)  # (N, C)
-
-            # prior correction
-            if prior_correct:
-                class_prior = np.bincount(y_idx, minlength=C).astype(float)
-                class_prior /= max(class_prior.sum(), 1.0)
-                post /= np.maximum(class_prior[None, :], eps)
-
-        # --------------------------------------------------------
-        # Apply Metric Transformation
-        # --------------------------------------------------------
-        if self.dist == 'cosine':
-            # L2 normalize and scale to prepare for cosine distance in HiRef
-            post = preprocessing.normalize(post, norm="l2", axis=1) / np.sqrt(2)
+            # Case A: Full Graph (Basis = Points, K=N)
+            # Create strict One-Hot encoding for labeled points
+            # Y[i, c] = 1.0 if point i has label c, else 0
+            labeled_indices = np.flatnonzero(~mask_unl)
+            Y_encoded[labeled_indices, y_idx] = 1.0
             
-        elif self.dist == 'hellinger':
-            # L1 normalize and sqrt transform for Squared Hellinger in HiRef
-            post = preprocessing.normalize(post, norm="l1", axis=1)
-            post = np.sqrt(post) / np.sqrt(2)
-        
         else:
-            raise ValueError(f"Unknown dist={self.dist}, must be 'cosine' or 'hellinger'.")
+            # Case B: Landmarks (Basis = Landmarks, K=M)
+            # Aggregate counts: "Landmark k contains 5 Class A and 10 Class B"
+            clusters = np.asarray(clusters).ravel()
+            landmark_ids = clusters[~mask_unl] # Map labeled points to their landmarks
+            
+            # Fast unbuffered add
+            np.add.at(Y_encoded, (landmark_ids, y_idx), 1.0)
+            
+            # Row-Normalize (Counts -> Probs P(c|m))
+            row_sums = Y_encoded.sum(axis=1, keepdims=True)
+            row_sums[row_sums == 0] = 1.0 # Prevent div/0 for empty landmarks
+            Y_encoded /= row_sums
+
+        # --- Diffusion (The Projection) ---
+        # W is sparse (N, N) or dense (N, K), Y is dense (K, C) -> Result is Dense (N, C)
+        # This calculates the raw sum of affinities to class signals
+        post = W.dot(Y_encoded) if sparse.issparse(W) else np.dot(W, Y_encoded)
+
+        # --- Prior Correction ---
+        if prior_correct:
+            # Broadcast multiplication: post[:, c] *= (1 / p_c)
+            # Converts "Total Affinity" -> "Density-Independent Affinity"
+            post *= inv_prior[None, :]
+
+        # --- Metric Transformation ---
+        # Prepares vectors so standard Euclidean distance downstream matches desired metric
+        if self.semantic_norm == 'l2':  # for Cosine distance, same as MALI but less theoretical justification here for MiniBatchKMeans
+            # L2 normalize -> scale by 1/sqrt(2)
+            # Resulting Euclidean dist = sqrt(1 - cos_sim)
+            post = preprocessing.normalize(post, norm="l2", axis=1)
+            post /= np.sqrt(2)
+
+        elif self.semantic_norm == 'l1':
+            # We JUST L1 normalize to ensure scale invariance between domains
+            # This preserves the "relative confidence" while fixing the "density mismatch" bug
+            # This also ensures MiniBatchKMeans computes 'valid' centroids (mean of probs = probs)
+            post = preprocessing.normalize(post, norm="l1", axis=1)
+        else:
+            print(f"[WARN] Unknown normalization={self.semantic_norm}, skipping metric transform.")
 
         return post
 
@@ -218,14 +226,13 @@ class FROST(object):
         clusters = np.arange(P_MM.shape[0])
         return P_NM, P_MM, clusters
 
-    def compute_dpt(self, P):
+    def _compute_dpt(self, P):
         """
         DPT-like aggregated transition matrix: (I - (P - 1 phi^T))^{-1} - I
         """
         n = P.shape[0]
         I = np.eye(n)
         ones = np.ones(n, dtype=float)
-
         wL, lv = np.linalg.eig(P.T)
         j = np.argmin(np.abs(wL - 1.0))
         phi0 = lv[:, j].real
@@ -242,28 +249,65 @@ class FROST(object):
         return Mmat
 
     # ------------------------------------------------------------
-    # Helper: Compressed OT Logic
+    # Compressed OT Logic
     # ------------------------------------------------------------
     def _solve_compressed_ot(self, post_fixed, post_to_compress):
         """
-        Solves OT where `post_to_compress` is clustered to match the size of `post_fixed`.
-        Returns a sparse coupling matrix (n_fixed x n_to_compress).
+        Solves Optimal Transport where the larger domain (`post_to_compress`) is 
+        compressed to match the size of the smaller domain (`post_fixed`).
 
-        This implements the logic: T_full = T_coarse @ M_membership
+        This method implements a locally adaptive version of the "Mass Rebalancing" 
+        strategy described in the MALI paper (Section D).
+
+        Mechanism:
+        ----------
+        1. Clustering as Mass Rebalancing:
+            Instead of a global uniform weight, we cluster the large domain to find 
+            representatives. The mass of each representative is distributed equally 
+            among its cluster members.
+            
+            Weight(point p) = 1 / |Cluster_Size|
+            
+            - Dense regions -> Large Clusters -> Small individual weights.
+            - Sparse regions -> Small Clusters -> Large individual weights.
+            
+            This automatically fulfills the theoretical suggestion to "increase the 
+            masses of samples belonging to low density regions," ensuring alignment 
+            is driven by geometric structure rather than sampling density.
+
+        Returns:
+            T_intermediate (sparse matrix): Shape (n_fixed, n_compress).
+        
+        -------------------------------------------------------------------------
+        SCENARIO 1: N_a < N_b (Domain A is Small/Fixed)
+        -------------------------------------------------------------------------
+        - We call: _solve_compressed_ot(post_a, post_b)
+        - Returns: T of shape (N_a, N_b).
+        - This IS the final Coupling Matrix T.
+        - Row Sums (N_a): Strictly 1.0 (Bijection to Centroids).
+        - Col Sums (N_b): ~ 1/|Cluster| (Soft assignment via mass rebalancing).
+
+        -------------------------------------------------------------------------
+        SCENARIO 2: N_b < N_a (Domain B is Small/Fixed)
+        -------------------------------------------------------------------------
+        - We call: _solve_compressed_ot(post_b, post_a)
+        - Returns: T_intermediate of shape (N_b, N_a).
+        - We TRANSPOSE this in .fit() to get final T of shape (N_a, N_b).
         """
-        n_fixed = post_fixed.shape[0]
-        n_compress = post_to_compress.shape[0]
-        k = n_fixed  # Compress target to match source size
+        n_fixed = post_fixed.shape[0]          # Size of Small Domain
+        n_compress = post_to_compress.shape[0] # Size of Large Domain
+        k = n_fixed  # Compress large domain to match small domain size
 
-        # Compress
-        #    Cluster the larger domain into 'k' centroids to match the size of the smaller domain.
+        # Compress Large Domain (Adaptive Mass Calculation)
+        # We cluster the large domain to find 'k' representatives.
+        # This implicitly defines the mass of each point based on local density.
         km = MiniBatchKMeans(n_clusters=k, random_state=self.random_state)
         z = km.fit_predict(post_to_compress)         # (n_compress,) assignments
         post_centroids = km.cluster_centers_         # (k, C) semantic centers
 
-        # HiRef (Fixed <-> Centroids)
-        #    Calculate OT between the fixed domain and the centroids.
-        #    T_coarse[i, j] = 1 if point i is assigned to centroid j.
+        #Solve OT (Bijective Mapping)
+        # Map Small Domain <-> Centroids of Large Domain.
+        # Since sizes match (n_fixed == k), HiRef forces a 1-to-1 matching.
         rank_schedule = rank_annealing.optimal_rank_schedule(n=n_fixed)
         (rows, cols, data), _ = HiRef.hiref_lr_fast(
             post_fixed, post_centroids,
@@ -271,24 +315,20 @@ class FROST(object):
             return_coupling=True
         )
         
+        # T_coarse shape: (n_fixed, k)
+        # Row sums = 1.0 (Perfect Bijection found)
         T_coarse = sparse.coo_matrix(
             (data, (rows, cols)),
             shape=(n_fixed, k)
         ).tocsr()
 
-        # Build Membership (Centroids -> Original Points)
-        #    We construct M_membership to satisfy the requirement:
-        #    "Assign to every point in the cluster with value 1/cluster_size"
-        #
-        #    If cluster 'j' has N_j points:
-        #      M_membership[j, p] = 1 / N_j   for all points p in cluster j
-        #      M_membership[j, p] = 0         otherwise
-        
+        # Build Membership Matrix (M)
+        # Distribute centroid mass equally to constituent points in Large Domain.
+        # M shape: (k, n_compress)
         counts = np.bincount(z, minlength=k).astype(np.float64)
         
-        # Safe inverse:
-        # - If cluster is empty (counts=0), inv_counts becomes 0.
-        # - This ensures empty clusters result in empty rows (unassigned).
+        # Safe inverse for density weighting:
+        # Weight = 1 / |Cluster_Size| (The "Mass Rebalancing" term)
         inv_counts = np.zeros_like(counts)
         inv_counts[counts > 0] = 1.0 / counts[counts > 0]
         
@@ -297,26 +337,20 @@ class FROST(object):
             shape=(k, n_compress)
         ).tocsr()
 
-        # Lift back to full resolution
-        #    T_full = T_coarse @ M_membership
+        # Lift to Full Resolution
+        # T_intermediate = T_coarse @ M_membership
+        # Shape: (n_fixed, n_compress)
         #
-        #    Logic:
-        #    - If T_coarse connects point x to centroid j (weight 1),
-        #    - And M_membership connects centroid j to points {p1..pN} (weight 1/N),
-        #    - The dot product connects point x to ALL points {p1..pN} with weight 1/N.
-        #
-        #    Edge cases handled automatically by sparse algebra:
-        #    - If x is assigned to multiple centroids, contributions are summed.
-        #    - If a centroid is empty (inv_count=0), x gets 0 connection to it (no mass created).
-        #    - If x is unassigned (T_coarse row is 0), the result row is 0.
-        T_full = (T_coarse @ M_membership).tocsr()
+        # Verification:
+        # - Row i (Small Domain point): Sums to 1.0.
+        # - Col j (Large Domain point): Sums to 1/|Cluster|.
+        T_intermediate = (T_coarse @ M_membership).tocsr()
 
-        # Diagnostics for empty clusters
         n_empty = int(np.sum(counts == 0))
         if n_empty > 0:
-            print(f"[WARN] MiniBatchKMeans produced {n_empty}/{k} empty clusters during compression.")
+            print(f"[WARN] MiniBatchKMeans produced {n_empty}/{k} empty clusters.")
 
-        return T_full
+        return T_intermediate
     
     
     # ------------------------------------------------------------
@@ -324,7 +358,7 @@ class FROST(object):
     # ------------------------------------------------------------
     def _build_balanced_affinity(self, prox_a, prox_b, T):
         """
-        Constructs a joint affinity matrix just like in MALI, with T the OT coupling, max normalized.
+        Constructs a joint affinity matrix just like in MALI, with max-normalized T as input (OT coupling matrix)
         """
         W_ab = (prox_a.dot(T) + T.dot(prox_b))   # (n_a x n_b)
         W_ba = W_ab.transpose()
@@ -350,7 +384,7 @@ class FROST(object):
         labels = LabelUtils.validate_shared_labels(y_a, y_b, strict=True)
         self.classes_ = labels
 
-        print("Fitting RFGAP on Domain A...")
+        print("Fitting RFGAP on Domain A...") if self.verbose > 0 else None
         self.rfgap_a = RFGAP(**self.rfgap_params)
         self.rfgap_a.fit(x_a, y_a)
         prox_a = self.rfgap_a.get_proximities()
@@ -365,17 +399,12 @@ class FROST(object):
             post_a = self._get_semantic_vectors(prox_a, y_a, labels, clusters=None, prior_correct=self.prior_correct)
             post_b = self._get_semantic_vectors(prox_b, y_b, labels, clusters=None, prior_correct=self.prior_correct)
         else:
-            P_NM_a, P_MM_a, clusters_a = self._get_diffusion_operators(
-                prox_a, random_state=self.random_state, verbose=True
-            )
-            P_NM_b, P_MM_b, clusters_b = self._get_diffusion_operators(
-                prox_b, random_state=self.random_state, verbose=True
-            )
-            M_a = self.compute_dpt(P_MM_a)
-            M_b = self.compute_dpt(P_MM_b)
+            P_NM_a, P_MM_a, clusters_a = self._get_diffusion_operators(prox_a, random_state=self.random_state, verbose=True)
+            P_NM_b, P_MM_b, clusters_b = self._get_diffusion_operators(prox_b, random_state=self.random_state, verbose=True)
+            M_a = self._compute_dpt(P_MM_a)
+            M_b = self._compute_dpt(P_MM_b)
             self._dpt_M_a, self._dpt_M_b = M_a, M_b
             self._clusters_a, self._clusters_b = clusters_a, clusters_b
-            
             trans_a = P_NM_a.dot(M_a)
             trans_b = P_NM_b.dot(M_b)
             post_a = self._get_semantic_vectors(trans_a, y_a, labels, clusters=clusters_a, prior_correct=self.prior_correct)
@@ -385,16 +414,14 @@ class FROST(object):
         n_a, n_b = self.n_a, self.n_b
 
         if n_a == n_b:
-            # --- Balanced Case (equivelent to m=1 in MALI) ---
+            # --- Balanced Case (equivalent to n_a=n_b with m=1 in MALI) ---
             rank_schedule = rank_annealing.optimal_rank_schedule(n=n_a)
             (rows, cols, data), _ = HiRef.hiref_lr_fast(
                 post_a, post_b,
                 rank_schedule=rank_schedule,
                 return_coupling=True
             )
-            self.T_sparse = sparse.coo_matrix(
-                (data, (rows, cols)), shape=(n_a, n_b)
-            ).tocsr()
+            self.T_sparse = sparse.coo_matrix((data, (rows, cols)), shape=(n_a, n_b)).tocsr()
 
         # Imbalanced cases, correspond to n_a =! n_b with m=1 in MALI
         elif n_a < n_b:
