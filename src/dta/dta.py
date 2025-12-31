@@ -9,7 +9,7 @@ import scipy
 from sklearn.neighbors import NearestNeighbors
 import pdb
 import sklearn
-from utils.utils import kernel2Dist
+from utils.utils import kernel2Dist, print_mat_stats
 import logging, os
 from scipy.spatial import distance
 import warnings 
@@ -19,15 +19,19 @@ from sklearn import preprocessing
 from copy import deepcopy
 from sklearn.manifold import SpectralEmbedding
 from rfphate import PageRankPHATE
+from rfgap import RFGAP
 import umap
+from src.hiref.adaptive_HiRef import solve_dummy_hiref, solve_compressed_hiref
+
 
 class DTA():
     def __init__(self,
              n_components=2,
              embedder = "spectral",
+             rfgap=False,
              knn=5,
              decay=40,
-             t=10,
+             t=1,   # we set this to 1 to compare diffusion (DPT) VS no diffusion
              lamb = 1,
              gamma = 1,
              npca=100,
@@ -37,7 +41,7 @@ class DTA():
              random_state=None,
              verbose=0,
              njobs=None,
-             distances="DPT",
+             distances="DPT",  # set to something else to disable DPT
              diff_op_type = "nonsym",
              normalize_rw = False,
              cross_diffusion = "rows",
@@ -49,6 +53,7 @@ class DTA():
              distance = 'cosine',
              anisotropy = 0,
              constrW = 'kernel',
+             hiref = False,
              **kwargs):
         
         '''
@@ -65,6 +70,7 @@ class DTA():
         
         self.n_components = n_components
         self.embedder = embedder
+        self.rfgap = rfgap
         self.decay = decay
         self.knn = knn
         self.t = t
@@ -94,8 +100,9 @@ class DTA():
         self.m = m
         self.anisotropy = anisotropy
         self.constrW = constrW
-        self.normalize_priors = 0
+        self.normalize_priors = 1  # to match RFMALI
         self.normalize_M = 1
+        self.hiref = hiref
         
     def compute_graphs(self):
         
@@ -108,41 +115,73 @@ class DTA():
             self.domain1 = np.vstack((self.domain1, self.sharedD1))
             self.domain2 = np.vstack((self.domain2, self.sharedD2))
             self.Nshared = self.sharedD2.shape[0]
+            if self.met == 'dta':
+                self.rfgap = False
         
 
         
+        if not self.rfgap:
+            n_pca1 = np.minimum(self.npca, self.f1)
+            if n_pca1 < 100:
+                n_pca1 = None
 
-        n_pca1 = np.minimum(self.npca, self.f1)
-        if n_pca1 < 100:
-            n_pca1 = None
+            self.graphD1 = graphtools.Graph(self.domain1,
+                                            n_pca=n_pca1,
+                                            distance=self.knn_dist,
+                                            knn=self.knn,
+                                            decay=self.decay,
+                                            thresh=1e-4,
+                                            n_jobs=self.n_jobs,
+                                            verbose=self.verbose,
+                                            random_state=self.random_state,
+                                            **(self.kwargs))
+            
 
-        self.graphD1 = graphtools.Graph(self.domain1,
-                                        n_pca=n_pca1,
-                                        distance=self.knn_dist,
-                                        knn=self.knn,
-                                        decay=self.decay,
-                                        thresh=1e-4,
-                                        n_jobs=self.n_jobs,
-                                        verbose=self.verbose,
-                                        random_state=self.random_state,
-                                        **(self.kwargs))
-        
-
-        # pdb.set_trace()
-        n_pca2 = np.minimum(self.npca, self.f2)
-        if n_pca2 < 100:
-            n_pca2 = None
-        self.graphD2 = graphtools.Graph(self.domain2,
-                                        n_pca=n_pca2,
-                                        distance=self.knn_dist,
-                                        knn=self.knn,
-                                        decay=self.decay,
-                                        thresh=1e-4,
-                                        n_jobs=self.n_jobs,
-                                        verbose=self.verbose,
-                                        random_state=self.random_state,
-                                        **(self.kwargs))
-
+            # pdb.set_trace()
+            n_pca2 = np.minimum(self.npca, self.f2)
+            if n_pca2 < 100:
+                n_pca2 = None
+            self.graphD2 = graphtools.Graph(self.domain2,
+                                            n_pca=n_pca2,
+                                            distance=self.knn_dist,
+                                            knn=self.knn,
+                                            decay=self.decay,
+                                            thresh=1e-4,
+                                            n_jobs=self.n_jobs,
+                                            verbose=self.verbose,
+                                            random_state=self.random_state,
+                                            **(self.kwargs))
+        else:
+            rfgap_params = {
+                'random_state': self.random_state,
+                'prediction_type': 'classification',  # force classification mode
+                'prox_method': 'rfgap',
+                'model_type': 'rf',
+                'oob_score': False,
+                'non_zero_diagonal': True,
+                'force_symmetric': True,
+                'max_normalize': True,
+                # 'class_weight': 'balanced',  # handle class imbalance in RF
+                'verbose': self.verbose,
+                'n_jobs': self.n_jobs,
+            }
+            rfgap = RFGAP(**rfgap_params)
+            rfgap.fit(self.domain1, self.labels1)
+            prox1 = rfgap.get_proximities()
+            self.graphD1 = graphtools.Graph(prox1,
+                                            precomputed='affinity',
+                                            n_jobs=self.n_jobs,
+                                            verbose=self.verbose,
+                                            random_state=self.random_state,
+                                            **(self.kwargs))
+            rfgap.fit(self.domain2, self.labels2)
+            prox2 = rfgap.get_proximities()
+            self.graphD2 = graphtools.Graph(prox2,
+                                            precomputed='affinity',
+                                            n_jobs=self.n_jobs,
+                                            verbose=self.verbose,
+                                            random_state=self.random_state,
+                                            **(self.kwargs))
         
         '''Diffusion operators'''
         self.p1 = self.graphD1.diff_op
@@ -263,46 +302,54 @@ class DTA():
 
    
     def optimal_transport(self):
-        
-        if self.N1 == self.N2:
-            if self.m == 1:
-                self.a = np.repeat(1., self.N1)
-                self.b = np.repeat(1., self.N1)
-                if self.entR == 0:
-                    # Compute OT 
-                    self.transport = "wot"
-                else:
-                    self.transport = "wotR"
 
-            else:
-                if self.entR == 0:
-                    # Compute OT 
-                    self.transport = "wotpartial"
-                    self.a = np.repeat(1/self.N1, self.N1)
-                    self.b = np.repeat(1/self.N1, self.N1)
-                    self.m = np.floor(self.m*self.N1)/self.N1
-                else:
-                    self.transport = "wotpartialR"
-                    self.m = np.floor(self.m*self.N1)/self.N1
-                    self.a = np.repeat(1/self.N1, self.N1)
-                    self.b = np.repeat(1/self.N1, self.N1)
+        if self.hiref:
+            if self.met != 'mali':
+                raise NotImplementedError("HiRef with known correspondences not implemented yet")
+            self.transport = 'hiref'
+            self.a, self.b = None, None
+            print("Using HiRef solver with compressed OT logic")
+        
         else:
-            if self.m != 1:
-                self.a = np.repeat(1/self.N1, self.N1)
-                self.b = np.repeat(1/self.N2, self.N2)
-                self.m = np.floor(self.m*self.N1)/self.N1
-                if self.entR > 0:
-                    self.transport = "wotpartialR"
+            if self.N1 == self.N2:
+                if self.m == 1:
+                    self.a = np.repeat(1., self.N1)
+                    self.b = np.repeat(1., self.N1)
+                    if self.entR == 0:
+                        # Compute OT 
+                        self.transport = "wot"
+                    else:
+                        self.transport = "wotR"
+
                 else:
-                    self.transport = "wotpartial"
-            
-            elif self.m == 1:
-                self.transport = "wot"
-                if self.entR > 0:
-                    self.transport = "wotR"
-                self.a = np.repeat(1, self.N1).astype(float)
-                self.b = np.repeat(self.N1/self.N2, self.N2)
-                print("Unbalanced")
+                    if self.entR == 0:
+                        # Compute OT 
+                        self.transport = "wotpartial"
+                        self.a = np.repeat(1/self.N1, self.N1)
+                        self.b = np.repeat(1/self.N1, self.N1)
+                        self.m = np.floor(self.m*self.N1)/self.N1
+                    else:
+                        self.transport = "wotpartialR"
+                        self.m = np.floor(self.m*self.N1)/self.N1
+                        self.a = np.repeat(1/self.N1, self.N1)
+                        self.b = np.repeat(1/self.N1, self.N1)
+            else:
+                if self.m != 1:
+                    self.a = np.repeat(1/self.N1, self.N1)
+                    self.b = np.repeat(1/self.N2, self.N2)
+                    self.m = np.floor(self.m*self.N1)/self.N1
+                    if self.entR > 0:
+                        self.transport = "wotpartialR"
+                    else:
+                        self.transport = "wotpartial"
+                
+                elif self.m == 1:
+                    self.transport = "wot"
+                    if self.entR > 0:
+                        self.transport = "wotR"
+                    self.a = np.repeat(1, self.N1).astype(float)
+                    self.b = np.repeat(self.N1/self.N2, self.N2)
+                    print("Unbalanced")
             
 
         
@@ -337,23 +384,20 @@ class DTA():
             
             self.T = ot.partial.entropic_partial_wasserstein(a, b, self.Distances12[:self.N1, :self.N2], reg = self.entR, m = self.m)
             self.T[self.T < 1e-10] = 0
+        elif self.transport == "hiref":
+            T_sparse = solve_dummy_hiref(post_a=preprocessing.normalize(self.gamma1_c, norm='l1', axis=1),
+                                                    post_b=preprocessing.normalize(self.gamma2_c, norm='l1', axis=1),
+                                                    verbose=self.verbose)
+            # T_sparse = solve_compressed_hiref(post_a=preprocessing.normalize(self.gamma1_c, norm='l1', axis=1),
+            #                                         post_b=preprocessing.normalize(self.gamma2_c, norm='l1', axis=1),
+            #                                         verbose=self.verbose,
+            #                                         random_state=self.random_state)
+            self.T = T_sparse.toarray()
         else:
             raise ValueError("Not implemented")
             
         self.T[self.T < 1e-5] = 0
-        if self.verbose > 0:
-            T = self.T
-            print("\nCOUPLING MATRIX")
-            print("---------------")
-            print(f"Transport sum: {T.sum()}")
-            print(f"Empty rows: {np.sum(T.sum(axis=1) == 0)} / {T.shape[0]}")
-            print(f"Empty cols: {np.sum(T.sum(axis=0) == 0)} / {T.shape[1]}")
-            print("Total mass:", T.sum())
-            # print row/col sums
-            row_sums = T.sum(axis=1)
-            col_sums = T.sum(axis=0)
-            print(f"Row sums: min={row_sums.min():.4f}, max={row_sums.max():.4f}, mean={row_sums.mean():.4f}")
-            print(f"Col sums: min={col_sums.min():.4f}, max={col_sums.max():.4f}, mean={col_sums.mean():.4f}")
+
 
     def fit(self, domain1, domain2, sharedD1 = None, sharedD2 = None, 
             labels1 = None, labels2 = None, labelsh1 = None, labelsh2 = None):
@@ -456,6 +500,28 @@ class DTA():
         # self.data_c = data_c
         # self.ind_cost = (self.Distances*self.T).sum(axis = 1)
         self.cost = np.sum(self.Distances12[:self.N1, :self.N2] * self.T[:self.N1, :self.N2])/self.m
+
+        
+        if self.verbose:
+            T = Tc
+            print("\nCOUPLING MATRIX")
+            print("---------------")
+            print("Nonzero values: %.4f%%" % (100.0 * np.sum(T == 0) / (T.shape[0] * T.shape[1])))
+            print(f"Transport sum: {T.sum()}")
+            print(f"Empty rows: {np.sum(T.sum(axis=1) == 0)} / {T.shape[0]}")
+            print(f"Empty cols: {np.sum(T.sum(axis=0) == 0)} / {T.shape[1]}")
+            print("Total mass:", T.sum())
+            # print row/col sums
+            row_sums = T.sum(axis=1)
+            col_sums = T.sum(axis=0)
+            print(f"Row sums: min={row_sums.min():.4f}, max={row_sums.max():.4f}, mean={row_sums.mean():.4f}")
+            print(f"Col sums: min={col_sums.min():.4f}, max={col_sums.max():.4f}, mean={col_sums.mean():.4f}")
+            print("\nJOINT AFFINITY BLOCK STATISTICS")
+            print("------------------------------")
+        
+            print_mat_stats("Within-domain A (W1)", W1)
+            print_mat_stats("Within-domain B (W2)", W2)
+            print_mat_stats("Cross-domain A→B (W12)", W12)
 
 
     def embed(self):
