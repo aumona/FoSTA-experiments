@@ -1,9 +1,41 @@
 import os
 import pandas as pd
+from scipy import sparse
 from sklearn.preprocessing import LabelEncoder
 import numpy as np
 from sklearn.datasets import fetch_openml
 from scipy.ndimage import rotate
+
+def print_mat_stats(name, M):
+    """
+    Print basic mass / row / col statistics for a matrix.
+    Works for dense numpy arrays and scipy sparse matrices.
+    """
+    # Total mass
+    total_mass = M.sum()
+
+    # Row / column sums
+    row_sums = np.asarray(M.sum(axis=1)).ravel()
+    col_sums = np.asarray(M.sum(axis=0)).ravel()
+
+    # Min / max values (handle sparse safely)
+    if sparse.issparse(M):
+        data = M.data
+        val_min = data.min() if data.size > 0 else 0.0
+        val_max = data.max() if data.size > 0 else 0.0
+    else:
+        val_min = M.min()
+        val_max = M.max()
+
+    print(f"\n{name}:")
+    print(f"  Total mass : {total_mass:.4f}")
+    print(f"  Row sums   : min={row_sums.min():.4f}, "
+          f"max={row_sums.max():.4f}, mean={row_sums.mean():.4f}")
+    print(f"  Col sums   : min={col_sums.min():.4f}, "
+          f"max={col_sums.max():.4f}, mean={col_sums.mean():.4f}")
+    print(f"  Values     : min={val_min:.4f}, max={val_max:.4f}")
+    print(f"% Non-zero entries: {100.0 * (M.nnz if sparse.issparse(M) else np.count_nonzero(M)) / (M.shape[0] * M.shape[1]):.4f}%")
+
 
 def kernel2Dist(K):
     D = np.diag(np.diag(K))
@@ -113,7 +145,7 @@ def load_data(data_path, data_name, processing=True, transform='normalize', glob
     return X, y, n_train
 
 
-def load_paired_mnist_rotated(n_samples=1000, rotation_range=(30, 90), seed=42):
+def load_paired_mnist_rotated(n_samples=1000, rotation_range=(30, 30), seed=42):
     """
     Selects n_samples images.
     Source = Original Images
@@ -149,5 +181,84 @@ def load_paired_mnist_rotated(n_samples=1000, rotation_range=(30, 90), seed=42):
         X_tgt_rot.append(rotate(img, angle, reshape=False, mode='nearest'))
     
     X_target_flat = np.array(X_tgt_rot).reshape(n_samples, -1)
+
+    # Scale pixel values to [0, 1]
+    X_source_flat = X_source_flat.astype(float) / 255.0
+    X_target_flat = X_target_flat.astype(float) / 255.0
     
     return X_source_flat, labels, X_target_flat, labels
+
+
+
+
+def load_paired_mnist_sensor_defect(n_samples=1000, noise_ratio=0.2, seed=42):
+    """
+    Simulates a 'Sensor Defect' (Impulsive Noise) scenario.
+    
+    Source = Clean Images
+    Target = Images with 'Dead' (0) and 'Hot' (1) pixels.
+    
+    Realistic Scenario:
+    - Training data is gathered in a controlled environment (clean).
+    - Deployment data comes from a cheap or damaged sensor (noisy).
+    
+    Why RF wins:
+    - kNN L2 distance explodes because of the high-contrast noise spikes.
+    - RF survives because the majority of trees will split on non-corrupted pixels.
+    """
+    print("Fetching MNIST...")
+    try:
+        X_raw, y_raw = fetch_openml('mnist_784', version=1, return_X_y=True, as_frame=False, parser='auto')
+    except Exception as e:
+        print(f"Error downloading MNIST: {e}")
+        return None, None, None, None
+        
+    y_raw = y_raw.astype(int)
+    rng = np.random.RandomState(seed)
+    
+    # 1. Subsample indices
+    indices = rng.choice(len(X_raw), n_samples, replace=False)
+    
+    # 2. Source: Clean Images (0-1)
+    X_clean = X_raw[indices].astype(float) / 255.0
+    labels = y_raw[indices]
+    
+    # 3. Target: Copy Source and Add Salt & Pepper Noise
+    print(f"Corrupting {noise_ratio:.0%} of target pixels (Sensor Defects)...")
+    X_noisy = X_clean.copy()
+    
+    # Generate random mask for noise locations
+    n_pixels = X_noisy.size
+    n_corrupt = int(n_pixels * noise_ratio)
+    
+    # Choose random coordinates to corrupt (flattened)
+    mask_indices = rng.choice(n_pixels, n_corrupt, replace=False)
+    
+    # Create the noise values: 50% chance of 0 (Dead), 50% chance of 1 (Hot)
+    salt_pepper = rng.choice([0.0, 1.0], size=n_corrupt)
+    
+    # Apply noise
+    X_noisy.flat[mask_indices] = salt_pepper
+    
+    return X_clean, labels, X_noisy, labels
+
+# --- Visualization Helper ---
+def visualize_sensor_defect(source, target, idx=0):
+    import matplotlib.pyplot as plt
+    plt.figure(figsize=(6, 3))
+    
+    plt.subplot(1, 2, 1)
+    plt.title("Source (Clean)")
+    plt.imshow(source[idx].reshape(28, 28), cmap='gray')
+    plt.axis('off')
+    
+    plt.subplot(1, 2, 2)
+    plt.title("Target (Sensor Defect)")
+    plt.imshow(target[idx].reshape(28, 28), cmap='gray')
+    plt.axis('off')
+    
+    plt.show()
+
+if __name__ == "__main__":
+    s, y, t, _ = load_paired_mnist_sensor_defect(n_samples=1000, noise_ratio=0.15)
+    visualize_sensor_defect(s, t, idx=0)
