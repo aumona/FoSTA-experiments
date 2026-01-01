@@ -171,6 +171,7 @@ class DTA():
             self.graphD1 = graphtools.Graph(prox1,
                                             precomputed='affinity',
                                             n_jobs=self.n_jobs,
+                                            kernel_symm=None,
                                             verbose=self.verbose,
                                             random_state=self.random_state,
                                             **(self.kwargs))
@@ -179,6 +180,7 @@ class DTA():
             self.graphD2 = graphtools.Graph(prox2,
                                             precomputed='affinity',
                                             n_jobs=self.n_jobs,
+                                            kernel_symm=None,
                                             verbose=self.verbose,
                                             random_state=self.random_state,
                                             **(self.kwargs))
@@ -504,21 +506,7 @@ class DTA():
         
         if self.verbose:
             T = Tc
-            print("\nCOUPLING MATRIX")
-            print("---------------")
-            print("Nonzero values: %.4f%%" % (100.0 * np.sum(T == 0) / (T.shape[0] * T.shape[1])))
-            print(f"Transport sum: {T.sum()}")
-            print(f"Empty rows: {np.sum(T.sum(axis=1) == 0)} / {T.shape[0]}")
-            print(f"Empty cols: {np.sum(T.sum(axis=0) == 0)} / {T.shape[1]}")
-            print("Total mass:", T.sum())
-            # print row/col sums
-            row_sums = T.sum(axis=1)
-            col_sums = T.sum(axis=0)
-            print(f"Row sums: min={row_sums.min():.4f}, max={row_sums.max():.4f}, mean={row_sums.mean():.4f}")
-            print(f"Col sums: min={col_sums.min():.4f}, max={col_sums.max():.4f}, mean={col_sums.mean():.4f}")
-            print("\nJOINT AFFINITY BLOCK STATISTICS")
-            print("------------------------------")
-        
+            print_mat_stats("COUPLING MATRIX:", T)
             print_mat_stats("Within-domain A (W1)", W1)
             print_mat_stats("Within-domain B (W2)", W2)
             print_mat_stats("Cross-domain A→B (W12)", W12)
