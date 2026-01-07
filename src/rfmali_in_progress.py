@@ -289,8 +289,8 @@ class RFMALI_WIP(object):
 
         print("Building C-dim vectors...") if self.verbose > 0 else None
         if not self.dpt:
-            post_a = self._get_semantic_vectors(preprocessing.normalize(prox_a, norm='l1', axis=1), y_a, labels, clusters=None, prior_correct=self.prior_correct)
-            post_b = self._get_semantic_vectors(preprocessing.normalize(prox_b, norm='l1', axis=1), y_b, labels, clusters=None, prior_correct=self.prior_correct)
+            post_a = self._get_semantic_vectors(prox_a, y_a, labels, clusters=None, prior_correct=self.prior_correct)
+            post_b = self._get_semantic_vectors(prox_b, y_b, labels, clusters=None, prior_correct=self.prior_correct)
         else:
             P_NM_a, P_MM_a, clusters_a = self._get_diffusion_operators(prox_a, random_state=self.random_state, verbose=True)
             P_NM_b, P_MM_b, clusters_b = self._get_diffusion_operators(prox_b, random_state=self.random_state, verbose=True)
