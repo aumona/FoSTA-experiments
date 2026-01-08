@@ -29,7 +29,7 @@ class RFMALI_WIP(object):
                  dpt=False,
                  n_landmark=2000,
                  prior_correct=True,
-                 semantic_norm='l1',  # normalization method for semantic vectors (supports 'l1' and 'l2')
+                 semantic_norm='l2',  # normalization method for semantic vectors (supports 'l1' and 'l2')
                  embedder='spectral',
                  n_components=2,
                  verbose=0,
@@ -159,16 +159,10 @@ class RFMALI_WIP(object):
 
         # --- Metric Transformation ---
         # Prepares vectors so standard Euclidean distance downstream matches desired metric
-        if self.semantic_norm == 'l2':  # for Cosine distance, same as MALI but less theoretical justification here for MiniBatchKMeans
-            # L2 normalize -> scale by 1/sqrt(2)
-            # Resulting Euclidean dist = sqrt(1 - cos_sim)
+        if self.semantic_norm == 'l2':  # to simulate Cosine distance, same as MALI, and better fits Hiref_fast assumptions
             post = preprocessing.normalize(post, norm="l2", axis=1)
-            post /= np.sqrt(2)
 
         elif self.semantic_norm == 'l1':
-            # We JUST L1 normalize to ensure scale invariance between domains
-            # This preserves the "relative confidence" while fixing the "density mismatch" bug
-            # This also ensures MiniBatchKMeans computes 'valid' centroids (mean of probs = probs)
             post = preprocessing.normalize(post, norm="l1", axis=1)
         else:
             print(f"[WARN] Unknown normalization={self.semantic_norm}, skipping metric transform.")
