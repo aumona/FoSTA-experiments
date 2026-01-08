@@ -531,7 +531,7 @@ class DTA():
         elif self.embedder =="PHATE":
 
             embedding = PageRankPHATE(n_components=self.n_components, knn_dist='precomputed_affinity',
-                                      beta=0.5, t=3, random_state=self.random_state)
+                                      beta=0.5, t='auto', random_state=self.random_state)
             embedding_joint = embedding.fit_transform(self.W)
 
         elif self.embedder == "barycentric":

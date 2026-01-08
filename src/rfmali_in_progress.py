@@ -318,7 +318,7 @@ class RFMALI_WIP(object):
         if self.embedder == 'PHATE':
             phate_op = PageRankPHATE(
                 n_components=self.n_components,
-                t=3,
+                t=2,
                 knn_dist='precomputed_affinity',
                 kernel_symm=None,  # already use pre-symmetrized affinity
                 random_state=self.random_state,
