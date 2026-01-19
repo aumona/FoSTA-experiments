@@ -31,7 +31,9 @@ class DTA():
              rfgap=False,
              knn=5,
              decay=40,
-             t=1,   # we set this to 1 to compare diffusion (DPT) VS no diffusion
+             t_dpt=1,   # we set this to 1 to compare diffusion (DPT, distances='DPT') VS no diffusion (distances='none')
+             t = 'auto',
+             beta = 0.7,
              lamb = 1,
              gamma = 1,
              npca=100,
@@ -73,7 +75,9 @@ class DTA():
         self.rfgap = rfgap
         self.decay = decay
         self.knn = knn
+        self.t_dpt = t_dpt
         self.t = t
+        self.beta = beta
         self.npca = npca
         self.knn_dist = knn_dist
         self.knn_max = knn_max
@@ -191,8 +195,8 @@ class DTA():
 
         
         '''Diffuse t steps'''    
-        self.p1_t = np.linalg.matrix_power(self.p1.toarray(), self.t)
-        self.p2_t = np.linalg.matrix_power(self.p2.toarray(), self.t)
+        self.p1_t = np.linalg.matrix_power(self.p1.toarray(), self.t_dpt)
+        self.p2_t = np.linalg.matrix_power(self.p2.toarray(), self.t_dpt)
         
     
     def compute_labels_distance(self):
@@ -531,7 +535,7 @@ class DTA():
         elif self.embedder =="PHATE":
 
             embedding = PageRankPHATE(n_components=self.n_components, knn_dist='precomputed_affinity',
-                                      beta=0.5, t='auto', random_state=self.random_state)
+                                      beta=self.beta, t=self.t, random_state=self.random_state)
             embedding_joint = embedding.fit_transform(self.W)
 
         elif self.embedder == "barycentric":

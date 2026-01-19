@@ -28,6 +28,8 @@ class RFMALI_WIP(object):
                  mu=0.5,
                  dpt=False,
                  n_landmark=2000,
+                 t='auto',
+                 beta=0.7,
                  prior_correct=True,
                  semantic_norm='l2',  # normalization method for semantic vectors (supports 'l1' and 'l2')
                  embedder='spectral',
@@ -39,6 +41,8 @@ class RFMALI_WIP(object):
         self.dpt = dpt
         self.n_landmark = n_landmark  # number of landmarks for DPT
         self.prior_correct = prior_correct
+        self.t = t
+        self.beta = beta
         self.semantic_norm = semantic_norm
         self.embedder = embedder
         self.n_components = n_components
@@ -318,13 +322,13 @@ class RFMALI_WIP(object):
         if self.embedder == 'PHATE':
             phate_op = PageRankPHATE(
                 n_components=self.n_components,
-                t=2,
+                t=self.t,
                 knn_dist='precomputed_affinity',
-                kernel_symm=None,  # already use pre-symmetrized affinity
+                kernel_symm='+',  # already use pre-symmetrized affinity, but set to '+' to be safe
                 random_state=self.random_state,
                 verbose=self.verbose,
-                n_jobs=-1,
-                beta=0.5,
+                n_jobs=self.n_jobs,
+                beta=self.beta,
             )
             self.embedding_ = phate_op.fit_transform(self.W)
             return self.embedding_
