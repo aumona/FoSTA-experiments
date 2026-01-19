@@ -22,8 +22,8 @@ from .hiref.adaptive_HiRef import solve_compressed_hiref, solve_dummy_hiref
 
 import sys
 
-class RFMALI_WIP(object):
-    '''RF-MALI: Random Forest-based MALI implementation for semi-supervised domain adaptation.'''
+class FoSTA(object):
+    '''FoSTA: Forest-guided Semantic Transport Alignment'''
     def __init__(self,
                  mu=0.5,
                  dpt=False,
