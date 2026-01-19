@@ -87,13 +87,13 @@ class Pamona(Pamona_original):
         # We stack them to return a single matrix (n_samples_total, self.output_dim)
         # Final Projection to 2D using UMAP for visualization (default params from Pamona)
         if self.embedder == 'UMAP': 
-            self.embedding_ = UMAP(n_components=2,
+            self.embedding_ = UMAP(n_components=self.n_components,
                                 n_neighbors=20,
                                 min_dist=0.7,
                                 random_state=self.manual_seed).fit_transform(np.vstack(self.integrated_data))
             return self.embedding_
         elif self.embedder == 'PCA':
-            self.embedding_ = PCA(n_components=2).fit_transform(np.vstack(self.integrated_data))
+            self.embedding_ = PCA(n_components=self.n_components).fit_transform(np.vstack(self.integrated_data))
             return self.embedding_
 
         # Alternatively, return the integrated data without UMAP projection, which is the original formulation abd better suits our comparison.
