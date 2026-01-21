@@ -210,7 +210,14 @@ def solve_dummy_hiref(
     if n_a == n_b:
         if verbose:
             print(f"HiRef: balanced ({n_a}x{n_b})")
-        T = solve_square(post_a, post_b, n=n_a)
+            
+        try:
+            T = solve_square(post_a, post_b, n=n_a)
+        except Exception as e:
+            if verbose:
+                print(f"failure of HiRef might be due to prime n = {n_a}, retrying with {n_a} + 1...")
+            T = solve_square(post_a, post_b, n=n_a+1) # solve_square will fail in n is prime. this is a quick fix
+              
         # In balanced case, HiRef usually gives row/col sums ~1. Total mass ~ n_a.
         return T
 
