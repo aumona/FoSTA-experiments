@@ -4,6 +4,9 @@ data/
 # ideas
 ideas/
 
+# figures
+figures/
+
 # MacOS
 .DS_Store
 
