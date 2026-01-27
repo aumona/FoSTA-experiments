@@ -216,8 +216,9 @@ def solve_dummy_hiref(
         except Exception as e:
             if verbose:
                 print(f"failure of HiRef might be due to prime n = {n_a}, retrying with {n_a} + 1...")
-            T = solve_square(post_a, post_b, n=n_a+1) # solve_square will fail in n is prime. this is a quick fix
-              
+            T = solve_square(post_a, post_b, n=n_a+1) # solve_square will fail in n is prime. this is a quick fix that adds a dummy point
+            T = T[:-1, :-1] # remove dummy row/col
+            
         # In balanced case, HiRef usually gives row/col sums ~1. Total mass ~ n_a.
         return T
 
