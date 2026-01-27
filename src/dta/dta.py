@@ -29,6 +29,7 @@ class DTA():
              n_components=2,
              embedder = "spectral",
              rfgap=False,
+             n_estimators=1000,
              knn=5,
              decay=40,
              t_dpt=1,   # we set this to 1 to compare diffusion (DPT, distances='DPT') VS no diffusion (distances='none')
@@ -73,6 +74,7 @@ class DTA():
         self.n_components = n_components
         self.embedder = embedder
         self.rfgap = rfgap
+        self.n_estimators = n_estimators
         self.decay = decay
         self.knn = knn
         self.t_dpt = t_dpt
@@ -159,6 +161,7 @@ class DTA():
             rfgap_params = {
                 'random_state': self.random_state,
                 'prediction_type': 'classification',  # force classification mode
+                'n_estimators': self.n_estimators,
                 'prox_method': 'rfgap',
                 'model_type': 'rf',
                 'oob_score': False,
@@ -166,7 +169,7 @@ class DTA():
                 'force_symmetric': True,
                 'max_normalize': True,
                 # 'class_weight': 'balanced',  # handle class imbalance in RF
-                'verbose': self.verbose,
+                'verbose': 0,
                 'n_jobs': self.n_jobs,
             }
             rfgap = RFGAP(**rfgap_params)

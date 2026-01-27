@@ -30,6 +30,7 @@ class FoSTA(object):
                  n_landmark=2000,
                  t='auto',
                  beta=0.7,
+                 n_estimators=1000,
                  prior_correct=True,
                  semantic_norm='l2',  # normalization method for semantic vectors (supports 'l1' and 'l2')
                  embedder='spectral',
@@ -49,10 +50,12 @@ class FoSTA(object):
         self.random_state = random_state
         self.verbose = verbose
         self.n_jobs = n_jobs
+        self.n_estimators = n_estimators
 
         self.rfgap_params = {
             'random_state': random_state,
             'prediction_type': 'classification',  # force classification mode
+            'n_estimators': n_estimators,
             'prox_method': 'rfgap',
             'model_type': 'rf',
             'oob_score': False,
