@@ -146,129 +146,259 @@ def run_adaptive_compression(post_fixed, post_to_compress, random_state=None):
 
 
 
+# def solve_dummy_hiref(
+#     post_a, post_b,
+#     verbose=0,
+#     random_state=None,
+#     dummy_mode="uniform",   # {"uniform","mean","bootstrap"}
+#     extra_dummy=0,
+#     eps=1e-12,
+#     enforce_mali_marginals=True,
+# ):
+#     """
+#     HiRef coupling for unequal sizes using dummy padding to a square problem.
+#     Returns sparse T with shape (n_a, n_b).
+
+#     If enforce_mali_marginals=True:
+#       - target semantics match your current unbalanced wot mode:
+#         a_i = 1, b_j = n_a/n_b
+#       - i.e., row sums ~ 1, col sums ~ n_a/n_b, total mass ~ n_a
+#     """
+#     rng = np.random.default_rng(random_state)
+#     post_a = np.asarray(post_a)
+#     post_b = np.asarray(post_b)
+#     n_a, d_a = post_a.shape
+#     n_b, d_b = post_b.shape
+#     if d_a != d_b:
+#         raise ValueError(f"post_a and post_b must have same #dims, got {d_a} vs {d_b}")
+
+#     # -------------------------
+#     # Dummy generator
+#     # -------------------------
+#     def make_dummies(P, n_new):
+#         if n_new <= 0:
+#             return None
+#         d = P.shape[1]
+#         if dummy_mode == "uniform":
+#             D = np.full((n_new, d), 1.0 / d, dtype=P.dtype)
+#         elif dummy_mode == "mean":
+#             mu = P.mean(axis=0, keepdims=True)
+#             mu = np.clip(mu, eps, None)
+#             mu = mu / mu.sum(axis=1, keepdims=True)
+#             D = np.repeat(mu.astype(P.dtype), n_new, axis=0)
+#         elif dummy_mode == "bootstrap":
+#             # sample real points (helps stay on-manifold)
+#             idx = rng.integers(0, P.shape[0], size=n_new)
+#             D = P[idx].astype(P.dtype, copy=True)
+#         else:
+#             raise ValueError("dummy_mode must be {'uniform','mean','bootstrap'}")
+#         return D
+
+#     # -------------------------
+#     # Solve square HiRef helper
+#     # -------------------------
+#     def solve_square(A, B, n):
+#         rank_schedule = rank_annealing.optimal_rank_schedule(n=n)
+#         (rows, cols, data), _ = HiRef.hiref_lr_fast(
+#             A, B, rank_schedule=rank_schedule, return_coupling=True
+#         )
+#         return sparse.coo_matrix((data, (rows, cols)), shape=(n, n)).tocsr()
+
+#     # -------------------------
+#     # Case 1: balanced
+#     # -------------------------
+#     if n_a == n_b:
+#         if verbose:
+#             print(f"HiRef: balanced ({n_a}x{n_b})")
+            
+#         try:
+#             T = solve_square(post_a, post_b, n=n_a)
+#         except Exception as e:
+#             if verbose:
+#                 print(f"failure of HiRef might be due to prime n = {n_a}, retrying with {n_a} + 1...")
+#             T = solve_square(post_a, post_b, n=n_a+1) # solve_square will fail in n is prime. this is a quick fix that adds a dummy point
+#             T = T[:-1, :-1] # remove dummy row/col
+            
+#         # In balanced case, HiRef usually gives row/col sums ~1. Total mass ~ n_a.
+#         return T
+
+#     # -------------------------
+#     # Case 2: n_a > n_b  (pad B)
+#     # -------------------------
+#     if n_a > n_b:
+#         n_dummy = (n_a - n_b) + int(extra_dummy)
+#         if verbose:
+#             print(f"HiRef: pad B {n_b} -> {n_b + n_dummy} (solve {n_a}x{n_a})")
+
+#         D = make_dummies(post_b, n_dummy)
+#         post_b_pad = np.vstack([post_b, D]) if D is not None else post_b
+
+#         T_pad = solve_square(post_a, post_b_pad, n=n_a)
+
+#         # keep only real target columns
+#         T = T_pad[:, :n_b].tocsr()
+
+#         if enforce_mali_marginals:
+#             # MALI unbalanced convention expects total mass = n_a,
+#             # row sums ~ 1, col sums ~ n_a/n_b.
+#             # After dropping dummy cols, some mass is missing -> rescale globally.
+#             mass = float(T.sum())
+#             if mass > eps:
+#                 T = T * (float(n_a) / mass)
+
+#         return T
+
+#     # -------------------------
+#     # Case 3: n_b > n_a  (pad A)
+#     # -------------------------
+#     else:
+#         n_dummy = (n_b - n_a) + int(extra_dummy)
+#         if verbose:
+#             print(f"HiRef: pad A {n_a} -> {n_a + n_dummy} (solve {n_b}x{n_b})")
+
+#         D = make_dummies(post_a, n_dummy)
+#         post_a_pad = np.vstack([post_a, D]) if D is not None else post_a
+
+#         # Solve square in the other direction (size n_b)
+#         T_pad = solve_square(post_a_pad, post_b, n=n_b)
+
+#         # keep only real source rows
+#         T = T_pad[:n_a, :].tocsr()
+
+#         if enforce_mali_marginals:
+#             # Still want total mass = n_a
+#             mass = float(T.sum())
+#             if mass > eps:
+#                 T = T * (float(n_a) / mass)
+
+#         return T
+
+# ------------------------------------------------------------
+# Helper: Find factorable numbers for HiRef
+# ------------------------------------------------------------
+def get_next_smooth_number(n, max_prime=13):
+    """
+    Finds the smallest number >= n whose prime factors are all <= max_prime.
+    HiRef fails if the size has a large prime factor (e.g. 3763 = 53 * 71).
+    """
+    def is_smooth(x):
+        if x <= 1: return True
+        d = 2
+        temp = x
+        # Check factors up to sqrt(temp)
+        while d * d <= temp:
+            while temp % d == 0:
+                if d > max_prime: return False
+                temp //= d
+            d += 1
+        # If remaining prime factor is too large
+        if temp > 1 and temp > max_prime:
+            return False
+        return True
+
+    while not is_smooth(n):
+        n += 1
+    return n
+
+# ------------------------------------------------------------
+# Solvers
+# ------------------------------------------------------------
 def solve_dummy_hiref(
     post_a, post_b,
     verbose=0,
     random_state=None,
-    dummy_mode="uniform",   # {"uniform","mean","bootstrap"}
-    extra_dummy=0,
+    dummy_mode="bootstrap",   # {"uniform","mean","bootstrap"}
     eps=1e-12,
     enforce_mali_marginals=True,
 ):
     """
-    HiRef coupling for unequal sizes using dummy padding to a square problem.
+    Robust HiRef coupling that handles unequal sizes AND non-factorable (prime) sizes
+    by padding both domains to the nearest 'smooth' square size.
+    
     Returns sparse T with shape (n_a, n_b).
-
-    If enforce_mali_marginals=True:
-      - target semantics match your current unbalanced wot mode:
-        a_i = 1, b_j = n_a/n_b
-      - i.e., row sums ~ 1, col sums ~ n_a/n_b, total mass ~ n_a
     """
     rng = np.random.default_rng(random_state)
     post_a = np.asarray(post_a)
     post_b = np.asarray(post_b)
     n_a, d_a = post_a.shape
     n_b, d_b = post_b.shape
+    
     if d_a != d_b:
         raise ValueError(f"post_a and post_b must have same #dims, got {d_a} vs {d_b}")
 
+    # 1. Determine the target square size (Smooth Number)
+    n_max = max(n_a, n_b)
+    n_target = get_next_smooth_number(n_max)
+    
+    if verbose > 0:
+        print(f"HiRef Target: {n_a}x{n_b} -> Pad to {n_target}x{n_target} (Smooth)")
+
     # -------------------------
-    # Dummy generator
+    # Dummy Generator Helper
     # -------------------------
-    def make_dummies(P, n_new):
-        if n_new <= 0:
-            return None
-        d = P.shape[1]
+    def get_padded_matrix(P, target_n):
+        curr_n = P.shape[0]
+        needed = target_n - curr_n
+        if needed == 0:
+            return P
+            
         if dummy_mode == "uniform":
-            D = np.full((n_new, d), 1.0 / d, dtype=P.dtype)
+            # Uniform noise / small value
+            D = np.full((needed, d_a), 1.0 / d_a, dtype=P.dtype)
         elif dummy_mode == "mean":
+            # Mean of the dataset
             mu = P.mean(axis=0, keepdims=True)
-            mu = np.clip(mu, eps, None)
-            mu = mu / mu.sum(axis=1, keepdims=True)
-            D = np.repeat(mu.astype(P.dtype), n_new, axis=0)
+            D = np.repeat(mu, needed, axis=0)
         elif dummy_mode == "bootstrap":
-            # sample real points (helps stay on-manifold)
-            idx = rng.integers(0, P.shape[0], size=n_new)
-            D = P[idx].astype(P.dtype, copy=True)
+            # Sample real points (best for preserving manifold geometry)
+            idx = rng.integers(0, curr_n, size=needed)
+            D = P[idx]
         else:
             raise ValueError("dummy_mode must be {'uniform','mean','bootstrap'}")
-        return D
+            
+        return np.vstack([P, D])
 
-    # -------------------------
-    # Solve square HiRef helper
-    # -------------------------
-    def solve_square(A, B, n):
-        rank_schedule = rank_annealing.optimal_rank_schedule(n=n)
+    # 2. Pad Both Matrices
+    post_a_pad = get_padded_matrix(post_a, n_target)
+    post_b_pad = get_padded_matrix(post_b, n_target)
+
+    # 3. Solve Square OT
+    # We use n_target for the rank schedule
+    rank_schedule = rank_annealing.optimal_rank_schedule(n=n_target)
+    
+    try:
         (rows, cols, data), _ = HiRef.hiref_lr_fast(
-            A, B, rank_schedule=rank_schedule, return_coupling=True
+            post_a_pad, post_b_pad,
+            rank_schedule=rank_schedule,
+            return_coupling=True
         )
-        return sparse.coo_matrix((data, (rows, cols)), shape=(n, n)).tocsr()
+    except Exception as e:
+        # Fallback: rarely, if rank schedule fails, try n_target + small increment
+        # (Though get_next_smooth_number usually prevents this)
+        print(f"HiRef failed on {n_target}, retrying with safer padding...")
+        n_safe = get_next_smooth_number(n_target + 1)
+        post_a_safe = get_padded_matrix(post_a, n_safe)
+        post_b_safe = get_padded_matrix(post_b, n_safe)
+        rank_schedule = rank_annealing.optimal_rank_schedule(n=n_safe)
+        (rows, cols, data), _ = HiRef.hiref_lr_fast(
+            post_a_safe, post_b_safe,
+            rank_schedule=rank_schedule,
+            return_coupling=True
+        )
+        n_target = n_safe
 
-    # -------------------------
-    # Case 1: balanced
-    # -------------------------
-    if n_a == n_b:
-        if verbose:
-            print(f"HiRef: balanced ({n_a}x{n_b})")
-            
-        try:
-            T = solve_square(post_a, post_b, n=n_a)
-        except Exception as e:
-            if verbose:
-                print(f"failure of HiRef might be due to prime n = {n_a}, retrying with {n_a} + 1...")
-            T = solve_square(post_a, post_b, n=n_a+1) # solve_square will fail in n is prime. this is a quick fix that adds a dummy point
-            T = T[:-1, :-1] # remove dummy row/col
-            
-        # In balanced case, HiRef usually gives row/col sums ~1. Total mass ~ n_a.
-        return T
+    # 4. Construct Sparse Matrix and Slice
+    T_square = sparse.coo_matrix((data, (rows, cols)), shape=(n_target, n_target)).tocsr()
+    
+    # Slice back to original dimensions
+    T = T_square[:n_a, :n_b]
 
-    # -------------------------
-    # Case 2: n_a > n_b  (pad B)
-    # -------------------------
-    if n_a > n_b:
-        n_dummy = (n_a - n_b) + int(extra_dummy)
-        if verbose:
-            print(f"HiRef: pad B {n_b} -> {n_b + n_dummy} (solve {n_a}x{n_a})")
+    # 5. Renormalize Mass
+    if enforce_mali_marginals:
+        # Standard convention: Total mass = n_a (source size)
+        # This implies row_sums ~ 1.0, col_sums ~ (n_a/n_b)
+        mass = T.sum()
+        if mass > eps:
+            T = T * (n_a / mass)
 
-        D = make_dummies(post_b, n_dummy)
-        post_b_pad = np.vstack([post_b, D]) if D is not None else post_b
-
-        T_pad = solve_square(post_a, post_b_pad, n=n_a)
-
-        # keep only real target columns
-        T = T_pad[:, :n_b].tocsr()
-
-        if enforce_mali_marginals:
-            # MALI unbalanced convention expects total mass = n_a,
-            # row sums ~ 1, col sums ~ n_a/n_b.
-            # After dropping dummy cols, some mass is missing -> rescale globally.
-            mass = float(T.sum())
-            if mass > eps:
-                T = T * (float(n_a) / mass)
-
-        return T
-
-    # -------------------------
-    # Case 3: n_b > n_a  (pad A)
-    # -------------------------
-    else:
-        n_dummy = (n_b - n_a) + int(extra_dummy)
-        if verbose:
-            print(f"HiRef: pad A {n_a} -> {n_a + n_dummy} (solve {n_b}x{n_b})")
-
-        D = make_dummies(post_a, n_dummy)
-        post_a_pad = np.vstack([post_a, D]) if D is not None else post_a
-
-        # Solve square in the other direction (size n_b)
-        T_pad = solve_square(post_a_pad, post_b, n=n_b)
-
-        # keep only real source rows
-        T = T_pad[:n_a, :].tocsr()
-
-        if enforce_mali_marginals:
-            # Still want total mass = n_a
-            mass = float(T.sum())
-            if mass > eps:
-                T = T * (float(n_a) / mass)
-
-        return T
+    return T
