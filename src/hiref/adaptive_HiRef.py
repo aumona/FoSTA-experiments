@@ -273,25 +273,26 @@ def run_adaptive_compression(post_fixed, post_to_compress, random_state=None):
 
 #         return T
 
-# ------------------------------------------------------------
-# Helper: Find factorable numbers for HiRef
-# ------------------------------------------------------------
+
+
+
+
+
+
 def get_next_smooth_number(n, max_prime=13):
     """
     Finds the smallest number >= n whose prime factors are all <= max_prime.
-    HiRef fails if the size has a large prime factor (e.g. 3763 = 53 * 71).
+    Solves the 'Prime Number' crash in HiRef.
     """
     def is_smooth(x):
         if x <= 1: return True
-        d = 2
         temp = x
-        # Check factors up to sqrt(temp)
+        d = 2
         while d * d <= temp:
             while temp % d == 0:
                 if d > max_prime: return False
                 temp //= d
             d += 1
-        # If remaining prime factor is too large
         if temp > 1 and temp > max_prime:
             return False
         return True
@@ -300,105 +301,96 @@ def get_next_smooth_number(n, max_prime=13):
         n += 1
     return n
 
-# ------------------------------------------------------------
-# Solvers
-# ------------------------------------------------------------
 def solve_dummy_hiref(
     post_a, post_b,
     verbose=0,
     random_state=None,
-    dummy_mode="bootstrap",   # {"uniform","mean","bootstrap"}
+    dummy_mode="bootstrap",  # "uniform", "mean", "bootstrap"
+    extra_dummy=0,
     eps=1e-12,
     enforce_mali_marginals=True,
 ):
     """
-    Robust HiRef coupling that handles unequal sizes AND non-factorable (prime) sizes
-    by padding both domains to the nearest 'smooth' square size.
-    
-    Returns sparse T with shape (n_a, n_b).
+    Robust HiRef coupling for unequal sizes. 
+    1. Pads A and B to the nearest 'Smooth' Square size (preventing Prime crashes).
+    2. Solves square OT.
+    3. Slices back to original dimensions.
+    4. Renormalizes mass to equal n_a.
     """
     rng = np.random.default_rng(random_state)
     post_a = np.asarray(post_a)
     post_b = np.asarray(post_b)
     n_a, d_a = post_a.shape
     n_b, d_b = post_b.shape
-    
+
     if d_a != d_b:
-        raise ValueError(f"post_a and post_b must have same #dims, got {d_a} vs {d_b}")
+        raise ValueError(f"Dims mismatch: {d_a} vs {d_b}")
 
-    # 1. Determine the target square size (Smooth Number)
-    n_max = max(n_a, n_b)
-    n_target = get_next_smooth_number(n_max)
-    
+    # 1. Determine Safe Square Size
+    # We take the max dimension, add extra_dummy, and then find the next "smooth" number
+    # to ensure HiRef's recursive rank schedule works efficiently.
+    target_raw = max(n_a, n_b) + int(extra_dummy)
+    n_target = get_next_smooth_number(target_raw)
+
     if verbose > 0:
-        print(f"HiRef Target: {n_a}x{n_b} -> Pad to {n_target}x{n_target} (Smooth)")
+        print(f"HiRef: Input {n_a}x{n_b} -> Solving Square {n_target}x{n_target}")
 
-    # -------------------------
-    # Dummy Generator Helper
-    # -------------------------
-    def get_padded_matrix(P, target_n):
+    # 2. Dummy Generator
+    def pad_matrix(P, target_n):
         curr_n = P.shape[0]
-        needed = target_n - curr_n
-        if needed == 0:
+        n_needed = target_n - curr_n
+        if n_needed <= 0:
             return P
-            
+        
         if dummy_mode == "uniform":
-            # Uniform noise / small value
-            D = np.full((needed, d_a), 1.0 / d_a, dtype=P.dtype)
+            # Small uniform value (1/d)
+            D = np.full((n_needed, d_a), 1.0/d_a, dtype=P.dtype)
         elif dummy_mode == "mean":
             # Mean of the dataset
             mu = P.mean(axis=0, keepdims=True)
-            D = np.repeat(mu, needed, axis=0)
+            D = np.repeat(mu, n_needed, axis=0)
         elif dummy_mode == "bootstrap":
-            # Sample real points (best for preserving manifold geometry)
-            idx = rng.integers(0, curr_n, size=needed)
+            # Random samples from the data itself (Preserves Manifold Geometry)
+            idx = rng.integers(0, curr_n, size=n_needed)
             D = P[idx]
         else:
-            raise ValueError("dummy_mode must be {'uniform','mean','bootstrap'}")
-            
+            raise ValueError(f"Unknown dummy_mode: {dummy_mode}")
+        
         return np.vstack([P, D])
 
-    # 2. Pad Both Matrices
-    post_a_pad = get_padded_matrix(post_a, n_target)
-    post_b_pad = get_padded_matrix(post_b, n_target)
+    # 3. Prepare Inputs (Pad Both Sides)
+    # 
+    post_a_pad = pad_matrix(post_a, n_target)
+    post_b_pad = pad_matrix(post_b, n_target)
 
-    # 3. Solve Square OT
-    # We use n_target for the rank schedule
+    # 4. Solve Square HiRef
+    # Now dimensions match exactly: (n_target, d)
     rank_schedule = rank_annealing.optimal_rank_schedule(n=n_target)
     
-    try:
-        (rows, cols, data), _ = HiRef.hiref_lr_fast(
-            post_a_pad, post_b_pad,
-            rank_schedule=rank_schedule,
-            return_coupling=True
-        )
-    except Exception as e:
-        # Fallback: rarely, if rank schedule fails, try n_target + small increment
-        # (Though get_next_smooth_number usually prevents this)
-        print(f"HiRef failed on {n_target}, retrying with safer padding...")
-        n_safe = get_next_smooth_number(n_target + 1)
-        post_a_safe = get_padded_matrix(post_a, n_safe)
-        post_b_safe = get_padded_matrix(post_b, n_safe)
-        rank_schedule = rank_annealing.optimal_rank_schedule(n=n_safe)
-        (rows, cols, data), _ = HiRef.hiref_lr_fast(
-            post_a_safe, post_b_safe,
-            rank_schedule=rank_schedule,
-            return_coupling=True
-        )
-        n_target = n_safe
-
-    # 4. Construct Sparse Matrix and Slice
+    (rows, cols, data), _ = HiRef.hiref_lr_fast(
+        post_a_pad, post_b_pad, 
+        rank_schedule=rank_schedule, 
+        return_coupling=True
+    )
+    
+    # 5. Reconstruct & Slice
+    # Create full square matrix
     T_square = sparse.coo_matrix((data, (rows, cols)), shape=(n_target, n_target)).tocsr()
     
-    # Slice back to original dimensions
+    # Slice back to Real x Real dimensions
+    # This discards Real-to-Dummy and Dummy-to-Dummy connections
     T = T_square[:n_a, :n_b]
 
-    # 5. Renormalize Mass
+    # 6. Renormalize (CRITICAL)
+    # Slicing drops mass. We must re-scale so total mass equals n_a (source samples).
     if enforce_mali_marginals:
-        # Standard convention: Total mass = n_a (source size)
-        # This implies row_sums ~ 1.0, col_sums ~ (n_a/n_b)
-        mass = T.sum()
-        if mass > eps:
-            T = T * (n_a / mass)
-
+        current_mass = T.sum()
+        if current_mass < eps:
+            if verbose: print("Warning: HiRef mass collapsed (all real points matched to dummies).")
+            # Fallback: distribute mass uniformly or identity if shapes match? 
+            # Usually implies dummies were 'closer' than real points.
+        else:
+            scale_factor = float(n_a) / current_mass
+            T = T * scale_factor
+            
     return T
