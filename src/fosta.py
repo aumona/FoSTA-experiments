@@ -25,7 +25,7 @@ import sys
 class FoSTA(object):
     '''FoSTA: Forest-guided Semantic Transport Alignment'''
     def __init__(self,
-                 mu=0.5,
+                 mu=1,  # cross-domain block strength
                  dpt=False,
                  n_landmark=2000,
                  t='auto',
@@ -246,12 +246,12 @@ class FoSTA(object):
         """
         Constructs a joint affinity matrix just like in MALI, with max-normalized T as input (OT coupling matrix)
         """
-        W_ab = (prox_a.dot(T) + T.dot(prox_b))  # (n_a x n_b)
+        W_ab = self.mu * (prox_a.dot(T) + T.dot(prox_b)) / 2 # (n_a x n_b)
         W_ba = W_ab.transpose()
         W_sym = sparse.bmat(
             [
-            [self.mu * prox_a, (1-self.mu) * W_ab],
-            [(1-self.mu) * W_ba,   self.mu * prox_b]
+            [prox_a, W_ab],
+            [W_ba,   prox_b]
             ],
             format="csr"
         )
@@ -262,6 +262,7 @@ class FoSTA(object):
             print_mat_stats("Within-domain A (W1)", prox_a)
             print_mat_stats("Within-domain B (W2)", prox_b)
             print_mat_stats("Cross-domain A→B (W12)", W_ab)
+            print_mat_stats("Cross-domain B→A (W21)", W_ba)
 
         return W_sym
 
