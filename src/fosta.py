@@ -246,7 +246,7 @@ class FoSTA(object):
         """
         Constructs a joint affinity matrix just like in MALI, with max-normalized T as input (OT coupling matrix)
         """
-        W_ab = (prox_a.dot(T) + T.dot(prox_b)) / 2   # (n_a x n_b)
+        W_ab = (prox_a.dot(T) + T.dot(prox_b))  # (n_a x n_b)
         W_ba = W_ab.transpose()
         W_sym = sparse.bmat(
             [
