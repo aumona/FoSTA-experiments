@@ -428,140 +428,91 @@ def get_next_smooth_number(n):
 
 
 
-
-
-
-
 def solve_surjection_hiref(
     post_a, post_b,
     verbose=0,
     random_state=None,
-    eps=1e-12,
 ):
     """
-    Solves a Surjection from the larger domain to the smaller domain using HiRef.
-    
-    Strategy:
-    1. Identify the Larger Domain (Primary) and Smaller Domain (Secondary).
-    2. Determine a 'Smooth' Target Size >= Size of Primary (to prevent Prime crashes).
-    3. Pad Primary -> Target Size using random bootstrap (Standard padding).
-    4. Oversample Secondary -> Target Size using Stratified Tiling (Surjection logic).
-    5. Solve Square HiRef (Bijection on the augmented data).
-    6. Project back: Slice the Primary rows, Merge the Secondary columns.
-    
-    Returns:
-        T: Sparse matrix of shape (n_a, n_b).
-           - Total Mass ~= max(n_a, n_b).
-           - Represents a surjection from the larger dataset to the smaller one.
+    Simplified HiRef Surjection.
+    1. Sets target size = max(N_a, N_b).
+    2. Pads the smaller domain to match target size (stratified copies).
+    3. Solves square HiRef.
+    4. Collapses copies back to original indices by summing.
     """
     rng = np.random.default_rng(random_state)
     post_a = np.asarray(post_a)
     post_b = np.asarray(post_b)
-    n_a, d_a = post_a.shape
-    n_b, d_b = post_b.shape
-
-    if d_a != d_b:
-        raise ValueError(f"Dims mismatch: {d_a} vs {d_b}")
-
-    # --- 1. Identify Primary (Big) vs Secondary (Small) ---
-    # We always solve: Primary (Rows) -> Secondary (Cols)
-    # If A < B, we swap inputs, solve B->A, then transpose the result.
-    swapped = False
-    if n_b > n_a:
-        if verbose: print(f"Swapping inputs: B({n_b}) is larger than A({n_a})")
-        post_primary, post_secondary = post_b, post_a
-        n_p, n_s = n_b, n_a
-        swapped = True
-    else:
-        post_primary, post_secondary = post_a, post_b
-        n_p, n_s = n_a, n_b
-
-    # --- 2. Determine Safe "Smooth" Target Size ---
-    # HiRef works best on numbers with small prime factors (2, 3, 5).
-    # We find the next smooth number >= Size of Primary.
-    n_target = get_next_smooth_number(n_p)
     
-    if verbose > 0:
-        print(f"HiRef Surjection: {n_p} -> {n_s}")
-        print(f"  -> Augmented Target Size: {n_target}x{n_target}")
+    n_a = post_a.shape[0]
+    n_b = post_b.shape[0]
+    
+    # 1. Determine Target Size (No smooth numbers, just the bigger one)
+    n_target = max(n_a, n_b)
+    
+    if verbose:
+        print(f"HiRef: Aligning A({n_a}) and B({n_b}). Target square size: {n_target}")
 
-    # --- 3. Prepare Primary (The Larger Domain) ---
-    # We just need to pad it from n_p to n_target using random samples (dummies).
-    # This ensures the matrix is square.
-    n_pad_p = n_target - n_p
-    if n_pad_p > 0:
-        idx_pad = rng.integers(0, n_p, size=n_pad_p)
-        dummy_p = post_primary[idx_pad]
-        primary_aug = np.vstack([post_primary, dummy_p])
-    else:
-        primary_aug = post_primary
+    # --- Helper: Augment Data & Keep Track of Indices ---
+    def get_augmented_data(data, n_orig, n_dest):
+        """
+        Returns:
+            data_aug: The stretched data (n_dest, d)
+            map_indices: Array of shape (n_dest,) mapping new rows back to old rows
+        """
+        # If sizes match, return as is (identity mapping)
+        if n_orig == n_dest:
+            return data, np.arange(n_orig)
+            
+        # Stratified Oversampling (Equal representation)
+        n_repeats = n_dest // n_orig
+        n_remainder = n_dest % n_orig
+        
+        # 1. Base repeats (e.g., [0,1,2, 0,1,2])
+        idx_base = np.tile(np.arange(n_orig), n_repeats)
+        
+        # 2. Remainder (randomly sample the rest without replacement)
+        idx_rem = rng.choice(np.arange(n_orig), n_remainder, replace=False)
+        
+        # 3. Combine and Shuffle
+        map_indices = np.concatenate([idx_base, idx_rem])
+        
+        # Shuffle ensures copies are distributed randomly, not clustered
+        perm = rng.permutation(n_dest)
+        map_indices = map_indices[perm]
+        
+        return data[map_indices], map_indices
 
-    # --- 4. Prepare Secondary (The Smaller Domain) - THE SURJECTION STEP ---
-    # We need to stretch n_s to n_target.
-    # We use Stratified Oversampling: Tile the data, then sample the remainder.
-    
-    n_repeats = n_target // n_s
-    n_remainder = n_target % n_s
-    
-    # Create the map: Which original index corresponds to each augmented row?
-    # e.g. [0, 1, 2, 0, 1, 2, 0, 2]
-    indices_tiled = np.tile(np.arange(n_s), n_repeats)
-    indices_remainder = rng.choice(np.arange(n_s), n_remainder, replace=False)
-    
-    # The 'map' tells us: secondary_aug[k] comes from post_secondary[sec_map[k]]
-    sec_map = np.concatenate([indices_tiled, indices_remainder])
-    
-    # Shuffle to avoid structural artifacts (e.g. 111...222...333) which might bias HiRef
-    rng.shuffle(sec_map)
-    
-    secondary_aug = post_secondary[sec_map]
+    # 2. Prepare Augmented Inputs
+    # If A is bigger, map_a is identity, map_b is the tiled map.
+    # If B is bigger, map_a is the tiled map, map_b is identity.
+    p_aug, map_a = get_augmented_data(post_a, n_a, n_target)
+    s_aug, map_b = get_augmented_data(post_b, n_b, n_target)
 
-    # --- 5. Solve Square HiRef ---
-    # Both matrices are now (n_target, d). Solving for a Bijection.
+    # 3. Solve HiRef (Square)
     rank_schedule = rank_annealing.optimal_rank_schedule(n=n_target)
     
-    (rows, cols, data), _ = HiRef.hiref_lr_fast(
-        primary_aug, secondary_aug, 
+    # We ask for the coupling, which returns COO indices (rows, cols) and data (1s)
+    (rows_aug, cols_aug, vals_aug), _ = HiRef.hiref_lr_fast(
+        p_aug, s_aug,
         rank_schedule=rank_schedule, 
         return_coupling=True
     )
-    
-    # T_aug is (n_target, n_target)
-    T_aug = sparse.coo_matrix((data, (rows, cols)), shape=(n_target, n_target)).tocsr()
 
-    # --- 6. Project Back (Merge & Slice) ---
-    # A. Collapse the Secondary columns (Merge duplicates)
-    # We want to transform (n_target, n_target) -> (n_target, n_s)
-    # We build a 'Collapse Matrix' S of shape (n_target, n_s)
-    # S[k, j] = 1 if the k-th augmented point is a copy of the j-th original point.
+    # 4. Merge Duplicates (Collapse)
+    # Instead of matrix multiplication, we simply map the indices back.
     
-    row_inds = np.arange(n_target)
-    col_inds = sec_map  # The map we created in Step 4
-    ones = np.ones(n_target)
+    # If we are at row `i` in the augmented matrix, that corresponds to row `map_a[i]` in original.
+    rows_final = map_a[rows_aug]
+    cols_final = map_b[cols_aug]
     
-    S = sparse.csr_matrix((ones, (row_inds, col_inds)), shape=(n_target, n_s))
-    
-    # Multiply: Sums the mass for all copies of the same point
-    T_merged = T_aug.dot(S) # Shape: (n_target, n_s)
-    
-    # B. Slice the Primary rows (Discard dummies)
-    # We simply take the first n_p rows.
-    T_final = T_merged[:n_p, :] # Shape: (n_p, n_s)
-
-    # --- 7. Finalize ---
-    
-    # Normalize mass
-    # The slicing in step 6B removes mass associated with the dummy primary points.
-    # We re-scale so the total mass equals the size of the Primary domain (n_p).
-    current_mass = T_final.sum()
-    scale = float(n_p) / current_mass if current_mass > eps else 1.0
-    T_final = T_final * scale
-    
-    # Handle the swap if we did it
-    if swapped:
-        # We computed B -> A (n_b, n_a). 
-        # User wants A -> B (n_a, n_b).
-        T_final = T_final.transpose()
-        if verbose: print(f"  -> Transposed result back to {T_final.shape}")
+    # Construct CSR Matrix
+    # The (rows, cols) pairs will now have duplicates. 
+    # scipy.sparse automatically SUMS data for duplicate entries during construction.
+    # This achieves exactly what we want: summing the split mass back together.
+    T_final = sparse.coo_matrix(
+        (vals_aug, (rows_final, cols_final)), 
+        shape=(n_a, n_b)
+    ).tocsr()
 
     return T_final
