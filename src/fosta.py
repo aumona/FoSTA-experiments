@@ -18,7 +18,7 @@ from utils.utils import kernel2Dist, print_mat_stats
 from utils.labels import LabelUtils
 
 # OT solver
-from .hiref.adaptive_HiRef import solve_compressed_hiref, solve_dummy_hiref
+from .hiref.adaptive_HiRef import solve_surjection_hiref
 
 import sys
 
@@ -304,7 +304,8 @@ class FoSTA(object):
             post_b = self._get_semantic_vectors(trans_b, y_b, labels, clusters=clusters_b, prior_correct=self.prior_correct)
 
         print("Computing Optimal Transport...") if self.verbose > 0 else None
-        self.T_sparse = solve_dummy_hiref(post_a, post_b, verbose=self.verbose, dummy_mode='uniform')
+        self.T_sparse = solve_surjection_hiref(post_a, post_b, verbose=self.verbose, random_state=self.random_state)
+
 
 
         # ---------- DIAGNOSTICS ----------
