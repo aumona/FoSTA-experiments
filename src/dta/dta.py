@@ -499,6 +499,7 @@ class DTA():
             print_mat_stats("Within-domain A (W1)", W1)
             print_mat_stats("Within-domain B (W2)", W2)
             print_mat_stats("Cross-domain A→B (W12)", W12)
+            print_mat_stats("Cross-domain B→A (W21)", W21)
 
 
     def embed(self):
