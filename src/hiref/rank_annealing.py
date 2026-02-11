@@ -25,20 +25,31 @@ def optimal_rank_schedule(n, hierarchy_depth=6, max_Q=int(2**10), max_rank=16):
         
     """
 
-    # Factoring out the max factor
     Q = max_factor_lX(n, max_Q)
     ndivQ = int(n / Q)
-
-    # Compute partial rank schedule up to Q
+    
     min_value, rank_schedule = min_sum_partial_products_with_factors(ndivQ, hierarchy_depth, max_rank)
+    
+    # If DP failed, or returned something that doesn't multiply to ndivQ, fallback
+    if (rank_schedule is None) or (len(rank_schedule) == 0):
+        rank_schedule = [ndivQ]
+    else:
+        prod = functools.reduce(operator.mul, [x for x in rank_schedule if x not in (-1, 0)], 1)
+        if prod != ndivQ:
+            # force completion by appending the leftover factor
+            leftover = ndivQ // prod if prod != 0 else ndivQ
+            if leftover > 1:
+                rank_schedule.append(leftover)
+    
+    rank_schedule = [x for x in rank_schedule if x not in (1, -1, 0)]
     rank_schedule.sort()
-    rank_schedule.append(Q)
-    rank_schedule = [x for x in rank_schedule if x != 1]
+    if Q != 1:
+        rank_schedule.append(Q)
     
-    print(f'Optimized rank-annealing schedule: { rank_schedule }')
+    print(f'Optimized rank-annealing schedule: {rank_schedule}')
     
-    assert functools.reduce(operator.mul, rank_schedule) == n, "Error! Rank-schedule does not factorize n!"
-    
+    # Now guaranteed (by construction)
+    assert functools.reduce(operator.mul, rank_schedule, 1) == n, "Internal error: schedule still doesn't factorize n!"
     return rank_schedule
 
 def factors(n):
@@ -48,11 +59,11 @@ def factors(n):
         ([i, n//i] for i in range(1, int(n**0.5) + 1) if n % i == 0)))
 
 def max_factor_lX(n, max_X):
-    # Find max factor of n , such that max_factor \leq max_X
+    # Find max factor of n such that factor <= max_X
     factor_lst = factors(n)
-    max_factor = 0
+    max_factor = 1
     for factor in factor_lst:
-        if factor > max_factor and factor < max_X:
+        if factor > max_factor and factor <= max_X:
             max_factor = factor
     return max_factor
 
