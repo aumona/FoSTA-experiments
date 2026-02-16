@@ -118,3 +118,117 @@ def label_transfer_accuracy(
         out["acc_visible"] = None
 
     return out
+
+
+  
+    
+
+
+def calc_frac_idx(x1_mat, x2_mat, true_pairs=None):
+    """
+    Returns fraction closer than true match for each sample (as an array)
+    input: x1_mat: embedding matrix of domain 1 (n_samples x n_dims)
+           x2_mat: embedding matrix of domain 2 (n_samples x n_dims)
+           rows of x1_mat and x2_mat correspond to true matches
+           
+    if true_pairs is provided, it should be a list of tuples of the same length as x1_mat, indicating the indices of true matches in the other domain
+    otherwise, it is assumed that the rows correspond to true matches
+    the same index may appear multiple times if the datasets are unbalanced
+    
+    returns: fracs: list of fractions for each sample
+            x: list of sample indices (1 to n_samples)
+    """       
+        
+    
+    fracs = []
+    x = []
+    nsamp = x1_mat.shape[0]
+    rank=0
+    for row_idx in range(nsamp):
+        euc_dist = np.sqrt(np.sum(np.square(np.subtract(x1_mat[row_idx,:], x2_mat)), axis=1))
+
+        # get index of the true pairing in the other domain
+        if true_pairs is not None:
+            true_idx = true_pairs[row_idx][0]
+        else:
+            true_idx = row_idx
+            
+        true_nbr = euc_dist[true_idx]
+        sort_euc_dist = sorted(euc_dist)
+        rank = sort_euc_dist.index(true_nbr)
+        frac = float(rank)/(nsamp -1)
+
+        fracs.append(frac)
+        x.append(row_idx+1)
+
+    return fracs,x
+
+def calc_domainAveraged_FOSCTTM(x1_mat, x2_mat, true_pairs_1to2=None, true_pairs_2to1=None):
+    """
+    Metric from SCOT: "FOSCTTM"
+    Outputs average FOSCTTM measure (averaged over both domains)
+    Get the fraction matched for all data points in both directions
+    Averages the fractions in both directions for each data point
+    
+    if true_pairs_1to2 and true_pairs_2to1 are provided, they should be lists of tuples indicating the indices of true matches in the other domain
+    """
+    fracs1,xs = calc_frac_idx(x1_mat, x2_mat, true_pairs = true_pairs_1to2)
+    fracs2,xs = calc_frac_idx(x2_mat, x1_mat, true_pairs=true_pairs_2to1)
+    fracs = []
+    for i in range(len(fracs1)):
+        fracs.append((fracs1[i]+fracs2[i])/2)  
+    return np.array(fracs)
+
+def calc_frac_idx_bygroup(x1_mat,x2_mat):
+    """
+    Returns fraction closer than true match for each sample (as an array)
+    """
+    fracs = []
+    x = []
+    nsamp = x1_mat.shape[0]
+    rank=0
+    for row_idx in range(nsamp):
+        euc_dist = np.sqrt(np.sum(np.square(np.subtract(x1_mat[row_idx,:], x2_mat)), axis=1))
+        true_nbr = euc_dist[row_idx]
+        sort_euc_dist = sorted(euc_dist)
+        rank =sort_euc_dist.index(true_nbr)
+        frac = float(rank)/(nsamp -1)
+
+        fracs.append(frac)
+        x.append(row_idx+1)
+
+    return fracs,x
+
+def calc_domainAveraged_FOSCTTM_bygroup(x1_mat, x2_mat, classes):
+    """
+    Metric from SCOT: "FOSCTTM"
+    Outputs average FOSCTTM measure (averaged over both domains)
+    Get the fraction matched for all data points in both directions
+    Averages the fractions in both directions for each data point
+    """
+    fracs1,xs = calc_frac_idx(x1_mat, x2_mat)
+    fracs2,xs = calc_frac_idx(x2_mat, x1_mat)
+    fracs = []
+    for i in range(len(fracs1)):
+        fracs.append((fracs1[i]+fracs2[i])/2)  
+    return fracs
+
+
+    
+
+def test_transfer_accuracy(data1, data2, type1, type2):
+    """
+    Metric from UnionCom: "Label Transfer Accuracy"
+    """
+    Min = np.minimum(len(data1), len(data2))
+    k = np.maximum(10, (len(data1) + len(data2))*0.01)
+    k = k.astype(np.int)
+    knn = KNeighborsClassifier(n_neighbors=k)
+    knn.fit(data2, type2)
+    type1_predict = knn.predict(data1)
+    # np.savetxt("type1_predict.txt", type1_predict)
+    count = 0
+    for label1, label2 in zip(type1_predict, type1):
+        if label1 == label2:
+            count += 1
+    return count / len(type1)
