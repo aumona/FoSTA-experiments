@@ -68,7 +68,7 @@ def test_alignment_score(data1_shared, data2_shared, data1_specific=None, data2_
         data1 = data2_shared
     data2 = data2[random.sample(range(len(data2)), len(data1))]
     k = np.maximum(10, (len(data1) + len(data2))*0.01)
-    k = k.astype(np.int)
+    k = k.astype(int)
 
     data = np.vstack((data1, data2))
 
