@@ -137,8 +137,8 @@ class Pamona(object):
 		for i in range(n_datasets-1):
 			if self.n_shared[i] > Min[i]:
 				self.n_shared[i] = Min[i]
-			p.append(ot.unif(Max[i])[0:len(data[i])])
-			q.append(ot.unif(Max[i])[0:len(data[-1])])
+			p.append(ot.unif(Max[i])[0:data[i].shape[0]])
+			q.append(ot.unif(Max[i])[0:data[-1].shape[0]])
 
 		for i in range(n_datasets-1):
 			if self.M is not None:
@@ -256,7 +256,7 @@ class Pamona(object):
 
 		num = [0]
 		for i in range(n_datasets-1):
-			num.append(num[i]+len(data[i]))
+			num.append(num[i]+data[i].shape[0])
 
 		U, V = U[:,:self.output_dim], np.transpose(V)[:,:self.output_dim]
 

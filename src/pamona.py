@@ -30,8 +30,11 @@ class Pamona(Pamona_original):
         Computes the alignment matrix T and integrated data.
         """
         # Ensure inputs are numpy arrays
-        x_a = np.array(x_a)
-        x_b = np.array(x_b)
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               # x_a = np.array(x_a)
+        # x_b = np.array(x_b)
+        from scipy.sparse import issparse
+        x_a = x_a if issparse(x_a) else np.asarray(x_a)
+        x_b = x_b if issparse(x_b) else np.asarray(x_b)
         
         # --- Semi-Supervised Logic: Construct Matrix M ---
         # We inject prior knowledge if gamma > 0 and labels are provided.
