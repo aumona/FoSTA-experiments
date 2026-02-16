@@ -18,14 +18,14 @@ from utils.utils import kernel2Dist, print_mat_stats
 from utils.labels import LabelUtils
 
 # OT solver
-from .hiref.adaptive_HiRef import solve_compressed_hiref, solve_dummy_hiref
+from .hiref.adaptive_HiRef import solve_surjection_hiref
 
 import sys
 
 class FoSTA(object):
     '''FoSTA: Forest-guided Semantic Transport Alignment'''
     def __init__(self,
-                 mu=1,  # cross-domain block strength
+                 mu=0.5,  # cross-domain block strength (0.5 = equal weight, 0.0 = ignore cross-domain affinities, 1.0 = rely solely on cross-domain affinities)
                  dpt=False,
                  n_landmark=2000,
                  t='auto',
@@ -33,7 +33,7 @@ class FoSTA(object):
                  n_estimators=1000,
                  prior_correct=True,
                  semantic_norm='l2',  # normalization method for semantic vectors (supports 'l1' and 'l2')
-                 embedder='spectral',
+                 embedder='PHATE',
                  n_components=2,
                  verbose=0,
                  random_state=None,
@@ -53,18 +53,17 @@ class FoSTA(object):
         self.n_estimators = n_estimators
 
         self.rfgap_params = {
-            'random_state': random_state,
+            'random_state': self.random_state,
             'prediction_type': 'classification',  # force classification mode
-            'n_estimators': n_estimators,
+            'n_estimators': self.n_estimators,
             'prox_method': 'rfgap',
             'model_type': 'rf',
             'oob_score': False,
             'non_zero_diagonal': True,
-            'force_symmetric': True,
+            'symm_mode': None,  # Better transfer without forcing symmetry in RFGAP
             'max_normalize': True,
-            # 'class_weight': 'balanced',  # handle class imbalance in RF
             'verbose': 0,
-            'n_jobs': n_jobs,
+            'n_jobs': self.n_jobs,
         }
 
         self.T_sparse = None
@@ -153,10 +152,22 @@ class FoSTA(object):
             row_sums[row_sums == 0] = 1.0 # Prevent div/0 for empty landmarks
             Y_encoded /= row_sums
 
-        # --- Diffusion (The Projection) ---
+        # --- projection onto semantic space ---
         # W is sparse (N, N) or dense (N, K), Y is dense (K, C) -> Result is Dense (N, C)
         # This calculates the raw sum of affinities to class signals
-        post = W.dot(Y_encoded) if sparse.issparse(W) else np.dot(W, Y_encoded)
+        post = W.dot(Y_encoded)
+
+        # Remove self-similarity contribution (labeled points only)
+        # Efficient leave-self-out: subtract W[i,i] from the column corresponding to y_i
+        if clusters is None:
+            # diag of W as (N,)
+            d = W.diagonal()
+            # subtract only for labeled points
+            labeled_indices = np.flatnonzero(~mask_unl)     # same as above
+            # y_idx is only labels for labeled points; map those onto full-length array
+            y_full_idx = np.empty(N, dtype=int)
+            y_full_idx[~mask_unl] = y_idx
+            post[labeled_indices, y_full_idx[~mask_unl]] -= d[labeled_indices]
 
         # --- Prior Correction ---
         if prior_correct:
@@ -246,12 +257,12 @@ class FoSTA(object):
         """
         Constructs a joint affinity matrix just like in MALI, with max-normalized T as input (OT coupling matrix)
         """
-        W_ab = self.mu * (prox_a.dot(T) + T.dot(prox_b)) / 2 # (n_a x n_b)
-        W_ba = W_ab.transpose()
+        W_ab = prox_a.dot(T) # (n_a x n_b)
+        W_ba = prox_b.dot(T.transpose()) # (n_b x n_a)
         W_sym = sparse.bmat(
             [
-            [prox_a, W_ab],
-            [W_ba,   prox_b]
+            [(1-self.mu)*prox_a, self.mu*W_ab],
+            [self.mu*W_ba,   (1-self.mu)*prox_b]
             ],
             format="csr"
         )
@@ -304,8 +315,7 @@ class FoSTA(object):
             post_b = self._get_semantic_vectors(trans_b, y_b, labels, clusters=clusters_b, prior_correct=self.prior_correct)
 
         print("Computing Optimal Transport...") if self.verbose > 0 else None
-        self.T_sparse = solve_dummy_hiref(post_a, post_b, verbose=self.verbose, dummy_mode='uniform')
-
+        self.T_sparse = solve_surjection_hiref(post_a, post_b, verbose=self.verbose, random_state=self.random_state)
 
         # ---------- DIAGNOSTICS ----------
         T = self.T_sparse.tocsr()
@@ -328,7 +338,7 @@ class FoSTA(object):
                 n_components=self.n_components,
                 t=self.t,
                 knn_dist='precomputed_affinity',
-                kernel_symm='+',  # already use pre-symmetrized affinity, but set to '+' to be safe
+                kernel_symm='+',
                 random_state=self.random_state,
                 verbose=self.verbose,
                 n_jobs=self.n_jobs,

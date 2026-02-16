@@ -1,5 +1,7 @@
-# rf-phate
-# torch
-# umap-learn
-# jax
-# pot
+git+https://github.com/jakerhodes/RF-PHATE
+git+https://github.com/jakerhodes/RF-GAP-Python
+torch
+umap-learn
+jax
+pot
+scanpy

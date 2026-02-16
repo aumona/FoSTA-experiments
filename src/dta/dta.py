@@ -21,7 +21,6 @@ from sklearn.manifold import SpectralEmbedding
 from rfphate import PageRankPHATE
 from rfgap import RFGAP
 import umap
-from src.hiref.adaptive_HiRef import solve_dummy_hiref, solve_compressed_hiref
 
 
 class DTA():
@@ -56,7 +55,6 @@ class DTA():
              distance = 'cosine',
              anisotropy = 0,
              constrW = 'kernel',
-             hiref = False,
              **kwargs):
         
         '''
@@ -108,7 +106,6 @@ class DTA():
         self.constrW = constrW
         self.normalize_priors = 1  # to match RFMALI
         self.normalize_M = 1
-        self.hiref = hiref
         
     def compute_graphs(self):
         
@@ -166,9 +163,8 @@ class DTA():
                 'model_type': 'rf',
                 'oob_score': False,
                 'non_zero_diagonal': True,
-                'force_symmetric': True,
+                'force_symmetric': False,  # Better transfer without forcing symmetry in RFGAP
                 'max_normalize': True,
-                # 'class_weight': 'balanced',  # handle class imbalance in RF
                 'verbose': 0,
                 'n_jobs': self.n_jobs,
             }
@@ -312,54 +308,48 @@ class DTA():
    
     def optimal_transport(self):
 
-        if self.hiref:
-            if self.met != 'mali':
-                raise NotImplementedError("HiRef with known correspondences not implemented yet")
-            self.transport = 'hiref'
-            self.a, self.b = None, None
-            print("Using HiRef solver with compressed OT logic")
-        
-        else:
-            if self.N1 == self.N2:
-                if self.m == 1:
-                    self.a = np.repeat(1., self.N1)
-                    self.b = np.repeat(1., self.N1)
-                    if self.entR == 0:
-                        # Compute OT 
-                        self.transport = "wot"
-                    else:
-                        self.transport = "wotR"
 
-                else:
-                    if self.entR == 0:
-                        # Compute OT 
-                        self.transport = "wotpartial"
-                        self.a = np.repeat(1/self.N1, self.N1)
-                        self.b = np.repeat(1/self.N1, self.N1)
-                        self.m = np.floor(self.m*self.N1)/self.N1
-                    else:
-                        self.transport = "wotpartialR"
-                        self.m = np.floor(self.m*self.N1)/self.N1
-                        self.a = np.repeat(1/self.N1, self.N1)
-                        self.b = np.repeat(1/self.N1, self.N1)
-            else:
-                if self.m != 1:
-                    self.a = np.repeat(1/self.N1, self.N1)
-                    self.b = np.repeat(1/self.N2, self.N2)
-                    self.m = np.floor(self.m*self.N1)/self.N1
-                    if self.entR > 0:
-                        self.transport = "wotpartialR"
-                    else:
-                        self.transport = "wotpartial"
-                
-                elif self.m == 1:
+ 
+        if self.N1 == self.N2:
+            if self.m == 1:
+                self.a = np.repeat(1., self.N1)
+                self.b = np.repeat(1., self.N1)
+                if self.entR == 0:
+                    # Compute OT 
                     self.transport = "wot"
-                    if self.entR > 0:
-                        self.transport = "wotR"
-                    self.a = np.repeat(1, self.N1).astype(float)
-                    self.b = np.repeat(self.N1/self.N2, self.N2)
-                    print("Unbalanced")
+                else:
+                    self.transport = "wotR"
+
+            else:
+                if self.entR == 0:
+                    # Compute OT 
+                    self.transport = "wotpartial"
+                    self.a = np.repeat(1/self.N1, self.N1)
+                    self.b = np.repeat(1/self.N1, self.N1)
+                    self.m = np.floor(self.m*self.N1)/self.N1
+                else:
+                    self.transport = "wotpartialR"
+                    self.m = np.floor(self.m*self.N1)/self.N1
+                    self.a = np.repeat(1/self.N1, self.N1)
+                    self.b = np.repeat(1/self.N1, self.N1)
+        else:
+            if self.m != 1:
+                self.a = np.repeat(1/self.N1, self.N1)
+                self.b = np.repeat(1/self.N2, self.N2)
+                self.m = np.floor(self.m*self.N1)/self.N1
+                if self.entR > 0:
+                    self.transport = "wotpartialR"
+                else:
+                    self.transport = "wotpartial"
             
+            elif self.m == 1:
+                self.transport = "wot"
+                if self.entR > 0:
+                    self.transport = "wotR"
+                self.a = np.repeat(1, self.N1).astype(float)
+                self.b = np.repeat(self.N1/self.N2, self.N2)
+                print("Unbalanced")
+        
 
         
         a = self.a
@@ -393,15 +383,7 @@ class DTA():
             
             self.T = ot.partial.entropic_partial_wasserstein(a, b, self.Distances12[:self.N1, :self.N2], reg = self.entR, m = self.m)
             self.T[self.T < 1e-10] = 0
-        elif self.transport == "hiref":
-            T_sparse = solve_dummy_hiref(post_a=preprocessing.normalize(self.gamma1_c, norm='l1', axis=1),
-                                                    post_b=preprocessing.normalize(self.gamma2_c, norm='l1', axis=1),
-                                                    verbose=self.verbose)
-            # T_sparse = solve_compressed_hiref(post_a=preprocessing.normalize(self.gamma1_c, norm='l1', axis=1),
-            #                                         post_b=preprocessing.normalize(self.gamma2_c, norm='l1', axis=1),
-            #                                         verbose=self.verbose,
-            #                                         random_state=self.random_state)
-            self.T = T_sparse.toarray()
+
         else:
             raise ValueError("Not implemented")
             
@@ -517,6 +499,7 @@ class DTA():
             print_mat_stats("Within-domain A (W1)", W1)
             print_mat_stats("Within-domain B (W2)", W2)
             print_mat_stats("Cross-domain A→B (W12)", W12)
+            print_mat_stats("Cross-domain B→A (W21)", W21)
 
 
     def embed(self):
