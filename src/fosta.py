@@ -6,10 +6,10 @@ from sklearn import preprocessing
 import graphtools
 
 # RF-GAP
-from rfgap import RFGAP
+from src.rfgap import RFGAP
 
 # Embedders
-from rfphate import PageRankPHATE
+from src.phate import PageRankPHATE
 from sklearn.manifold import SpectralEmbedding
 from umap import UMAP
 
