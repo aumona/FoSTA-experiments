@@ -18,8 +18,8 @@ import time
 from sklearn import preprocessing
 from copy import deepcopy
 from sklearn.manifold import SpectralEmbedding
-from rfphate import PageRankPHATE
-from rfgap import RFGAP
+from src.phate import PageRankPHATE
+from src.rfgap import RFGAP
 import umap
 
 

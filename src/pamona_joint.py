@@ -3,7 +3,7 @@ import numpy as np
 from src.Pamona.Pamona_without_projection import Pamona as Pamona_original
 from umap import UMAP
 from utils.labels import LabelUtils
-from rfphate import PageRankPHATE
+from src.phate import PageRankPHATE
 from sklearn.manifold import SpectralEmbedding
 from sklearn.preprocessing import normalize
 from utils.utils import kernel2Dist

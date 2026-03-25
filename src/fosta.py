@@ -6,10 +6,10 @@ from sklearn import preprocessing
 import graphtools
 
 # RF-GAP
-from rfgap import RFGAP
+from src.rfgap import RFGAP
 
 # Embedders
-from rfphate import PageRankPHATE
+from src.phate import PageRankPHATE
 from sklearn.manifold import SpectralEmbedding
 from umap import UMAP
 
@@ -27,6 +27,7 @@ class FoSTA(object):
     def __init__(self,
                  mu=0.5,  # cross-domain block strength (0.5 = equal weight, 0.0 = ignore cross-domain affinities, 1.0 = rely solely on cross-domain affinities)
                  dpt=False,
+                 prox_method='rfgap',
                  n_landmark=2000,
                  t='auto',
                  beta=0.7,
@@ -40,6 +41,7 @@ class FoSTA(object):
                  n_jobs=-1):
         self.mu = mu
         self.dpt = dpt
+        self.prox_method = prox_method
         self.n_landmark = n_landmark  # number of landmarks for DPT
         self.prior_correct = prior_correct
         self.t = t
@@ -56,7 +58,7 @@ class FoSTA(object):
             'random_state': self.random_state,
             'prediction_type': 'classification',  # force classification mode
             'n_estimators': self.n_estimators,
-            'prox_method': 'rfgap',
+            'prox_method': self.prox_method,
             'model_type': 'rf',
             'oob_score': False,
             'non_zero_diagonal': True,
