@@ -28,6 +28,13 @@ class FoSTA(object):
                  mu=1,  # cross-domain block strength
                  dpt=False,
                  n_landmark=2000,
+
+                 euclidean_mode=False,  # MALI-style approach without forest-guided proximities (only for ablation, not recommended)
+                 n_pca=100,  # only for euclidean mode
+                 n_neighbors=5,  # only for euclidean mode
+                 decay=40,  # only for euclidean mode
+                 knn_dist='euclidean',  # only for euclidean mode
+
                  t='auto',
                  beta=0.7,
                  n_estimators=1000,
@@ -41,6 +48,11 @@ class FoSTA(object):
         self.mu = mu
         self.dpt = dpt
         self.n_landmark = n_landmark  # number of landmarks for DPT
+        self.euclidean_mode = euclidean_mode
+        self.n_pca = n_pca
+        self.n_neighbors = n_neighbors
+        self.decay = decay
+        self.knn_dist = knn_dist
         self.prior_correct = prior_correct
         self.t = t
         self.beta = beta
@@ -279,15 +291,39 @@ class FoSTA(object):
         labels = LabelUtils.validate_shared_labels(y_a, y_b, strict=True)
         self.classes_ = labels
 
-        print("Fitting RFGAP on Domain A...") if self.verbose > 0 else None
-        self.rfgap_a = RFGAP(**self.rfgap_params)
-        self.rfgap_a.fit(x_a, y_a)
-        prox_a = self.rfgap_a.get_proximities()
 
-        print("Fitting RFGAP on Domain B...") if self.verbose > 0 else None
-        self.rfgap_b = RFGAP(**self.rfgap_params)
-        self.rfgap_b.fit(x_b, y_b)
-        prox_b = self.rfgap_b.get_proximities()
+        if not self.euclidean_mode:
+            print("Fitting RFGAP on Domain A...") if self.verbose > 0 else None
+            self.rfgap_a = RFGAP(**self.rfgap_params)
+            self.rfgap_a.fit(x_a, y_a)
+            prox_a = self.rfgap_a.get_proximities()
+
+            print("Fitting RFGAP on Domain B...") if self.verbose > 0 else None
+            self.rfgap_b = RFGAP(**self.rfgap_params)
+            self.rfgap_b.fit(x_b, y_b)
+            prox_b = self.rfgap_b.get_proximities()
+
+        else:
+            n_pca_a = min(self.n_pca, x_a.shape[1]) if self.n_pca is not None else None
+            if n_pca_a is not None and n_pca_a < 100:
+                n_pca_a = None
+            prox_a = graphtools.Graph(x_a, n_pca=n_pca_a, knn=self.n_neighbors,
+                                decay=self.decay, distance=self.knn_dist,
+                                thresh=1e-4,
+                                n_jobs=self.n_jobs,
+                                random_state=self.random_state,
+                                verbose=False).K
+            n_pca_b = min(self.n_pca, x_b.shape[1]) if self.n_pca is not None else None
+            if n_pca_b is not None and n_pca_b < 100:
+                n_pca_b = None
+            prox_b = graphtools.Graph(x_b, n_pca=n_pca_b, knn=self.n_neighbors,
+                                decay=self.decay, distance=self.knn_dist,
+                                thresh=1e-4,
+                                n_jobs=self.n_jobs,
+                                random_state=self.random_state,
+                                verbose=False).K
+
+
 
         print("Building C-dim vectors...") if self.verbose > 0 else None
         if not self.dpt:
