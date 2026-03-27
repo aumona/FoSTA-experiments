@@ -163,7 +163,7 @@ class DTA():
                 'model_type': 'rf',
                 'oob_score': False,
                 'non_zero_diagonal': True,
-                'force_symmetric': False,  # Better transfer without forcing symmetry in RFGAP
+                'symm_mode': None,  # Better transfer without forcing symmetry in RFGAP
                 'max_normalize': True,
                 'verbose': 0,
                 'n_jobs': self.n_jobs,
