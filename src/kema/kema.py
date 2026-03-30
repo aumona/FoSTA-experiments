@@ -9,7 +9,7 @@ class KEMA(BaseEstimator, TransformerMixin):
     def __init__(self, n_components=2, mu=0.5, reg=1e-3,
                  n_neighbors=5, n_pca=100, decay=40, knn_dist='euclidean',
                  n_jobs=1, verbose=True, max_iter=100, tol=1e-5,
-                 kernel='rbf', unlabeled_value=0, random_state=None):
+                 kernel='rbf', unlabeled_value=-1, random_state=None):
 
         self.n_components = n_components
         self.mu = mu

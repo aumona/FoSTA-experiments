@@ -1,6 +1,7 @@
-git+https://github.com/jakerhodes/RF-PHATE
-git+https://github.com/jakerhodes/RF-GAP-Python
+forestkernel @ git+https://github.com/jakerhodes/RF-GAP-Python@forestkernel-wip
 torch
+aeon==1.4.0
+phate
 umap-learn
 jax
 pot

@@ -6,7 +6,7 @@ from sklearn import preprocessing
 import graphtools
 
 # RF-GAP
-from src.rfgap import RFGAP
+from forestkernel import ForestKernel
 
 # Embedders
 from src.phate import PageRankPHATE
@@ -27,7 +27,8 @@ class FoSTA(object):
     def __init__(self,
                  mu=0.5,  # cross-domain block strength (0.5 = equal weight, 0.0 = ignore cross-domain affinities, 1.0 = rely solely on cross-domain affinities)
                  dpt=False,
-                 prox_method='rfgap',
+                 kernel_method='gap',
+                 model_type='rf',
                  n_landmark=2000,
 
                  euclidean_mode=False,  # MALI-style approach without forest-guided proximities (only for ablation, not recommended)
@@ -48,7 +49,8 @@ class FoSTA(object):
                  n_jobs=-1):
         self.mu = mu
         self.dpt = dpt
-        self.prox_method = prox_method
+        self.kernel_method = kernel_method
+        self.model_type = model_type
         self.n_landmark = n_landmark  # number of landmarks for DPT
         self.euclidean_mode = euclidean_mode
         self.n_pca = n_pca
@@ -66,17 +68,17 @@ class FoSTA(object):
         self.n_jobs = n_jobs
         self.n_estimators = n_estimators
 
-        self.rfgap_params = {
+        self.kernel_params = {
             'random_state': self.random_state,
             'prediction_type': 'classification',  # force classification mode
             'n_estimators': self.n_estimators,
-            'prox_method': self.prox_method,
-            'model_type': 'rf',
-            'oob_score': False,
-            'non_zero_diagonal': True,
-            'symm_mode': None,  # Better transfer without forcing symmetry in RFGAP
-            'max_normalize': True,
-            'verbose': 0,
+            'kernel_method': self.kernel_method,
+            'model_type': self.model_type,
+            'force_nonzero_diag': True,
+            'force_symmetric': False,  # Better transfer without forcing symmetry in RFGAP
+            'normalize_diagonal': True,
+            'allow_semi_supervised': True,  # Allow unlabeled data to influence kernels
+            # 'verbose': 0,
             'n_jobs': self.n_jobs,
         }
 
@@ -307,14 +309,14 @@ class FoSTA(object):
 
         if not self.euclidean_mode:
             print("Fitting RFGAP on Domain A...") if self.verbose > 0 else None
-            self.rfgap_a = RFGAP(**self.rfgap_params)
-            self.rfgap_a.fit(x_a, y_a)
-            prox_a = self.rfgap_a.get_proximities()
+            self.kernel_a = ForestKernel(**self.kernel_params)
+            self.kernel_a.fit(x_a, y_a)
+            prox_a = self.kernel_a.get_kernel()
 
             print("Fitting RFGAP on Domain B...") if self.verbose > 0 else None
-            self.rfgap_b = RFGAP(**self.rfgap_params)
-            self.rfgap_b.fit(x_b, y_b)
-            prox_b = self.rfgap_b.get_proximities()
+            self.kernel_b = ForestKernel(**self.kernel_params)
+            self.kernel_b.fit(x_b, y_b)
+            prox_b = self.kernel_b.get_kernel()
 
         else:
             n_pca_a = min(self.n_pca, x_a.shape[1]) if self.n_pca is not None else None
