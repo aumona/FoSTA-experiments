@@ -19,7 +19,7 @@ from sklearn import preprocessing
 from copy import deepcopy
 from sklearn.manifold import SpectralEmbedding
 from src.phate import PageRankPHATE
-from src.rfgap import RFGAP
+from forestkernel import ForestKernel
 import umap
 
 
@@ -159,18 +159,18 @@ class DTA():
                 'random_state': self.random_state,
                 'prediction_type': 'classification',  # force classification mode
                 'n_estimators': self.n_estimators,
-                'prox_method': 'rfgap',
+                'kernel_method': 'gap',
                 'model_type': 'rf',
-                'oob_score': False,
-                'non_zero_diagonal': True,
-                'symm_mode': None,  # Better transfer without forcing symmetry in RFGAP
-                'max_normalize': True,
+                'force_nonzero_diag': True,
+                'force_symmetric': None,  # Better transfer without forcing symmetry in RFGAP
+                'normalize_diagonal': True,
+                'allow_semi_supervised': True,  # Allow unlabeled data to influence kernels
                 'verbose': 0,
                 'n_jobs': self.n_jobs,
             }
-            rfgap = RFGAP(**rfgap_params)
+            rfgap = ForestKernel(**rfgap_params)
             rfgap.fit(self.domain1, self.labels1)
-            prox1 = rfgap.get_proximities()
+            prox1 = rfgap.get_kernel()
             self.graphD1 = graphtools.Graph(prox1,
                                             precomputed='affinity',
                                             n_jobs=self.n_jobs,
@@ -179,7 +179,7 @@ class DTA():
                                             random_state=self.random_state,
                                             **(self.kwargs))
             rfgap.fit(self.domain2, self.labels2)
-            prox2 = rfgap.get_proximities()
+            prox2 = rfgap.get_kernel()
             self.graphD2 = graphtools.Graph(prox2,
                                             precomputed='affinity',
                                             n_jobs=self.n_jobs,
