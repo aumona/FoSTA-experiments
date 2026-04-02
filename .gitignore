@@ -1,8 +1,15 @@
 # data
 data/
+data_uci/
+
+# Original HiRef codebase
+src/HiRef-main
 
 # ideas
 ideas/
+
+#results
+results_uci/
 
 # figures
 figures/
