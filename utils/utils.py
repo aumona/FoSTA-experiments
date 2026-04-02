@@ -44,13 +44,14 @@ def kernel2Dist(K):
     Kn = np.clip(Kn, a_min = 0, a_max = 1)
     return 1 - Kn
 
-def dataprep(data, label_col_idx=0, transform='normalize', global_transform=False, cat_to_numeric=True):
+def dataprep(data, label_col_idx=0, transform='standardize', global_transform=False, cat_to_numeric=True):
     """
     This method normalizes or standardizes all non-categorical variables in an array.
     All categorical variables are kept.
     Categorical variables as supposed to be ordered, so that we can transform them to numerical
     and standardize them the same way as continuous variables to be on the same scale.
     
+    If transform = "standardize", categorical variables are standardized.
     If transform = "normalize", categorical variables are scaled from 0 to 1. The highest value
     is assigned the value of 1, the lowest value is assigned the value of 0.
     If global_transform = True, the normalization is done globally (useful for image-like data), otherwise it is done feature-wise
@@ -108,42 +109,6 @@ def dataprep(data, label_col_idx=0, transform='normalize', global_transform=Fals
         y_encoded = LabelEncoder().fit_transform(y)
 
     return x, y_encoded
-    
-
-def load_data(data_path, data_name, processing=True, transform='normalize', global_transform=False):
-    '''
-    Load data from a path. Automatically handles cases where a single CSV file or paired _train and _test CSV files are provided.
-    '''
-    train_file = os.path.join(data_path, data_name + "_train.csv")
-    test_file = os.path.join(data_path, data_name + "_test.csv")
-    single_file = os.path.join(data_path, data_name + ".csv")
-
-    if os.path.exists(train_file) and os.path.exists(test_file):
-        # Case 1: Paired _train and _test CSVs
-        train_data = pd.read_csv(train_file, sep=',')
-        test_data = pd.read_csv(test_file, sep=',')
-        # Concatenate train and test datasets
-        data = pd.concat([train_data, test_data], axis=0).reset_index(drop=True)
-        n_train = train_data.shape[0]
-    elif os.path.exists(single_file):
-        # Case 2: Single CSV file
-        data = pd.read_csv(single_file, sep=',')
-        n_train = None
-    else:
-        # Raise an error if neither case is satisfied
-        raise FileNotFoundError(f"Neither '{data_name}.csv' nor '{data_name}_train.csv' and '{data_name}_test.csv' found in '{data_path}'.")
-
-    if processing:
-        X, y = dataprep(data, label_col_idx=0, transform=transform, global_transform=global_transform, cat_to_numeric=True)
-
-        # Convert X and y to NumPy arrays
-        X = X.to_numpy() if isinstance(X, pd.DataFrame) else X
-        y = y.to_numpy() if isinstance(y, pd.Series) else y
-    else:
-        X, y = data.iloc[:, 1:], data.iloc[:, 0]
-
-    return X, y, n_train
-
 
 def load_paired_mnist_rotated(n_samples=1000, rotation_range=(30, 30), seed=42):
     """
