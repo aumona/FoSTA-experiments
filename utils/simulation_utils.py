@@ -311,7 +311,7 @@ def normalize_df(df):
     return (df - df.min()) / (df.max() - df.min())
 
 
-def add_noise_features_split(df, signal_to_noise_ratio = 0.1, random_state=42):
+def add_gaussian_noise_features_split(df, signal_to_noise_ratio = 0.1, random_state=42):
     # creates two domains: one with only signal features, one with signal + noise features
     # will normalize data if not already normalized
     
@@ -324,7 +324,7 @@ def add_noise_features_split(df, signal_to_noise_ratio = 0.1, random_state=42):
     n_noise_features = max(1, int(1/signal_to_noise_ratio * df.shape[1])) 
 
     rng = np.random.default_rng(seed = random_state)
-    noise = rng.uniform(size = (n_samples, n_noise_features))
+    noise = rng.standard_normal(size = (n_samples, n_noise_features))
     
     df2 = pd.concat([df, pd.DataFrame(noise, columns = [f"noise_{i}" for i in range(n_noise_features)])], axis=1)
     return df.copy(), df2
