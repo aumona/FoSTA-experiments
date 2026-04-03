@@ -2,6 +2,9 @@
 data/
 data_uci/
 
+# nohup
+nohup.out
+
 # Original HiRef codebase
 src/HiRef-main
 
