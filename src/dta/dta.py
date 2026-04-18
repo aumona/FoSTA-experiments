@@ -10,6 +10,7 @@ from sklearn.neighbors import NearestNeighbors
 import pdb
 import sklearn
 from utils.utils import kernel2Dist, print_mat_stats
+from utils.labels import LabelUtils
 import logging, os
 from scipy.spatial import distance
 import warnings 
@@ -162,15 +163,14 @@ class DTA():
                 'kernel_method': 'gap',
                 'model_type': 'rf',
                 'force_nonzero_diag': True,
-                'force_symmetric': None,  # Better transfer without forcing symmetry in RFGAP
-                'normalize_diagonal': True,
-                'allow_semi_supervised': True,  # Allow unlabeled data to influence kernels
                 'verbose': 0,
                 'n_jobs': self.n_jobs,
             }
             rfgap = ForestKernel(**rfgap_params)
-            rfgap.fit(self.domain1, self.labels1)
-            prox1 = rfgap.get_kernel()
+            mask_unlabeled_a = LabelUtils.get_unlabeled_mask(self.labels1)
+            idx_unlabeled_a = np.flatnonzero(mask_unlabeled_a)
+            rfgap.fit(self.domain1, self.labels1, idx_unlabeled=idx_unlabeled_a)
+            prox1 = rfgap.get_kernel(normalize_diagonal=True)
             self.graphD1 = graphtools.Graph(prox1,
                                             precomputed='affinity',
                                             n_jobs=self.n_jobs,
@@ -178,8 +178,10 @@ class DTA():
                                             verbose=self.verbose,
                                             random_state=self.random_state,
                                             **(self.kwargs))
-            rfgap.fit(self.domain2, self.labels2)
-            prox2 = rfgap.get_kernel()
+            mask_unlabeled_b = LabelUtils.get_unlabeled_mask(self.labels2)
+            idx_unlabeled_b = np.flatnonzero(mask_unlabeled_b)
+            rfgap.fit(self.domain2, self.labels2, idx_unlabeled=idx_unlabeled_b)
+            prox2 = rfgap.get_kernel(normalize_diagonal=True)
             self.graphD2 = graphtools.Graph(prox2,
                                             precomputed='affinity',
                                             n_jobs=self.n_jobs,
@@ -199,47 +201,79 @@ class DTA():
         
     
     def compute_labels_distance(self):
-        # compute distance using labels 
-        
-        # comabine labels
-        
+        # combine labels if shared labels are provided
         if (self.labelsh1 is not None) and (self.labelsh2 is not None):
             self.labels1 = np.concatenate((self.labels1, self.labelsh1))
             self.labels2 = np.concatenate((self.labels2, self.labelsh2))
-
-        self.unique_labels = np.intersect1d(self.labels1, self.labels2)
+    
+        labels1 = np.asarray(self.labels1)
+        labels2 = np.asarray(self.labels2)
+    
+        # keep only valid labels (exclude masked / unlabeled)
+        valid1 = ~np.isnan(labels1) if np.issubdtype(labels1.dtype, np.floating) else np.ones(len(labels1), dtype=bool)
+        valid2 = ~np.isnan(labels2) if np.issubdtype(labels2.dtype, np.floating) else np.ones(len(labels2), dtype=bool)
+    
+        valid1 &= (labels1 != -1)
+        valid2 &= (labels2 != -1)
+    
+        labels1_valid = labels1[valid1]
+        labels2_valid = labels2[valid2]
+    
+        self.unique_labels = np.intersect1d(labels1_valid, labels2_valid)
+    
         self.gamma1_c = np.zeros((self.domain1.shape[0], len(self.unique_labels)))
         self.gamma2_c = np.zeros((self.domain2.shape[0], len(self.unique_labels)))
-
-        
-        _, self.priors1 = np.unique(self.labels1[~np.isnan(self.labels1)], return_counts = True)
-        _, self.priors2 = np.unique(self.labels2[~np.isnan(self.labels2)], return_counts = True)
-        self.priors1 = self.priors1/len(self.labels1[~np.isnan(self.labels1)])
-        self.priors2 = self.priors2/len(self.labels2[~np.isnan(self.labels2)])
-        
-        if self.distances == "DPT":
-            for p, i in enumerate(self.unique_labels):
-                indx = np.where(self.labels1 == i)[0]
-                indx2 = np.where(self.labels2 == i)[0]
-                if self.normalize_priors == 1:
-                    self.gamma1_c[:, p] = np.sum(self.M1[:, indx], axis = 1)/self.priors1[p]
-                    self.gamma2_c[:, p] = np.sum(self.M2[:, indx2], axis = 1)/self.priors2[p]
-                else: 
-                    self.gamma1_c[:, p] = np.sum(self.M1[:, indx], axis = 1)/len(self.M1[:, indx])
-                    self.gamma2_c[:, p] = np.sum(self.M2[:, indx2], axis = 1)/len(self.M2[:, indx2]) 
-        else:
-            for p, i in enumerate(self.unique_labels):
-                indx = np.where(self.labels1 == i)[0]
-                indx2 = np.where(self.labels2 == i)[0]
-                if self.normalize_priors == 1:
-                    self.gamma1_c[:, p] = np.sum(self.p1_t[:, indx], axis = 1)/self.priors1[p] 
-                    self.gamma2_c[:, p] = np.sum(self.p2_t[:, indx2], axis = 1)/self.priors2[p]  
-                else:
-                    self.gamma1_c[:, p] = np.sum(self.p1_t[:, indx], axis = 1)/len(self.p1_t[:, indx])
-                    self.gamma2_c[:, p] = np.sum(self.p2_t[:, indx2], axis = 1)/len(self.p2_t[:, indx2]) 
-
+    
+        # priors as dictionaries aligned with actual label values
+        vals1, cnts1 = np.unique(labels1_valid, return_counts=True)
+        vals2, cnts2 = np.unique(labels2_valid, return_counts=True)
+    
+        priors1 = {lab: cnt / len(labels1_valid) for lab, cnt in zip(vals1, cnts1)}
+        priors2 = {lab: cnt / len(labels2_valid) for lab, cnt in zip(vals2, cnts2)}
+    
+        eps = 1e-12
+    
+        for p, lab in enumerate(self.unique_labels):
+            indx1 = np.where(labels1 == lab)[0]
+            indx2 = np.where(labels2 == lab)[0]
+    
+            if len(indx1) == 0 or len(indx2) == 0:
+                continue
+    
+            if self.distances == "DPT":
+                base1 = self.M1
+                base2 = self.M2
+            else:
+                base1 = self.p1_t
+                base2 = self.p2_t
+    
+            if self.normalize_priors == 1:
+                denom1 = max(priors1.get(lab, 0.0), eps)
+                denom2 = max(priors2.get(lab, 0.0), eps)
+    
+                self.gamma1_c[:, p] = np.sum(base1[:, indx1], axis=1) / denom1
+                self.gamma2_c[:, p] = np.sum(base2[:, indx2], axis=1) / denom2
+            else:
+                self.gamma1_c[:, p] = np.sum(base1[:, indx1], axis=1) / max(len(indx1), 1)
+                self.gamma2_c[:, p] = np.sum(base2[:, indx2], axis=1) / max(len(indx2), 1)
+    
+        # sanitize before cdist
+        self.gamma1_c = np.nan_to_num(self.gamma1_c, nan=0.0, posinf=1e6, neginf=-1e6)
+        self.gamma2_c = np.nan_to_num(self.gamma2_c, nan=0.0, posinf=1e6, neginf=-1e6)
+    
+        # avoid cosine NaNs from zero rows
+        row_norms1 = np.linalg.norm(self.gamma1_c, axis=1)
+        row_norms2 = np.linalg.norm(self.gamma2_c, axis=1)
+    
+        zero1 = row_norms1 < eps
+        zero2 = row_norms2 < eps
+    
+        if self.distance == "cosine":
+            self.gamma1_c[zero1, 0] = eps
+            self.gamma2_c[zero2, 0] = eps
+    
         self.DistancesLabels = cdist(self.gamma1_c, self.gamma2_c, self.distance)
-        self.DistancesLabels[np.isnan(self.DistancesLabels)] = 1
+        self.DistancesLabels = np.nan_to_num(self.DistancesLabels, nan=1.0, posinf=1.0, neginf=1.0)
 
     
     def compute_corres_distance(self): 
@@ -285,21 +319,25 @@ class DTA():
 
             
 
-    def compute_dpt(self):    
-
-        w, rv = scipy.sparse.linalg.eigs(self.p1, k = 1)
-        w, lv = scipy.sparse.linalg.eigs(self.p1.transpose(), k = 1)
+    def compute_dpt(self, ridge=1e-8):
+        # Domain 1
+        w, rv = scipy.sparse.linalg.eigs(self.p1, k=1)
+        w, lv = scipy.sparse.linalg.eigs(self.p1.transpose(), k=1)
+    
         P = self.p1.toarray()
-        # MATRIX INVERSION is EXPENSIVE O(N^3), not scalable for large datasets
-        self.M1 = np.linalg.inv(np.eye(P.shape[0]) - (P - np.outer(rv.real, lv.real))) - np.eye(P.shape[0])
-        
-        w, rv = scipy.sparse.linalg.eigs(self.p2, k = 1)
-        w, lv = scipy.sparse.linalg.eigs(self.p2.transpose(), k = 1)
-        
-        
+        A1 = np.eye(P.shape[0]) - (P - np.outer(rv.real, lv.real))
+        A1 = A1 + ridge * np.eye(A1.shape[0])
+        self.M1 = np.linalg.solve(A1, np.eye(A1.shape[0])) - np.eye(A1.shape[0])
+    
+        # Domain 2
+        w, rv = scipy.sparse.linalg.eigs(self.p2, k=1)
+        w, lv = scipy.sparse.linalg.eigs(self.p2.transpose(), k=1)
+    
         P = self.p2.toarray()
-        self.M2 = np.linalg.inv(np.eye(P.shape[0]) - (P - np.outer(rv.real, lv.real))) - np.eye(P.shape[0])
-        
+        A2 = np.eye(P.shape[0]) - (P - np.outer(rv.real, lv.real))
+        A2 = A2 + ridge * np.eye(A2.shape[0])
+        self.M2 = np.linalg.solve(A2, np.eye(A2.shape[0])) - np.eye(A2.shape[0])
+    
         if self.normalize_M == 1:
             min_max_scaler = preprocessing.MinMaxScaler()
             self.M1 = min_max_scaler.fit_transform(self.M1.transpose()).transpose()
@@ -469,11 +507,22 @@ class DTA():
         if self.constrW == 'diffusion':
             W1 = self.graphD1.K.toarray()
             W2 = self.graphD2.K.toarray()
-        elif self.constrW == 'kernel':                        
-            W1 = self.graphD1.K.toarray()
-            W2 = self.graphD2.K.toarray()
-            W1 = W1 / np.diag(W1)[:, None]
-            W2 = W2 / np.diag(W2)[:, None]       
+        elif self.constrW == 'kernel':
+            W1 = self.graphD1.K.toarray().astype(float)
+            W2 = self.graphD2.K.toarray().astype(float)
+        
+            d1 = np.diag(W1).copy()
+            d2 = np.diag(W2).copy()
+        
+            eps = 1e-12
+            d1[d1 <= eps] = 1.0
+            d2[d2 <= eps] = 1.0
+        
+            W1 = W1 / d1[:, None]
+            W2 = W2 / d2[:, None]
+        
+            W1 = np.nan_to_num(W1, nan=0.0, posinf=0.0, neginf=0.0)
+            W2 = np.nan_to_num(W2, nan=0.0, posinf=0.0, neginf=0.0)      
         W12 = np.dot(W1, Tc)
         W21 = np.dot(W2, Tc.transpose())
         self.W = np.block([[W1, W12], [W21, W2]])
