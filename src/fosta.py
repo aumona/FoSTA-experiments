@@ -77,9 +77,6 @@ class FoSTA(object):
             'kernel_method': self.kernel_method,
             'model_type': self.model_type,
             'force_nonzero_diag': True,
-            'force_symmetric': False,  # Better transfer without forcing symmetry in RFGAP
-            'normalize_diagonal': True,
-            'allow_semi_supervised': True,  # Allow unlabeled data to influence kernels
         }
 
         self.T_sparse = None
@@ -326,13 +323,17 @@ class FoSTA(object):
         if not self.euclidean_mode:
             print("Fitting RFGAP on Domain A...") if self.verbose > 0 else None
             self.kernel_a = ForestKernel(**self.kernel_params)
-            self.kernel_a.fit(x_a, y_a)
-            prox_a = self.kernel_a.get_kernel()
+            mask_unlabeled_a = LabelUtils.get_unlabeled_mask(y_a)
+            idx_unlabeled_a = np.flatnonzero(mask_unlabeled_a)
+            self.kernel_a.fit(x_a, y_a, idx_unlabeled=idx_unlabeled_a)
+            prox_a = self.kernel_a.get_kernel(normalize_diagonal=True)
 
             print("Fitting RFGAP on Domain B...") if self.verbose > 0 else None
             self.kernel_b = ForestKernel(**self.kernel_params)
-            self.kernel_b.fit(x_b, y_b)
-            prox_b = self.kernel_b.get_kernel()
+            mask_unlabeled_b = LabelUtils.get_unlabeled_mask(y_b)
+            idx_unlabeled_b = np.flatnonzero(mask_unlabeled_b)
+            self.kernel_b.fit(x_b, y_b, idx_unlabeled=idx_unlabeled_b)
+            prox_b = self.kernel_b.get_kernel(normalize_diagonal=True)
 
         else:
             n_pca_a = min(self.n_pca, x_a.shape[1]) if self.n_pca is not None else None
