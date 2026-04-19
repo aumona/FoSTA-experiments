@@ -1,29 +1,424 @@
 from src.hiref import HiRef_fast as HiRef
 from src.hiref import rank_annealing
 from scipy import sparse
-from scipy.optimize import linear_sum_assignment
 import numpy as np
 import heapq
 
 
+# # ------------------------------------------------------------
+# # Universal OT Solver (The Update)
+# # ------------------------------------------------------------
+# def solve_compressed_hiref(post_a, post_b, verbose=0, random_state=None):
+#     """
+#     Universal Adaptive Transport Solver.
+#     Automatically handles Balanced (N_a == N_b) and Imbalanced (N_a != N_b) cases.
+    
+#     This method implements a locally adaptive version of the "Mass Rebalancing" 
+#     strategy described in the MALI paper (Section D).
+
+#     Mechanism:
+#     ----------
+#     1. Clustering as Mass Rebalancing:
+#         Instead of a global uniform weight, we cluster the large domain to find 
+#         representatives. The mass of each representative is distributed equally 
+#         among its cluster members.
+        
+#         Weight(point p) = 1 / |Cluster_Size|
+        
+#         - Dense regions -> Large Clusters -> Small individual weights.
+#         - Sparse regions -> Small Clusters -> Large individual weights.
+        
+#         This automatically fulfills the theoretical suggestion to "increase the 
+#         masses of samples belonging to low density regions," ensuring alignment 
+#         is driven by geometric structure rather than sampling density.
+
+#     Returns:
+#         T (sparse matrix): Shape (N_a, N_b) coupling matrix.
+        
+#     -------------------------------------------------------------------------
+#     SCENARIO 1: Balanced (N_a == N_b)
+#     -------------------------------------------------------------------------
+#     - Direct bijection between points.
+    
+#     -------------------------------------------------------------------------
+#     SCENARIO 2: N_a < N_b (Domain A is Small/Fixed)
+#     -------------------------------------------------------------------------
+#     - We call: run_adaptive_compression(post_fixed=post_a, post_to_compress=post_b)
+#     - Returns: T of shape (N_a, N_b).
+#     - Row Sums (N_a): Strictly 1.0 (Bijection to Centroids).
+#     - Col Sums (N_b): ~ 1/|Cluster| (Soft assignment via mass rebalancing).
+
+#     -------------------------------------------------------------------------
+#     SCENARIO 3: N_b < N_a (Domain B is Small/Fixed)
+#     -------------------------------------------------------------------------
+#     - We call: run_adaptive_compression(post_fixed=post_b, post_to_compress=post_a)
+#     - Returns: T_intermediate of shape (N_b, N_a).
+#     - We TRANSPOSE this to get final T of shape (N_a, N_b).
+#     """
+#     n_a = post_a.shape[0]
+#     n_b = post_b.shape[0]
+    
+#     # --- Case 1: Balanced (Direct Bijection) ---
+#     if n_a == n_b:
+#         if verbose: print(f"OT: Balanced Mode ({n_a}x{n_b})")
+#         rank_schedule = rank_annealing.optimal_rank_schedule(n=n_a)
+#         (rows, cols, data), _ = HiRef.hiref_lr_fast(
+#             post_a, post_b,
+#             rank_schedule=rank_schedule,
+#             return_coupling=True
+#         )
+#         return sparse.coo_matrix((data, (rows, cols)), shape=(n_a, n_b)).tocsr()
+
+#     # --- Case 2: Domain A is Smaller (Compress B) ---
+#     elif n_a < n_b:
+#         if verbose: print(f"OT: Compressing B -> A ({n_b} -> {n_a})")
+#         # We fix A, cluster B to match size of A, then expand columns
+#         return run_adaptive_compression(post_fixed=post_a, post_to_compress=post_b, random_state=random_state)
+
+#     # --- Case 3: Domain B is Smaller (Compress A) ---
+#     else: # n_a > n_b
+#         if verbose: print(f"OT: Compressing A -> B ({n_a} -> {n_b})")
+#         # We fix B, cluster A to match size of B.
+#         # This gives T_ba (N_b x N_a). We transpose it to get T_ab (N_a x N_b).
+#         T_ba = run_adaptive_compression(post_fixed=post_b, post_to_compress=post_a, random_state=random_state)
+#         return T_ba.T.tocsr()
+
+# def run_adaptive_compression(post_fixed, post_to_compress, random_state=None):
+#     """
+#     Helper: Compresses `post_to_compress` to size of `post_fixed`, solves OT, then lifts.
+#     Returns matrix of shape (n_fixed, n_compress).
+    
+#     Steps:
+#     1. Cluster the large domain (`post_to_compress`) into K clusters, where K = size of small domain (`post_fixed`).
+#     2. Solve bijective OT between `post_fixed` and the Centroids of the clusters.
+#     3. Distribute the mass from Centroids back to the original points in the large domain.
+#     """
+#     n_fixed = post_fixed.shape[0]          
+#     n_compress = post_to_compress.shape[0] 
+#     k = n_fixed  # Target clusters = size of small domain
+
+#     # 1. Clustering / Mass Rebalancing
+#     # We cluster the large domain to find 'k' representatives.
+#     # This implicitly defines the mass of each point based on local density.
+#     km = MiniBatchKMeans(n_clusters=k, random_state=random_state)
+#     z = km.fit_predict(post_to_compress)        
+#     post_centroids = km.cluster_centers_        
+
+#     # 2. Solve Square OT (Small Domain <-> Centroids)
+#     # Map Small Domain <-> Centroids of Large Domain.
+#     # Since sizes match (n_fixed == k), HiRef forces a 1-to-1 matching.
+#     rank_schedule = rank_annealing.optimal_rank_schedule(n=n_fixed)
+#     (rows, cols, data), _ = HiRef.hiref_lr_fast(
+#         post_fixed, post_centroids,
+#         rank_schedule=rank_schedule,
+#         return_coupling=True
+#     )
+    
+#     # T_coarse shape: (n_fixed, k)
+#     # Row sums = 1.0 (Perfect Bijection found)
+#     T_coarse = sparse.coo_matrix((data, (rows, cols)), shape=(n_fixed, k)).tocsr()
+
+#     # 3. Build Membership Matrix M (k x n_compress)
+#     # Distribute centroid mass equally to constituent points in Large Domain.
+#     # Weight = 1 / |Cluster_Size| (The "Mass Rebalancing" term)
+#     counts = np.bincount(z, minlength=k).astype(float)
+#     inv_counts = np.zeros_like(counts)
+#     inv_counts[counts > 0] = 1.0 / counts[counts > 0]
+    
+#     M_membership = sparse.coo_matrix(
+#         (inv_counts[z], (z, np.arange(n_compress))),
+#         shape=(k, n_compress)
+#     ).tocsr()
+
+#     # Scaling factor to match the total mass of source (biggest) domain
+#     # This ensures the final coupling T has appropriate total mass.
+#     scaling_factor = n_compress / n_fixed
+
+#     # 4. Lift to Full Resolution: T_final = T_coarse * M
+#     # T_intermediate = T_coarse @ M_membership
+#     # Shape: (n_fixed, n_compress)
+#     #
+#     # Verification:
+#     # - Row i (Small Domain point): Sums to 1.0.
+#     # - Col j (Large Domain point): Sums to 1/|Cluster|.
+#     return (T_coarse @ M_membership).tocsr() * scaling_factor
+
+
+
+
+
+# def solve_dummy_hiref(
+#     post_a, post_b,
+#     verbose=0,
+#     random_state=None,
+#     dummy_mode="uniform",   # {"uniform","mean","bootstrap"}
+#     extra_dummy=0,
+#     eps=1e-12,
+#     enforce_mali_marginals=True,
+# ):
+#     """
+#     HiRef coupling for unequal sizes using dummy padding to a square problem.
+#     Returns sparse T with shape (n_a, n_b).
+
+#     If enforce_mali_marginals=True:
+#       - target semantics match your current unbalanced wot mode:
+#         a_i = 1, b_j = n_a/n_b
+#       - i.e., row sums ~ 1, col sums ~ n_a/n_b, total mass ~ n_a
+#     """
+#     rng = np.random.default_rng(random_state)
+#     post_a = np.asarray(post_a)
+#     post_b = np.asarray(post_b)
+#     n_a, d_a = post_a.shape
+#     n_b, d_b = post_b.shape
+#     if d_a != d_b:
+#         raise ValueError(f"post_a and post_b must have same #dims, got {d_a} vs {d_b}")
+
+#     # -------------------------
+#     # Dummy generator
+#     # -------------------------
+#     def make_dummies(P, n_new):
+#         if n_new <= 0:
+#             return None
+#         d = P.shape[1]
+#         if dummy_mode == "uniform":
+#             D = np.full((n_new, d), 1.0 / d, dtype=P.dtype)
+#         elif dummy_mode == "mean":
+#             mu = P.mean(axis=0, keepdims=True)
+#             mu = np.clip(mu, eps, None)
+#             mu = mu / mu.sum(axis=1, keepdims=True)
+#             D = np.repeat(mu.astype(P.dtype), n_new, axis=0)
+#         elif dummy_mode == "bootstrap":
+#             # sample real points (helps stay on-manifold)
+#             idx = rng.integers(0, P.shape[0], size=n_new)
+#             D = P[idx].astype(P.dtype, copy=True)
+#         else:
+#             raise ValueError("dummy_mode must be {'uniform','mean','bootstrap'}")
+#         return D
+
+#     # -------------------------
+#     # Solve square HiRef helper
+#     # -------------------------
+#     def solve_square(A, B, n):
+#         rank_schedule = rank_annealing.optimal_rank_schedule(n=n)
+#         (rows, cols, data), _ = HiRef.hiref_lr_fast(
+#             A, B, rank_schedule=rank_schedule, return_coupling=True
+#         )
+#         return sparse.coo_matrix((data, (rows, cols)), shape=(n, n)).tocsr()
+
+#     # -------------------------
+#     # Case 1: balanced
+#     # -------------------------
+#     if n_a == n_b:
+#         if verbose:
+#             print(f"HiRef: balanced ({n_a}x{n_b})")
+            
+#         try:
+#             T = solve_square(post_a, post_b, n=n_a)
+#         except Exception as e:
+#             if verbose:
+#                 print(f"failure of HiRef might be due to prime n = {n_a}, retrying with {n_a} + 1...")
+#             T = solve_square(post_a, post_b, n=n_a+1) # solve_square will fail in n is prime. this is a quick fix that adds a dummy point
+#             T = T[:-1, :-1] # remove dummy row/col
+            
+#         # In balanced case, HiRef usually gives row/col sums ~1. Total mass ~ n_a.
+#         return T
+
+#     # -------------------------
+#     # Case 2: n_a > n_b  (pad B)
+#     # -------------------------
+#     if n_a > n_b:
+#         n_dummy = (n_a - n_b) + int(extra_dummy)
+#         if verbose:
+#             print(f"HiRef: pad B {n_b} -> {n_b + n_dummy} (solve {n_a}x{n_a})")
+
+#         D = make_dummies(post_b, n_dummy)
+#         post_b_pad = np.vstack([post_b, D]) if D is not None else post_b
+
+#         T_pad = solve_square(post_a, post_b_pad, n=n_a)
+
+#         # keep only real target columns
+#         T = T_pad[:, :n_b].tocsr()
+
+#         if enforce_mali_marginals:
+#             # MALI unbalanced convention expects total mass = n_a,
+#             # row sums ~ 1, col sums ~ n_a/n_b.
+#             # After dropping dummy cols, some mass is missing -> rescale globally.
+#             mass = float(T.sum())
+#             if mass > eps:
+#                 T = T * (float(n_a) / mass)
+
+#         return T
+
+#     # -------------------------
+#     # Case 3: n_b > n_a  (pad A)
+#     # -------------------------
+#     else:
+#         n_dummy = (n_b - n_a) + int(extra_dummy)
+#         if verbose:
+#             print(f"HiRef: pad A {n_a} -> {n_a + n_dummy} (solve {n_b}x{n_b})")
+
+#         D = make_dummies(post_a, n_dummy)
+#         post_a_pad = np.vstack([post_a, D]) if D is not None else post_a
+
+#         # Solve square in the other direction (size n_b)
+#         T_pad = solve_square(post_a_pad, post_b, n=n_b)
+
+#         # keep only real source rows
+#         T = T_pad[:n_a, :].tocsr()
+
+#         if enforce_mali_marginals:
+#             # Still want total mass = n_a
+#             mass = float(T.sum())
+#             if mass > eps:
+#                 T = T * (float(n_a) / mass)
+
+#         return T
+
+
+
+
+
+
+
+# def get_next_smooth_number(n, max_prime=13):
+#     """
+#     Finds the smallest number >= n whose prime factors are all <= max_prime.
+#     Solves the 'Prime Number' crash in HiRef.
+#     """
+#     def is_smooth(x):
+#         if x <= 1: return True
+#         temp = x
+#         d = 2
+#         while d * d <= temp:
+#             while temp % d == 0:
+#                 if d > max_prime: return False
+#                 temp //= d
+#             d += 1
+#         if temp > 1 and temp > max_prime:
+#             return False
+#         return True
+
+#     while not is_smooth(n):
+#         n += 1
+#     return n
+
+
+
+# def solve_dummy_hiref(
+#     post_a, post_b,
+#     verbose=0,
+#     random_state=None,
+#     dummy_mode="bootstrap",  # "uniform", "mean", "bootstrap"
+#     extra_dummy=0,
+#     eps=1e-12,
+#     enforce_mali_marginals=True,
+# ):
+#     """
+#     Robust HiRef coupling for unequal sizes. 
+#     1. Pads A and B to the nearest 'Smooth' Square size (preventing Prime crashes).
+#     2. Solves square OT.
+#     3. Slices back to original dimensions.
+#     4. Renormalizes mass to equal n_a.
+#     """
+#     rng = np.random.default_rng(random_state)
+#     post_a = np.asarray(post_a)
+#     post_b = np.asarray(post_b)
+#     n_a, d_a = post_a.shape
+#     n_b, d_b = post_b.shape
+
+#     if d_a != d_b:
+#         raise ValueError(f"Dims mismatch: {d_a} vs {d_b}")
+
+#     # 1. Determine Safe Square Size
+#     # We take the max dimension, add extra_dummy, and then find the next "smooth" number
+#     # to ensure HiRef's recursive rank schedule works efficiently.
+#     target_raw = max(n_a, n_b) + int(extra_dummy)
+#     n_target = get_next_smooth_number(target_raw)
+
+#     if verbose > 0:
+#         print(f"HiRef: Input {n_a}x{n_b} -> Solving Square {n_target}x{n_target}")
+
+#     # 2. Dummy Generator
+#     def pad_matrix(P, target_n):
+#         curr_n = P.shape[0]
+#         n_needed = target_n - curr_n
+#         if n_needed <= 0:
+#             return P
+        
+#         if dummy_mode == "uniform":
+#             # Small uniform value (1/d)
+#             D = np.full((n_needed, d_a), 1.0/d_a, dtype=P.dtype)
+#         elif dummy_mode == "mean":
+#             # Mean of the dataset
+#             mu = P.mean(axis=0, keepdims=True)
+#             D = np.repeat(mu, n_needed, axis=0)
+#         elif dummy_mode == "bootstrap":
+#             # Random samples from the data itself (Preserves Manifold Geometry)
+#             idx = rng.integers(0, curr_n, size=n_needed)
+#             D = P[idx]
+#         else:
+#             raise ValueError(f"Unknown dummy_mode: {dummy_mode}")
+        
+#         return np.vstack([P, D])
+
+#     # 3. Prepare Inputs (Pad Both Sides)
+#     # 
+#     post_a_pad = pad_matrix(post_a, n_target)
+#     post_b_pad = pad_matrix(post_b, n_target)
+
+#     # 4. Solve Square HiRef
+#     # Now dimensions match exactly: (n_target, d)
+#     rank_schedule = rank_annealing.optimal_rank_schedule(n=n_target)
+    
+#     (rows, cols, data), _ = HiRef.hiref_lr_fast(
+#         post_a_pad, post_b_pad, 
+#         rank_schedule=rank_schedule, 
+#         return_coupling=True
+#     )
+    
+#     # 5. Reconstruct & Slice
+#     # Create full square matrix
+#     T_square = sparse.coo_matrix((data, (rows, cols)), shape=(n_target, n_target)).tocsr()
+    
+#     # Slice back to Real x Real dimensions
+#     # This discards Real-to-Dummy and Dummy-to-Dummy connections
+#     T = T_square[:n_a, :n_b]
+
+#     # 6. Renormalize (CRITICAL)
+#     # Slicing drops mass. We must re-scale so total mass equals n_a (source samples).
+#     if enforce_mali_marginals:
+#         current_mass = T.sum()
+#         if current_mass < eps:
+#             if verbose: print("Warning: HiRef mass collapsed (all real points matched to dummies).")
+#             # Fallback: distribute mass uniformly or identity if shapes match? 
+#             # Usually implies dummies were 'closer' than real points.
+#         else:
+#             scale_factor = float(n_a) / current_mass
+#             T = T * scale_factor
+            
+#     return T
+
+
 def get_next_smooth_number(n):
     """
-    Finds the smallest integer >= n that is 5-smooth
+    Finds the smallest integer >= n that is 5-smooth 
     (only prime factors 2, 3, and 5).
     This guarantees HiRef can factorize it completely using small ranks.
     """
-    if n <= 1:
-        return 1
-
+    if n <= 1: return 1
+    
+    # Priority queue to generate 2,3,5-smooth numbers in order
+    # Start with 1
     h = [1]
     seen = {1}
-
+    
     while True:
         curr = heapq.heappop(h)
-
+        
         if curr >= n:
             return curr
-
+        
+        # Generate next candidates
         for factor in [2, 3, 5]:
             nxt = curr * factor
             if nxt not in seen:
@@ -31,265 +426,93 @@ def get_next_smooth_number(n):
                 heapq.heappush(h, nxt)
 
 
-# ============================================================
-# Sparse bijection repair utilities
-# ============================================================
 
-def _greedy_unique_pairs(rows, cols, vals=None):
-    """
-    Keep only one pair per row and one pair per column.
-
-    Parameters
-    ----------
-    rows, cols : array-like, shape (nnz,)
-        Sparse pair indices.
-    vals : array-like or None
-        Optional scores used to prioritize which pairs to keep.
-        If provided, larger values are kept first.
-
-    Returns
-    -------
-    rows_keep, cols_keep : ndarray
-        Deduplicated partial injective matching.
-    """
-    rows = np.asarray(rows, dtype=np.int32)
-    cols = np.asarray(cols, dtype=np.int32)
-
-    if vals is None:
-        order = np.arange(len(rows))
-    else:
-        vals = np.asarray(vals)
-        order = np.argsort(-vals)
-
-    used_rows = set()
-    used_cols = set()
-    keep = []
-
-    for k in order:
-        r = int(rows[k])
-        c = int(cols[k])
-
-        if r in used_rows or c in used_cols:
-            continue
-
-        used_rows.add(r)
-        used_cols.add(c)
-        keep.append(k)
-
-    keep = np.asarray(keep, dtype=np.int32)
-    return rows[keep], cols[keep]
-
-
-def _complete_sparse_matching(rows_keep, cols_keep, X, Y):
-    """
-    Complete a partial injective matching into a full bijection by solving
-    one final exact assignment problem on the unmatched padded rows/cols only.
-
-    Parameters
-    ----------
-    rows_keep, cols_keep : ndarray
-        Partial matching on the padded square problem.
-    X, Y : ndarray, shape (n_target, d)
-        Padded point clouds.
-
-    Returns
-    -------
-    rows_full, cols_full : ndarray
-        Full bijection on the padded square problem.
-    """
-    n_target = X.shape[0]
-
-    used_rows = np.zeros(n_target, dtype=bool)
-    used_cols = np.zeros(n_target, dtype=bool)
-    used_rows[rows_keep] = True
-    used_cols[cols_keep] = True
-
-    rem_rows = np.flatnonzero(~used_rows)
-    rem_cols = np.flatnonzero(~used_cols)
-
-    if rem_rows.size == 0:
-        return rows_keep, cols_keep
-
-    Xr = np.asarray(X)[rem_rows]
-    Yr = np.asarray(Y)[rem_cols]
-
-    # Squared Euclidean cost on leftovers only
-    x2 = np.sum(Xr**2, axis=1, keepdims=True)
-    y2 = np.sum(Yr**2, axis=1, keepdims=True).T
-    C = x2 + y2 - 2.0 * (Xr @ Yr.T)
-    C = np.maximum(C, 0.0)
-
-    rr, cc = linear_sum_assignment(C)
-
-    rows_full = np.concatenate([rows_keep, rem_rows[rr].astype(np.int32)])
-    cols_full = np.concatenate([cols_keep, rem_cols[cc].astype(np.int32)])
-
-    return rows_full, cols_full
-
-
-def _repair_padded_hiref_pairs(rows_aug, cols_aug, vals_aug, p_aug, s_aug, verbose=0):
-    """
-    Repair HiRef sparse output into a true bijection on the padded square problem.
-
-    Steps
-    -----
-    1. Greedy deduplication using HiRef weights as priorities.
-    2. Exact completion on the unmatched leftovers only.
-
-    Returns
-    -------
-    rows_fix, cols_fix : ndarray
-        Full bijection on the padded problem.
-    """
-    rows_aug = np.asarray(rows_aug, dtype=np.int32)
-    cols_aug = np.asarray(cols_aug, dtype=np.int32)
-    vals_aug = np.asarray(vals_aug)
-
-    if verbose:
-        n_target = p_aug.shape[0]
-        row_counts = np.bincount(rows_aug, minlength=n_target)
-        col_counts = np.bincount(cols_aug, minlength=n_target)
-        print(
-            "HiRef padded raw pairs | "
-            f"unique rows: {(row_counts > 0).sum()}/{n_target}, "
-            f"unique cols: {(col_counts > 0).sum()}/{n_target}, "
-            f"max row multiplicity: {row_counts.max()}, "
-            f"max col multiplicity: {col_counts.max()}"
-        )
-
-    rows_keep, cols_keep = _greedy_unique_pairs(rows_aug, cols_aug, vals_aug)
-
-    if verbose:
-        print(f"HiRef padded after greedy dedup | kept {len(rows_keep)} pairs")
-
-    rows_fix, cols_fix = _complete_sparse_matching(rows_keep, cols_keep, p_aug, s_aug)
-
-    if verbose:
-        print(f"HiRef padded after exact completion | final {len(rows_fix)} pairs")
-
-    return rows_fix, cols_fix
-
-
-# ============================================================
-# Main wrapper
-# ============================================================
 
 def solve_surjection_hiref(
-    post_a,
-    post_b,
+    post_a, post_b,
     verbose=0,
     random_state=None,
-    enforce_bijection=True,
 ):
     """
     Simplified HiRef Surjection.
-
-    Pipeline
-    --------
-    1. Set padded target size = max(N_a, N_b).
-    2. Oversample the smaller domain to size n_target.
-    3. Solve square HiRef on the padded problem.
-    4. Optionally repair the padded sparse HiRef output into a true bijection.
-    5. Collapse padded copies back to original indices by summing.
-
-    Returns
-    -------
-    T_final : scipy.sparse.csr_matrix, shape (n_a, n_b)
-        Coupling matrix on the original problem.
+    1. Sets target size = max(N_a, N_b).
+    2. Pads the smaller domain to match target size (stratified copies).
+    3. Solves square HiRef.
+    4. Collapses copies back to original indices by summing.
     """
     rng = np.random.default_rng(random_state)
     post_a = np.asarray(post_a)
     post_b = np.asarray(post_b)
-
+    
     n_a = post_a.shape[0]
     n_b = post_b.shape[0]
-
+    
+    # 1. Determine Target Size (No smooth numbers, just the bigger one)
     n_target = max(n_a, n_b)
-
+    
     if verbose:
         print(f"HiRef: Aligning A({n_a}) and B({n_b}). Target square size: {n_target}")
 
+    # --- Helper: Augment Data & Keep Track of Indices ---
     def get_augmented_data(data, n_orig, n_dest):
         """
-        Returns
-        -------
-        data_aug : ndarray, shape (n_dest, d)
-            Oversampled data.
-        map_indices : ndarray, shape (n_dest,)
-            Mapping from padded rows back to original rows.
+        Returns:
+            data_aug: The stretched data (n_dest, d)
+            map_indices: Array of shape (n_dest,) mapping new rows back to old rows
         """
+        # If sizes match, return as is (identity mapping)
         if n_orig == n_dest:
-            return data, np.arange(n_orig, dtype=np.int32)
-
+            return data, np.arange(n_orig)
+            
+        # Stratified Oversampling (Equal representation)
         n_repeats = n_dest // n_orig
         n_remainder = n_dest % n_orig
-
-        idx_base = np.tile(np.arange(n_orig, dtype=np.int32), n_repeats)
-        idx_rem = rng.choice(np.arange(n_orig, dtype=np.int32), n_remainder, replace=False)
-
+        
+        # 1. Base repeats (e.g., [0,1,2, 0,1,2])
+        idx_base = np.tile(np.arange(n_orig), n_repeats)
+        
+        # 2. Remainder (randomly sample the rest without replacement)
+        idx_rem = rng.choice(np.arange(n_orig), n_remainder, replace=False)
+        
+        # 3. Combine and Shuffle
         map_indices = np.concatenate([idx_base, idx_rem])
-
-        # shuffle so duplicates are not clustered
+        
+        # Shuffle ensures copies are distributed randomly, not clustered
         perm = rng.permutation(n_dest)
         map_indices = map_indices[perm]
-
+        
         return data[map_indices], map_indices
 
-    # --------------------------------------------------------
-    # 1. Pad / oversample to the square problem
-    # --------------------------------------------------------
+    # 2. Prepare Augmented Inputs
+    # If A is bigger, map_a is identity, map_b is the tiled map.
+    # If B is bigger, map_a is the tiled map, map_b is identity.
     p_aug, map_a = get_augmented_data(post_a, n_a, n_target)
     s_aug, map_b = get_augmented_data(post_b, n_b, n_target)
 
-    # --------------------------------------------------------
-    # 2. Solve square HiRef on padded data
-    # --------------------------------------------------------
+    # 3. Solve HiRef (Square)
     rank_schedule = rank_annealing.optimal_rank_schedule(n=n_target)
-
+    
+    # We ask for the coupling, which returns COO indices (rows, cols) and data (1s)
     (rows_aug, cols_aug, vals_aug), _ = HiRef.hiref_lr_fast(
-        p_aug,
-        s_aug,
-        rank_schedule=rank_schedule,
-        return_coupling=True,
+        p_aug, s_aug,
+        rank_schedule=rank_schedule, 
+        return_coupling=True
     )
 
-    # --------------------------------------------------------
-    # 3. Minimal sparse repair on the padded problem
-    # --------------------------------------------------------
-    if enforce_bijection:
-        rows_aug, cols_aug = _repair_padded_hiref_pairs(
-            rows_aug,
-            cols_aug,
-            vals_aug,
-            p_aug,
-            s_aug,
-            verbose=verbose,
-        )
-        vals_aug = np.ones(len(rows_aug), dtype=np.float32)
-    else:
-        rows_aug = np.asarray(rows_aug, dtype=np.int32)
-        cols_aug = np.asarray(cols_aug, dtype=np.int32)
-        vals_aug = np.asarray(vals_aug)
-
-    # --------------------------------------------------------
-    # 4. Collapse padded indices back to original indices
-    # --------------------------------------------------------
+    # 4. Merge Duplicates (Collapse)
+    # Instead of matrix multiplication, we simply map the indices back.
+    
+    # If we are at row `i` in the augmented matrix, that corresponds to row `map_a[i]` in original.
     rows_final = map_a[rows_aug]
     cols_final = map_b[cols_aug]
-
+    
+    # Construct CSR Matrix
+    # The (rows, cols) pairs will now have duplicates. 
+    # scipy.sparse automatically SUMS data for duplicate entries during construction.
+    # This achieves exactly what we want: summing the split mass back together.
     T_final = sparse.coo_matrix(
-        (vals_aug, (rows_final, cols_final)),
-        shape=(n_a, n_b),
+        (vals_aug, (rows_final, cols_final)), 
+        shape=(n_a, n_b)
     ).tocsr()
-
-    if verbose:
-        row_sums = np.asarray(T_final.sum(axis=1)).ravel()
-        col_sums = np.asarray(T_final.sum(axis=0)).ravel()
-        print(
-            "Collapsed coupling stats | "
-            f"total mass: {T_final.sum():.3f}, "
-            f"row sum min/max: {row_sums.min():.3f}/{row_sums.max():.3f}, "
-            f"col sum min/max: {col_sums.min():.3f}/{col_sums.max():.3f}"
-        )
 
     return T_final
