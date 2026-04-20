@@ -41,9 +41,9 @@ class FoSTA:
     def __init__(
         self,
         mu=0.5,
-        kernel_method="oob",
+        kernel_method="original",
         model_type="rf",
-        n_estimators=1000,
+        n_estimators=500,
         n_svd=100,
         n_neighbors=5,
         decay=40,
