@@ -1,19 +1,20 @@
-import numpy as np
-np.int = int
-
-import argparse
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+
+import numpy as np
+np.int = int
 
 import pandas as pd
 
-# -----------------------------------------------------------------------------
-# Robust imports
-# -----------------------------------------------------------------------------
-from utils.utils import dataprep
+import sys
+from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from utils.utils import dataprep
 from utils.simulation_utils import (
     add_noise,
     random_rotate,
@@ -21,16 +22,14 @@ from utils.simulation_utils import (
     importance_split,
     alternating_importance_split,
     add_gaussian_noise_features_split,
-    mask_labels_stratified
+    mask_labels_stratified,
 )
-    
 from src.Pamona.eval import (
     test_transfer_accuracy,
     test_alignment_score,
     calc_domainAveraged_FOSCTTM,
 )
 
-# Alignment models
 from src.fosta import FoSTA
 from src.rfmali import RFMALI
 from src.mali import MALI
@@ -39,32 +38,87 @@ from src.kemalin import KEMAlin
 from src.kemarbf import KEMArbf
 
 
-# -----------------------------------------------------------------------------
-# Utilities
-# -----------------------------------------------------------------------------
+# =============================================================================
+# GLOBAL CONFIG
+# =============================================================================
 
-def parse_list_arg(value: str, cast=str) -> List:
-    if value is None or value == "":
-        return []
-    return [cast(v.strip()) for v in value.split(",") if v.strip()]
+DATASETS_PATH = Path("data_uci")
+RESULTS_DIR = Path("results_uci")
+
+DATASETS = [
+    "balance_scale",
+    "breast_cancer",
+    "crx",
+    "diabetes",
+    "ecoli_5",
+    "flare1",
+    "glass",
+    "heart_disease",
+    "heart_failure",
+    "hepatitis",
+    "ionosphere",
+    "iris",
+    "parkinsons",
+    "seeds",
+    "tic-tac-toe",
+]
+
+METHODS = [
+    "FoSTA_orig",
+    "FoSTA_orig_dense",
+    "FoSTA_oob",
+    "FoSTA_oob_dense",
 
 
-def parse_t_value(value):
-    if isinstance(value, str) and value.lower() == "auto":
-        return "auto"
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        raise argparse.ArgumentTypeError(
-            "t must be either 'auto' or an integer, e.g. 2"
-        )
+    "MALI",
+    "MALI_nodpt",
 
+    "Pamona",
+
+    "KEMAlin",
+    "KEMArbf",
+]
+
+SPLITS = [
+    "add_gaussian_noise_features",
+    "random",
+    "importance",
+    "alternate_importance",
+    "rotate",
+    "distort",
+]
+
+# SEEDS = list(range(10))
+SEEDS = list(range(5))
+
+TRANSFORM = "standardize"  # or None, "normalize"
+MASK_FRACTION = 0.5  # fraction of target labels to mask (set to -1) for label transfer evaluation
+NOISE_SIGMA = 0.2  # reasonable amount of noise
+SIGNAL_TO_NOISE_RATIO = 0.5  # don't be too aggressive here to not put Euclidean methods at an extreme disadvantage
+
+N_COMPONENTS = 2
+EMBEDDER = "PHATE"
+MU = 0.5
+GAMMA = 0.5
+SEMANTIC_NORM = "l2"
+KERNEL_METHOD = "gap"
+MODEL_TYPE = "rf"
+N_ESTIMATORS = 500
+T = 'auto'
+BETA = 0.9
+N_JOBS = -1
+VERBOSE = 1
+
+
+# =============================================================================
+# UTILS
+# =============================================================================
 
 def ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
-def make_run_paths(results_root: Path) -> Tuple[Path, Path]:
+def make_run_paths(results_root: Path):
     ensure_dir(results_root)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     csv_path = results_root / f"results_{stamp}.csv"
@@ -127,16 +181,16 @@ def sanitize_embedding(embedding: np.ndarray, tol: float = 1000) -> np.ndarray:
     return np.asarray(embedding, dtype=float)
 
 
-# -----------------------------------------------------------------------------
-# Metrics
-# -----------------------------------------------------------------------------
+# =============================================================================
+# METRICS
+# =============================================================================
 
 def compute_alignment_metrics(
     embedding: np.ndarray,
     y_source: np.ndarray,
     y_target_true: np.ndarray,
     mask_missing_target: np.ndarray,
-) -> Dict[str, float]:
+):
     n_source = len(y_source)
     n_target = len(y_target_true)
 
@@ -168,25 +222,18 @@ def compute_alignment_metrics(
     }
 
 
-# -----------------------------------------------------------------------------
-# Data loading and exact old-style preprocessing
-# -----------------------------------------------------------------------------
+# =============================================================================
+# DATA
+# =============================================================================
 
-def load_dataset_frame(datasets_path: Path, data_name: str, transform='standardize') -> Tuple[pd.DataFrame, np.ndarray]:
+def load_dataset_frame(datasets_path: Path, data_name: str):
     df = pd.read_csv(datasets_path / f"{data_name}.csv")
-    df, labels = dataprep(df, transform=transform)
+    df, labels = dataprep(df, transform=TRANSFORM)
     labels = np.asarray(labels).astype(int)
     return df, labels
 
 
-def build_domains_exact_old_style(
-    df: pd.DataFrame,
-    labels: np.ndarray,
-    split: str,
-    seed: int,
-    noise_sigma: float,
-    signal_to_noise_ratio: float,
-) -> Tuple[np.ndarray, np.ndarray]:
+def build_domains(df, labels, split, seed):
     split = split.lower()
 
     if split == "random":
@@ -198,17 +245,16 @@ def build_domains_exact_old_style(
     elif split in {"alternate_importance", "alternating_importance"}:
         df1, df2 = alternating_importance_split(df.copy(), labels)
 
-    elif split in {"add_gaussian_noise_features"}:
+    elif split == "add_gaussian_noise_features":
         df1, df2 = add_gaussian_noise_features_split(
             df.copy(),
-            signal_to_noise_ratio=signal_to_noise_ratio,
+            signal_to_noise_ratio=SIGNAL_TO_NOISE_RATIO,
             random_state=seed,
         )
 
     elif split == "distort":
         df1 = df.copy()
-        df2 = add_noise(df.copy(), sigma=noise_sigma, random_state=seed)
-
+        df2 = add_noise(df.copy(), sigma=NOISE_SIGMA, random_state=seed)
 
     elif split == "rotate":
         df1 = df.copy()
@@ -222,11 +268,7 @@ def build_domains_exact_old_style(
     return x_source, x_target
 
 
-def mask_target_labels(
-    y_true: np.ndarray,
-    mask_fraction: float,
-    seed: int,
-) -> Tuple[np.ndarray, np.ndarray]:
+def mask_target_labels(y_true, mask_fraction, seed):
     y_masked = mask_labels_stratified(
         y_true.copy(),
         mask_fraction=mask_fraction,
@@ -236,138 +278,125 @@ def mask_target_labels(
     return y_masked.astype(int), mask_missing.astype(bool)
 
 
-# -----------------------------------------------------------------------------
-# Model factory
-# -----------------------------------------------------------------------------
+# =============================================================================
+# MODEL FACTORY
+# =============================================================================
 
-def build_model(method: str, seed: int, cfg: argparse.Namespace):
-    method = method.lower()
+def build_model(method: str, seed: int):
+    m = method.lower()
 
-    if method == "rfmali":
-        return RFMALI(
-            embedder=cfg.embedder,
-            n_components=cfg.n_components,
-            n_estimators=cfg.n_estimators,
-            t=cfg.t,
-            beta=cfg.beta,
-            random_state=seed,
-            n_jobs=cfg.n_jobs,
-            verbose=cfg.verbose,
-        )
-
-    if method == "fosta":
+    if m == "fosta_oob":
         return FoSTA(
-            embedder=cfg.embedder,
-            mu=cfg.mu,
-            n_components=cfg.n_components,
-            semantic_norm=cfg.semantic_norm,
-            euclidean_mode=cfg.euclidean_mode,
+            embedder=EMBEDDER,
+            mu=MU,
+            n_components=N_COMPONENTS,
+            semantic_norm=SEMANTIC_NORM,
             prior_correct=True,
-            dpt=cfg.dpt,
-            kernel_method=cfg.kernel_method,
-            model_type=cfg.model_type,
-            n_estimators=cfg.n_estimators,
-            t=cfg.t,
-            beta=cfg.beta,
+            kernel_method='oob',
+            model_type=MODEL_TYPE,
+            n_estimators=N_ESTIMATORS,
+            t=T,
+            ot_solver='hiref',
+            beta=BETA,
             random_state=seed,
-            n_jobs=cfg.n_jobs,
-            verbose=cfg.verbose,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
         )
     
-    if method == "fosta_dpt":
+    if m == "fosta_oob_dense":
         return FoSTA(
-            embedder=cfg.embedder,
-            mu=cfg.mu,
-            n_components=cfg.n_components,
-            semantic_norm=cfg.semantic_norm,
-            euclidean_mode=cfg.euclidean_mode,
+            embedder=EMBEDDER,
+            mu=MU,
+            n_components=N_COMPONENTS,
+            semantic_norm=SEMANTIC_NORM,
             prior_correct=True,
-            dpt=True,
-            kernel_method=cfg.kernel_method,
-            model_type=cfg.model_type,
-            n_estimators=cfg.n_estimators,
-            t=cfg.t,
-            beta=cfg.beta,
+            kernel_method='oob',
+            model_type=MODEL_TYPE,
+            n_estimators=N_ESTIMATORS,
+            t=T,
+            ot_solver='dense',
+            beta=BETA,
             random_state=seed,
-            n_jobs=cfg.n_jobs,
-            verbose=cfg.verbose,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
         )
-
-    if method == "fosta_no_prior":
+    
+    if m == "fosta_orig":
         return FoSTA(
-            embedder=cfg.embedder,
-            mu=cfg.mu,
-            n_components=cfg.n_components,
-            semantic_norm=cfg.semantic_norm,
-            euclidean_mode=cfg.euclidean_mode,
-            prior_correct=False,
-            dpt=cfg.dpt,
-            kernel_method=cfg.kernel_method,
-            model_type=cfg.model_type,
-            n_estimators=cfg.n_estimators,
-            t=cfg.t,
-            beta=cfg.beta,
-            random_state=seed,
-            n_jobs=cfg.n_jobs,
-            verbose=cfg.verbose,
-        )
-
-    if method == "fosta_euclidean":
-        return FoSTA(
-            embedder=cfg.embedder,
-            mu=cfg.mu,
-            n_components=cfg.n_components,
-            semantic_norm=cfg.semantic_norm,
-            euclidean_mode=True,
+            embedder=EMBEDDER,
+            mu=MU,
+            n_components=N_COMPONENTS,
+            semantic_norm=SEMANTIC_NORM,
             prior_correct=True,
-            dpt=cfg.dpt,
-            kernel_method=cfg.kernel_method,
-            model_type=cfg.model_type,
-            n_estimators=cfg.n_estimators,
-            t=cfg.t,
-            beta=cfg.beta,
+            kernel_method='original',
+            model_type=MODEL_TYPE,
+            n_estimators=N_ESTIMATORS,
+            t=T,
+            ot_solver='hiref',
+            beta=BETA,
             random_state=seed,
-            n_jobs=cfg.n_jobs,
-            verbose=cfg.verbose,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
+        )
+    
+    if m == "fosta_orig_dense":
+        return FoSTA(
+            embedder=EMBEDDER,
+            mu=MU,
+            n_components=N_COMPONENTS,
+            semantic_norm=SEMANTIC_NORM,
+            prior_correct=True,
+            kernel_method='original',
+            model_type=MODEL_TYPE,
+            n_estimators=N_ESTIMATORS,
+            t=T,
+            ot_solver='dense',
+            beta=BETA,
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
         )
 
-    if method == "mali":
+    if m == "mali":
         return MALI(
-            embedder=cfg.embedder,
-            n_components=cfg.n_components,
-            t=cfg.t,
-            distances='DPT',
+            embedder=EMBEDDER,
+            n_components=N_COMPONENTS,
+            t=T,
+            beta=BETA,
+            distances="DPT",
             random_state=seed,
-            verbose=cfg.verbose,
-        )
-    if method == "mali_nodpt":
-        return MALI(
-            embedder=cfg.embedder,
-            n_components=cfg.n_components,
-            t=cfg.t,
-            distances='noDPT',
-            random_state=seed,
-            verbose=cfg.verbose,
+            verbose=VERBOSE,
         )
 
-    if method == "pamona":
+    if m == "mali_nodpt":
+        return MALI(
+            embedder=EMBEDDER,
+            n_components=N_COMPONENTS,
+            t=T,
+            beta=BETA,
+            distances="noDPT",
+            random_state=seed,
+            verbose=VERBOSE,
+        )
+
+    if m == "pamona":
         return Pamona(
-            n_components=cfg.n_components,
-            embedder=cfg.embedder,
-            gamma=cfg.gamma,
+            n_components=N_COMPONENTS,
+            embedder=EMBEDDER,
+            gamma=GAMMA,
             random_state=seed,
         )
 
-    if method == "kemalin":
+    if m == "kemalin":
         return KEMAlin(
-            n_components=cfg.n_components,
-            mu=cfg.mu,
+            n_components=N_COMPONENTS,
+            mu=MU,
         )
 
-    if method == "kemarbf":
+    if m == "kemarbf":
         return KEMArbf(
-            n_components=cfg.n_components,
-            mu=cfg.mu,
+            n_components=N_COMPONENTS,
+            mu=MU,
         )
 
     raise ValueError(f"Unknown method '{method}'.")
@@ -376,57 +405,68 @@ def build_model(method: str, seed: int, cfg: argparse.Namespace):
 def fit_transform_model(model, x_source, x_target, y_source, y_target):
     if hasattr(model, "fit_transform"):
         return model.fit_transform(x_source, x_target, y_source, y_target)
+
     model.fit(x_source, x_target, y_source, y_target)
     if hasattr(model, "embedding_"):
         return model.embedding_
+
     raise RuntimeError(f"Model {type(model).__name__} has no fit_transform and no embedding_.")
 
 
-# -----------------------------------------------------------------------------
-# Main experiment loop
-# -----------------------------------------------------------------------------
+# =============================================================================
+# MAIN EXPERIMENT
+# =============================================================================
 
-def run_experiment(cfg: argparse.Namespace) -> None:
-    datasets_path = Path(cfg.datasets_path)
-    results_root = Path(cfg.results_dir)
-    ensure_dir(results_root)
+def run_experiment():
+    ensure_dir(RESULTS_DIR)
+    results_csv, config_json = make_run_paths(RESULTS_DIR)
 
-    results_csv, config_json = make_run_paths(results_root)
-    save_config(config_json, vars(cfg))
-
-    datasets = parse_list_arg(cfg.datasets)
-    methods = parse_list_arg(cfg.methods)
-    splits = parse_list_arg(cfg.splits)
-    seeds = parse_list_arg(cfg.seeds, cast=int)
+    config = {
+        "datasets_path": str(DATASETS_PATH),
+        "results_dir": str(RESULTS_DIR),
+        "datasets": DATASETS,
+        "methods": METHODS,
+        "splits": SPLITS,
+        "seeds": SEEDS,
+        "mask_fraction": MASK_FRACTION,
+        "noise_sigma": NOISE_SIGMA,
+        "signal_to_noise_ratio": SIGNAL_TO_NOISE_RATIO,
+        "n_components": N_COMPONENTS,
+        "embedder": EMBEDDER,
+        "mu": MU,
+        "gamma": GAMMA,
+        "semantic_norm": SEMANTIC_NORM,
+        "kernel_method": KERNEL_METHOD,
+        "model_type": MODEL_TYPE,
+        "n_estimators": N_ESTIMATORS,
+        "t": T,
+        "beta": BETA,
+        "n_jobs": N_JOBS,
+        "verbose": VERBOSE,
+    }
+    save_config(config_json, config)
 
     print(f"Results will be written to: {results_csv}")
     print(f"Config saved to: {config_json}")
 
-    for data_name in datasets:
+    for data_name in DATASETS:
         print(f"\n=== Dataset: {data_name} ===")
-        df, labels = load_dataset_frame(datasets_path, data_name)
+        df, labels = load_dataset_frame(DATASETS_PATH, data_name)
 
-        for seed in seeds:
+        for seed in SEEDS:
             print(f"  Seed: {seed}")
 
-            for split in splits:
+            for split in SPLITS:
                 print(f"    Split: {split}")
 
                 try:
-                    x_source, x_target = build_domains_exact_old_style(
-                        df=df,
-                        labels=labels,
-                        split=split,
-                        seed=seed,
-                        noise_sigma=cfg.noise_sigma,
-                        signal_to_noise_ratio=cfg.signal_to_noise_ratio,
-                    )
+                    x_source, x_target = build_domains(df, labels, split, seed)
 
                     y_source = np.array(labels)
                     y_target_true = labels.copy()
                     y_target, mask_missing_target = mask_target_labels(
                         y_true=y_target_true,
-                        mask_fraction=cfg.mask_fraction,
+                        mask_fraction=MASK_FRACTION,
                         seed=seed,
                     )
 
@@ -447,11 +487,11 @@ def run_experiment(cfg: argparse.Namespace) -> None:
                     print(f"      Data error: {e}")
                     continue
 
-                for method in methods:
+                for method in METHODS:
                     print(f"      Method: {method}")
 
                     try:
-                        model = build_model(method, seed, cfg)
+                        model = build_model(method, seed)
                         embedding = fit_transform_model(
                             model=model,
                             x_source=x_source,
@@ -497,6 +537,7 @@ def run_experiment(cfg: argparse.Namespace) -> None:
                             "error": "",
                         }
                         append_result(results_csv, row)
+
                         print(
                             f"        label_transfer={metrics['label_transfer']:.4f}, "
                             f"alignment_score={metrics['alignment_score']:.4f}, "
@@ -521,6 +562,7 @@ def run_experiment(cfg: argparse.Namespace) -> None:
 
     raw_df = pd.read_csv(results_csv)
     ok_df = raw_df[raw_df["status"] == "ok"].copy()
+
     if len(ok_df) == 0:
         print("\nNo successful runs. Raw results only were saved.")
         return
@@ -535,59 +577,5 @@ def run_experiment(cfg: argparse.Namespace) -> None:
     print(f"Summary saved to: {summary_path}")
 
 
-# -----------------------------------------------------------------------------
-# CLI
-# -----------------------------------------------------------------------------
-
-def build_argparser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="UCI domain-alignment benchmark with transformed targets.")
-
-    p.add_argument("--datasets-path", type=str, default="data_uci")
-    p.add_argument("--results-dir", type=str, default="results_uci")
-
-    p.add_argument(
-        "--datasets",
-        type=str,
-        default="balance_scale,breast_cancer,crx,diabetes,ecoli_5,flare1,glass,heart_disease,heart_failure,hepatitis,ionosphere,iris,parkinsons,seeds,tic-tac-toe",
-        help="Comma-separated dataset names without .csv",
-    )
-    p.add_argument(
-        "--methods",
-        type=str,
-        default="FoSTA,FoSTA_dpt,FoSTA_no_prior,FoSTA_euclidean,RFMALI,MALI,MALI_nodpt,Pamona,KEMAlin,KEMArbf",
-
-    )
-    p.add_argument(
-        "--splits",
-        type=str,
-        default="add_gaussian_noise_features,random,importance,alternate_importance,rotate,distort",
-    )
-    p.add_argument("--seeds", type=str, default="0,1,2,3,4,5,6,7,8,9")
-
-    p.add_argument("--mask-fraction", type=float, default=0.5)
-    p.add_argument("--noise-sigma", type=float, default=0.5)
-    p.add_argument("--signal-to-noise-ratio", type=float, default=0.1)
-
-    p.add_argument("--n-components", type=int, default=2)
-    p.add_argument("--embedder", type=str, default="PHATE")
-    p.add_argument("--mu", type=float, default=0.5)
-    p.add_argument("--gamma", type=float, default=0.5)
-    p.add_argument("--semantic-norm", type=str, default="l2")
-    p.add_argument("--euclidean-mode", action="store_true", default=False)
-    p.add_argument("--prior-correct", action="store_true", default=True)
-    p.add_argument("--dpt", action="store_true", default=False)
-    p.add_argument("--kernel-method", type=str, default="gap")
-    p.add_argument("--model-type", type=str, default="rf")
-    p.add_argument("--n-estimators", type=int, default=1000)
-    p.add_argument("--t", type=parse_t_value, default=2)
-    p.add_argument("--beta", type=float, default=0.7)
-    p.add_argument("--n-jobs", type=int, default=-1)
-    p.add_argument("--verbose", type=int, default=1)
-
-    return p
-
-
 if __name__ == "__main__":
-    parser = build_argparser()
-    args = parser.parse_args()
-    run_experiment(args)
+    run_experiment()
