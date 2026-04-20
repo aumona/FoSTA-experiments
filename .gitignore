@@ -8,6 +8,9 @@ nohup.out
 # conda env
 .condaenv/
 
+# vscode
+.vscode/
+
 
 # Original HiRef codebase
 src/HiRef-main
