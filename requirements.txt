@@ -6,3 +6,5 @@ umap-learn
 jax==0.4.35
 pot
 scanpy
+matplotlib
+pandas
