@@ -10,3 +10,4 @@ scanpy
 matplotlib
 pandas
 ipykernel
+scanpy
