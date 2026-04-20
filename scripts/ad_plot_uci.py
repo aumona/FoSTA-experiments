@@ -8,7 +8,10 @@ from pathlib import Path
 # CONFIG
 # =========================================================
 # results_csv = "results_uci/results_20260401_190636.csv"   # change if needed
-results_csv = "results_uci/results_20260402_013729.csv"   # change if needed
+# results_csv = "results_uci/results_20260402_013729.csv"   # change if needed
+results_csv = "results_uci/results_20260420_155920.csv"   # change if needed
+
+
 
 out_png = "results_uci/multimodal_ablation_fosta.png"
 
@@ -21,7 +24,7 @@ metrics_to_plot = [
 lower_is_better = {"foscttm"}
 
 split_order = [
-    "add_noise_features",
+    "add_gaussian_noise_features",
     "random",
     "importance",
     "alternate_importance",
@@ -30,24 +33,24 @@ split_order = [
 ]
 
 method_order = [
-    "FoSTA",
-    "FoSTA_dpt",
-    "FoSTA_no_prior",
-    "FoSTA_euclidean",
-    "RFMALI",
+    "FoSTA_oob",
+    "FoSTA_oob_dense",
+    "FoSTA_orig",
+    "FoSTA_orig_dense",
+
+
     "MALI",
     "MALI_nodpt",
-    "Pamona",
+    # "Pamona",
     "KEMAlin",
     "KEMArbf",
 ]
 
 method_display_map = {
-    "FoSTA": "FoSTA",
-    "FoSTA_dpt": "FoSTA dpt",
-    "FoSTA_no_prior": "FoSTA no prior",
-    "FoSTA_euclidean": "FoSTA euclidean",
-    "RFMALI": "RF-MALI",
+    "FoSTA_oob": "FoSTA oob",
+    "FoSTA_oob_dense": "FoSTA oob dense",
+    "FoSTA_orig": "FoSTA original",
+    "FoSTA_orig_dense": "FoSTA original dense",
     "MALI": "MALI",
     "MALI_nodpt": "MALI no dpt",
     "Pamona": "Pamona",
@@ -57,36 +60,31 @@ method_display_map = {
 
 # Same color for FoSTA family, distinguished by hatches
 method_style = {
-    "FoSTA": {
+    "FoSTA_oob": {
         "facecolor": "#4C78A8",
         "edgecolor": "black",
         "hatch": "",
         "linewidth": 1.0,
     },
-    "FoSTA_dpt": {
+    "FoSTA_oob_dense": {
         "facecolor": "#4C78A8",
         "edgecolor": "black",
-        "hatch": "--",
+        "hatch": "o",
         "linewidth": 1.0,
     },
-    "FoSTA_no_prior": {
+    "FoSTA_orig": {
         "facecolor": "#4C78A8",
         "edgecolor": "black",
         "hatch": "//",
         "linewidth": 1.0,
     },
-    "FoSTA_euclidean": {
+    "FoSTA_orig_dense": {
         "facecolor": "#4C78A8",
         "edgecolor": "black",
-        "hatch": "..",
+        "hatch": "\\",
         "linewidth": 1.0,
     },
-    "RFMALI": {
-        "facecolor": "#4C78A8",
-        "edgecolor": "black",
-        "hatch": "\\\\",
-        "linewidth": 1.0,
-    },
+
     "MALI": {
         "facecolor": "#F58518",
         "edgecolor": "black",
