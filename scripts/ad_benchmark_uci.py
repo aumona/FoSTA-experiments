@@ -101,7 +101,6 @@ EMBEDDER = "PHATE"
 MU = 0.5
 GAMMA = 0.5
 SEMANTIC_NORM = "l2"
-KERNEL_METHOD = "gap"
 MODEL_TYPE = "rf"
 N_ESTIMATORS = 500
 T = 'auto'
@@ -436,7 +435,6 @@ def run_experiment():
         "mu": MU,
         "gamma": GAMMA,
         "semantic_norm": SEMANTIC_NORM,
-        "kernel_method": KERNEL_METHOD,
         "model_type": MODEL_TYPE,
         "n_estimators": N_ESTIMATORS,
         "t": T,
