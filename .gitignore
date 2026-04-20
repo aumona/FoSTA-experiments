@@ -5,6 +5,10 @@ data_uci/
 # nohup
 nohup.out
 
+# conda env
+.condaenv/
+
+
 # Original HiRef codebase
 src/HiRef-main
 
