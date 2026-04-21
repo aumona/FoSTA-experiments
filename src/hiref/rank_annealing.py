@@ -9,57 +9,75 @@ Package for computing an optimal rank-annealing schedule for Hierarchical Refine
 
 def optimal_rank_schedule(n, hierarchy_depth=6, max_Q=int(2**10), max_rank=16):
     """
-    
     A function to compute the optimal rank-scheduler of refinement.
-    
+
     Parameters
     ----------
     n: int
-        Size of the input dataset -- cannot be a prime number
+        Size of the input dataset
     hierarchy_depth: int
         Maximal permissible depth of the multi-scale hierarchy
     max_Q: int
-        Maximal rank at terminal base case (before reducing the \leq max_Q rank coupling to a 1-1 alignment)
+        Maximal rank at terminal base case (before reducing the <= max_Q
+        rank coupling to a 1-1 alignment)
     max_rank: int
         Maximal rank at the intermediate steps of the rank-schedule
-        
     """
 
+    # Factoring out the max factor
     Q = max_factor_lX(n, max_Q)
     ndivQ = int(n / Q)
-    
-    min_value, rank_schedule = min_sum_partial_products_with_factors(ndivQ, hierarchy_depth, max_rank)
-    
-    # If DP failed, or returned something that doesn't multiply to ndivQ, fallback
-    if (rank_schedule is None) or (len(rank_schedule) == 0):
-        rank_schedule = [ndivQ]
-    else:
-        prod = functools.reduce(operator.mul, [x for x in rank_schedule if x not in (-1, 0)], 1)
+
+    # Compute partial rank schedule up to Q
+    best_value = None
+    best_schedule = None
+
+    for depth in range(1, hierarchy_depth + 1):
+        value, schedule = min_sum_partial_products_with_factors(
+            ndivQ, depth, max_rank
+        )
+
+        if schedule is None or len(schedule) == 0:
+            continue
+
+        prod = functools.reduce(operator.mul, schedule, 1)
         if prod != ndivQ:
-            # force completion by appending the leftover factor
-            leftover = ndivQ // prod if prod != 0 else ndivQ
-            if leftover > 1:
-                rank_schedule.append(leftover)
-    
-    rank_schedule = [x for x in rank_schedule if x not in (1, -1, 0)]
-    rank_schedule.sort()
+            continue
+
+        if (best_value is None) or (value < best_value):
+            best_value = value
+            best_schedule = schedule
+
+    if best_schedule is None:
+        raise ValueError(
+            f"No admissible rank schedule found for n={n} with "
+            f"hierarchy_depth<={hierarchy_depth}, max_Q={max_Q}, "
+            f"and max_rank={max_rank}."
+        )
+
+    rank_schedule = sorted(best_schedule)
     if Q != 1:
         rank_schedule.append(Q)
-    
+    rank_schedule = [x for x in rank_schedule if x != 1]
+
     print(f'Optimized rank-annealing schedule: {rank_schedule}')
-    
-    # Now guaranteed (by construction)
-    assert functools.reduce(operator.mul, rank_schedule, 1) == n, "Internal error: schedule still doesn't factorize n!"
+
+    assert functools.reduce(operator.mul, rank_schedule, 1) == n, \
+        "Error! Rank-schedule does not factorize n!"
+
     return rank_schedule
+
 
 def factors(n):
     # Return list of all factors of an integer
     return set(reduce(
         list.__add__,
-        ([i, n//i] for i in range(1, int(n**0.5) + 1) if n % i == 0)))
+        ([i, n // i] for i in range(1, int(n**0.5) + 1) if n % i == 0)
+    ))
+
 
 def max_factor_lX(n, max_X):
-    # Find max factor of n such that factor <= max_X
+    # Find max factor of n , such that max_factor <= max_X
     factor_lst = factors(n)
     max_factor = 1
     for factor in factor_lst:
@@ -67,54 +85,52 @@ def max_factor_lX(n, max_X):
             max_factor = factor
     return max_factor
 
+
 def min_sum_partial_products_with_factors(n, k, C):
     """
-    Dynamic program to compute the rank-schedule, subject to a constraint of intermediates being \leq C
+    Dynamic program to compute the rank-schedule, subject to a constraint
+    of intermediates being <= C
 
     Parameters
     ----------
     n: int
-        The dataset size to be factored into a rank-scheduler. Assumed to be non-prime.
+        The dataset size to be factored into a rank-scheduler
     k: int
-        The depth of the hierarchy.
+        The depth of the hierarchy
     C: int
-        A constraint on the maximal intermediate rank across the hierarchy.
-    
+        A constraint on the maximal intermediate rank across the hierarchy
     """
     INF = float('inf')
-    
-    dp = [[INF]*(k+1) for _ in range(n+1)]
-    choice = [[-1]*(k+1) for _ in range(n+1)]
-    
-    for d in range(1, n+1):
+
+    dp = [[INF] * (k + 1) for _ in range(n + 1)]
+    choice = [[-1] * (k + 1) for _ in range(n + 1)]
+
+    for d in range(1, n + 1):
         if d <= C:
             dp[d][1] = d
             choice[d][1] = d
-    
-    for t in range(2, k+1):
-        for d in range(1, n+1):
-            if dp[d][t-1] == INF and t > 1:
-                pass
-            
-            for r in range(1, min(C,d)+1):
-                if d % r == 0:
-                    candidate = r + r * dp[d // r][t-1]
+
+    for t in range(2, k + 1):
+        for d in range(1, n + 1):
+            for r in range(1, min(C, d) + 1):
+                if d % r == 0 and dp[d // r][t - 1] != INF:
+                    candidate = r + r * dp[d // r][t - 1]
                     if candidate < dp[d][t]:
                         dp[d][t] = candidate
                         choice[d][t] = r
-    
-    
+
     if dp[n][k] == INF:
         return None, []
-    
+
     factors = []
     d_cur, t_cur = n, k
-    
+
     while t_cur > 0:
         r_cur = choice[d_cur][t_cur]
+        if r_cur == -1:
+            return None, []
         factors.append(r_cur)
         d_cur //= r_cur
         t_cur -= 1
-    
-    return dp[n][k], factors
 
+    return dp[n][k], factors

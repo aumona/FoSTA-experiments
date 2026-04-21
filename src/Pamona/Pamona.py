@@ -110,165 +110,250 @@ class Pamona(object):
 		self.T = []
 
 	def run_Pamona(self, data):
-
+	
 		print("Pamona start!")
 		time1 = time.time()
-
+	
 		init_random_seed(self.manual_seed)
-
+	
+		# reset state for every run
+		self.dist = []
+		self.Gc = []
+		self.T = []
+	
 		sampleNo = []
 		Max = []
 		Min = []
 		p = []
 		q = []
 		n_datasets = len(data)
-
+	
 		for i in range(n_datasets):
 			sampleNo.append(np.shape(data[i])[0])
-			self.dist.append(Pamona_geodesic_distances(data[i], self.n_neighbors, mode=self.mode, metric=self.metric))
-
-		for i in range(n_datasets-1):
-			Max.append(np.maximum(sampleNo[i], sampleNo[-1])) 
+		
+			D = Pamona_geodesic_distances(
+				data[i],
+				self.n_neighbors,
+				mode=self.mode,
+				metric=self.metric
+			)
+		
+			# --- FIX START ---
+			D = np.asarray(D, dtype=float)
+		
+			# Replace inf / NaN (caused by disconnected graphs)
+			if not np.isfinite(D).all():
+				finite_mask = np.isfinite(D)
+				if finite_mask.any():
+					max_val = np.max(D[finite_mask])
+				else:
+					max_val = 1.0
+				D = np.nan_to_num(D, nan=max_val, posinf=max_val, neginf=max_val)
+		
+			# Enforce symmetry (VERY important for GW)
+			D = 0.5 * (D + D.T)
+		
+			# Optional: avoid zero distances (can destabilize GW)
+			D += 1e-12 * np.eye(D.shape[0])
+			# --- FIX END ---
+		
+			self.dist.append(D)
+	
+		for i in range(n_datasets - 1):
+			Max.append(np.maximum(sampleNo[i], sampleNo[-1]))
 			Min.append(np.minimum(sampleNo[i], sampleNo[-1]))
-
+	
 		if self.n_shared is None:
-			self.n_shared = Min
-
-		for i in range(n_datasets-1):
+			self.n_shared = Min.copy()
+		elif np.isscalar(self.n_shared):
+			self.n_shared = [self.n_shared] * (n_datasets - 1)
+		else:
+			self.n_shared = list(self.n_shared)
+	
+		for i in range(n_datasets - 1):
 			if self.n_shared[i] > Min[i]:
 				self.n_shared[i] = Min[i]
 			p.append(ot.unif(Max[i])[0:data[i].shape[0]])
 			q.append(ot.unif(Max[i])[0:data[-1].shape[0]])
-
-		for i in range(n_datasets-1):
+	
+		for i in range(n_datasets - 1):
 			if self.M is not None:
-				T_tmp = self.entropic_gromov_wasserstein(self.dist[i], self.dist[-1], p[i], q[i], \
-					self.n_shared[i]/Max[i]-1e-15, self.M[i])
+				T_tmp = self.entropic_gromov_wasserstein(
+					self.dist[i],
+					self.dist[-1],
+					p[i],
+					q[i],
+					self.n_shared[i] / Max[i] - 1e-15,
+					self.M
+				)
 			else:
-				T_tmp = self.entropic_gromov_wasserstein(self.dist[i], self.dist[-1], p[i], q[i], \
-				self.n_shared[i]/Max[i]-1e-15)
-			self.T.append(T_tmp) 
+				T_tmp = self.entropic_gromov_wasserstein(
+					self.dist[i],
+					self.dist[-1],
+					p[i],
+					q[i],
+					self.n_shared[i] / Max[i] - 1e-15
+				)
+	
+			if T_tmp is None or not np.isfinite(T_tmp).all():
+				raise ValueError("Pamona GW step produced invalid transport matrix")
+	
+			self.T.append(T_tmp)
 			self.Gc.append(T_tmp[:len(p[i]), :len(q[i])])
-
+	
+		if len(self.Gc) != n_datasets - 1:
+			raise ValueError("Pamona failed to build coupling matrices self.Gc correctly")
+	
 		integrated_data = self.project_func(data)
-
+	
 		time2 = time.time()
-		print("Pamona Done! takes {:f}".format(time2-time1), 'seconds')
-
+		print("Pamona Done! takes {:f}".format(time2 - time1), 'seconds')
+	
 		return integrated_data, self.T
 
 	def entropic_gromov_wasserstein(self, C1, C2, p, q, m, M=None, loss_fun='square_loss'):
-
+	
 		C1 = np.asarray(C1, dtype=np.float32)
 		C2 = np.asarray(C2, dtype=np.float32)
-
-		T0 = np.outer(p, q)  # Initialization
-
+	
+		if not np.isfinite(C1).all() or not np.isfinite(C2).all():
+			raise ValueError("Pamona received invalid geodesic distance matrices")
+	
+		T0 = np.outer(p, q)
+	
 		dim_G_extended = (len(p) + self.virtual_cells, len(q) + self.virtual_cells)
 		q_extended = np.append(q, [(np.sum(p) - m) / self.virtual_cells] * self.virtual_cells)
 		p_extended = np.append(p, [(np.sum(q) - m) / self.virtual_cells] * self.virtual_cells)
-
-		q_extended = q_extended/np.sum(q_extended)
-		p_extended = p_extended/np.sum(p_extended)
-
+	
+		q_extended = q_extended / np.sum(q_extended)
+		p_extended = p_extended / np.sum(p_extended)
+	
 		constC, hC1, hC2 = init_matrix(C1, C2, p, q, loss_fun)
-
+	
 		cpt = 0
 		err = 1
-
-		while (err > self.tol and cpt < self.max_iter):
-
+	
+		while err > self.tol and cpt < self.max_iter:
+	
 			Gprev = T0
-			# compute the gradient
-			if abs(m-1)<1e-10: # full match
+	
+			if abs(m - 1) < 1e-10:
 				Ck = gwggrad(constC, hC1, hC2, T0)
-			else: # partial match
+			else:
 				Ck = gwgrad_partial(C1, C2, T0)
-		
+	
 			if M is not None:
-				Ck = Ck*M
-
-			Ck_emd = np.zeros(dim_G_extended)
+				Ck = Ck * M
+	
+			if not np.isfinite(Ck).all():
+				raise ValueError("Pamona GW gradient produced NaN/inf values")
+	
+			Ck_emd = np.zeros(dim_G_extended, dtype=np.float64)
 			Ck_emd[:len(p), :len(q)] = Ck
-			Ck_emd[-self.virtual_cells:, -self.virtual_cells:] = 100*np.max(Ck_emd)
-			Ck_emd = np.asarray(Ck_emd, dtype=np.float64)
-
-			# T = sinkhorn(p, q, Ck, epsilon, method = 'sinkhorn')
-			T = sinkhorn(p_extended, q_extended, Ck_emd, self.epsilon, method = 'sinkhorn')
+	
+			max_val = np.nanmax(Ck_emd)
+			if not np.isfinite(max_val):
+				raise ValueError("Pamona cost matrix contains invalid values before Sinkhorn")
+	
+			Ck_emd[-self.virtual_cells:, -self.virtual_cells:] = 100 * max_val
+	
+			T = sinkhorn(
+				p_extended,
+				q_extended,
+				Ck_emd,
+				self.epsilon,
+				method='sinkhorn'
+			)
+	
+			if T is None or not np.isfinite(T).all():
+				raise ValueError("Pamona Sinkhorn returned an invalid transport plan")
+	
 			T0 = T[:len(p), :len(q)]
-
+	
 			if cpt % 10 == 0:
 				err = np.linalg.norm(T0 - Gprev)
-
+	
 				if self.verbose:
 					if cpt % 200 == 0:
-						print('{:5s}|{:12s}'.format(
-							'Epoch.', 'Loss') + '\n' + '-' * 19)
+						print('{:5s}|{:12s}'.format('Epoch.', 'Loss') + '\n' + '-' * 19)
 					print('{:5d}|{:8e}|'.format(cpt, err))
+	
 			cpt += 1
 	
 		return T
 
 	def project_func(self, data):
-
+	
 		n_datasets = len(data)
-		H0 = []
 		L = []
-		for i in range(n_datasets-1):
-			self.Gc[i] = self.Gc[i]*np.shape(data[i])[0]
-
-		for i in range(n_datasets):    
+	
+		if len(self.Gc) != n_datasets - 1:
+			raise ValueError("Pamona project_func received malformed self.Gc")
+	
+		for i in range(n_datasets - 1):
+			if self.Gc[i] is None:
+				raise ValueError(f"Pamona self.Gc[{i}] is None")
+			self.Gc[i] = self.Gc[i] * np.shape(data[i])[0]
+	
+		for i in range(n_datasets):
 			graph_data = kneighbors_graph(data[i], self.n_neighbors, mode="distance")
 			graph_data = graph_data + graph_data.T.multiply(graph_data.T > graph_data) - \
 				graph_data.multiply(graph_data.T > graph_data)
-			W = np.array(graph_data.todense())
-			index_pos = np.where(W>0)
-			W[index_pos] = 1/W[index_pos] 
+	
+			W = np.array(graph_data.todense(), dtype=float)
+			index_pos = np.where(W > 0)
+			W[index_pos] = 1 / W[index_pos]
+	
+			if not np.isfinite(W).all():
+				raise ValueError("Pamona graph weights contain NaN/inf values")
+	
 			D = np.diag(np.dot(W, np.ones(np.shape(W)[1])))
 			L.append(D - W)
-
+	
 		Sigma_x = []
 		Sigma_y = []
-		for i in range(n_datasets-1):
+		for i in range(n_datasets - 1):
 			Sigma_y.append(np.diag(np.dot(np.transpose(np.ones(np.shape(self.Gc[i])[0])), self.Gc[i])))
 			Sigma_x.append(np.diag(np.dot(self.Gc[i], np.ones(np.shape(self.Gc[i])[1]))))
-
+	
 		S_xy = self.Gc[0]
-		S_xx = L[0] + self.Lambda*Sigma_x[0]
-		S_yy = L[-1] + self.Lambda*Sigma_y[0]
-		for i in range(1, n_datasets-1):
+		S_xx = L[0] + self.Lambda * Sigma_x[0]
+		S_yy = L[-1] + self.Lambda * Sigma_y[0]
+	
+		for i in range(1, n_datasets - 1):
 			S_xy = np.vstack((S_xy, self.Gc[i]))
-			S_xx = block_diag(S_xx, L[i] + self.Lambda*Sigma_x[i])
-			S_yy = S_yy + self.Lambda*Sigma_y[i]
-
+			S_xx = block_diag(S_xx, L[i] + self.Lambda * Sigma_x[i])
+			S_yy = S_yy + self.Lambda * Sigma_y[i]
+	
 		v, Q = la.eig(S_xx)
-		v = v + 1e-12   
-		V = np.diag(v**(-0.5))
+		v = v + 1e-12
+		V = np.diag(v ** (-0.5))
 		H_x = np.dot(Q, np.dot(V, np.transpose(Q)))
-
+	
 		v, Q = la.eig(S_yy)
-		v = v + 1e-12      
-		V = np.diag(v**(-0.5))
+		v = v + 1e-12
+		V = np.diag(v ** (-0.5))
 		H_y = np.dot(Q, np.dot(V, np.transpose(Q)))
-
+	
 		H = np.dot(H_x, np.dot(S_xy, H_y))
 		U, sigma, V = la.svd(H)
-
+	
 		num = [0]
-		for i in range(n_datasets-1):
-			num.append(num[i]+data[i].shape[0])
-
-		U, V = U[:,:self.output_dim], np.transpose(V)[:,:self.output_dim]
-
+		for i in range(n_datasets - 1):
+			num.append(num[i] + data[i].shape[0])
+	
+		U = U[:, :self.output_dim]
+		V = np.transpose(V)[:, :self.output_dim]
+	
 		fx = np.dot(H_x, U)
 		fy = np.dot(H_y, V)
-
+	
 		integrated_data = []
-		for i in range(n_datasets-1):
-			integrated_data.append(fx[num[i]:num[i+1]])
-
+		for i in range(n_datasets - 1):
+			integrated_data.append(fx[num[i]:num[i + 1]])
+	
 		integrated_data.append(fy)
-
+	
 		return integrated_data
 
 	def Visualize(self, data, integrated_data, datatype=None, mode='PCA'):

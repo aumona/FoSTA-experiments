@@ -1,8 +1,13 @@
 forestkernel @ git+https://github.com/jakerhodes/RF-GAP-Python@forestkernel-wip
 torch
-aeon==1.4.0
+# aeon==1.4.0
 phate
 umap-learn
-jax
+# jax==0.4.35   # for CPU only on local MacOS device
+jax[cuda12]  # NVIDIA GPU support on cluster
 pot
+scanpy
+matplotlib
+pandas
+ipykernel
 scanpy

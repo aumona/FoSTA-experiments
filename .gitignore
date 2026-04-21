@@ -1,8 +1,25 @@
 # data
 data/
+data_uci/
+
+# nohup
+nohup.out
+
+# conda env
+.condaenv/
+
+# vscode
+.vscode/
+
+
+# Original HiRef codebase
+src/HiRef-main
 
 # ideas
 ideas/
+
+#results
+results_uci/
 
 # figures
 figures/
