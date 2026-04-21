@@ -1,3 +1,4 @@
+import os
 import tracemalloc
 
 import matplotlib.pyplot as plt
@@ -7,7 +8,7 @@ from sklearn.metrics import accuracy_score, silhouette_score
 from utils.metrics import label_transfer_accuracy, calc_domainAveraged_FOSCTTM
 import pandas as pd
 from scipy.sparse import csr_matrix
-
+import scanpy as sc
 
 # Alignment models
 from src.mali import MALI
@@ -26,6 +27,7 @@ import harmonypy
 
 import time
 
+import scib
 from scib_metrics.benchmark import Benchmarker, BioConservation, BatchCorrection
 import pickle
 
@@ -135,7 +137,7 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
     elif model_name == 'Pamona':
         model = Pamona(
             n_components=n_components,
-            embedder=embedder,
+            embedder="UMAP",
             gamma=gamma,  # controls supervision strength, 1=fully supervised
             random_state=seed
         )
@@ -145,7 +147,7 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
     elif model_name == 'JPamona':
         model = JPamona(
             n_components=n_components,
-            embedder=embedder,
+            embedder="UMAP",
             mu=mu,
             gamma=gamma,  # controls supervision strength, 1=fully supervised
             random_state=seed
@@ -161,13 +163,7 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
     return embedding
 
 
-    
-def split_adata(adata, batch_key="batch", label_key="cell_type", embedding_basis="X"):
-    batches_names = adata.obs[batch_key].unique().tolist()
-    
-    adata1 = adata[adata.obs[batch_key] == batches_names[0]]
-    adata2 = adata[adata.obs[batch_key] == batches_names[1]]
-    
+def get_inputs_from_adatas(adata1, adata2, label_key="cell_type", embedding_basis="X"):
     x0 = csr_matrix(adata1.obsm[embedding_basis])
     x1 = csr_matrix(adata2.obsm[embedding_basis])
     
@@ -181,8 +177,17 @@ def split_adata(adata, batch_key="batch", label_key="cell_type", embedding_basis
     idx_d0 = adata1.obs.index
     idx_d1 = adata2.obs.index
     idxs_d = np.concatenate((idx_d0, idx_d1))
-    
     return x0, x1, y0, y1, idxs_d
+    
+def split_adata(adata, batch_key="batch", **kwargs):
+    batches_names = adata.obs[batch_key].unique().tolist()
+    
+    adata1 = adata[adata.obs[batch_key] == batches_names[0]]
+    adata2 = adata[adata.obs[batch_key] == batches_names[1]]
+    
+    return get_inputs_from_adatas(adata1, adata2, **kwargs)
+
+
 
 def run_our_models_from_adata(adata, model_name= None, batch_key = "batch", label_key = "cell_type", embedding_basis="X", **kwargs):
     # for some methods (MALI, RF-MALI, KEMA, Pamona), the expected input is two datasets (source and target) and two labels
@@ -192,6 +197,16 @@ def run_our_models_from_adata(adata, model_name= None, batch_key = "batch", labe
     
     x0, x1, y0, y1, idxs_d = split_adata(adata, batch_key=batch_key, label_key=label_key, embedding_basis=embedding_basis)
    
+    embedding = try_run_our_models(x0=x0, x1=x1, y0=y0, y1=y1, model_name=model_name, **kwargs)
+    
+    # put embedding in adata (after reordering rows of the embedding to match adata.obs.index)
+    emb = pd.DataFrame(embedding)
+    emb = emb.set_index(idxs_d)  
+    emb = emb.reindex(adata.obs.index)
+    adata.obsm[model_name] = np.asarray(emb)
+    return adata
+
+def try_run_our_models(x0=None, x1=None, y0=None, y1=None, model_name=None, **kwargs):
     try:
         embedding = run_our_models(model_name, x0, x1, y0, y1, **kwargs)
         
@@ -200,14 +215,17 @@ def run_our_models_from_adata(adata, model_name= None, batch_key = "batch", labe
         x1 = x1.toarray()
         print("(!) Sparse matrix conversion to dense due to error:", e)
         embedding = run_our_models(model_name, x0, x1, y0, y1, **kwargs)
-        
-    # put embedding in adata (after reordering rows)
-    emb = pd.DataFrame(embedding)
-    emb = emb.set_index(idxs_d)  
-    emb = emb.reindex(adata.obs.index)
-    adata.obsm[model_name] = np.asarray(emb)
+            
+    return embedding
+
+
+def run_our_models_from_adatas(adata1, adata2, label_key="cell_type", model_name=None, embedding_basis="X", **kwargs):
+    x0, x1, y0, y1, idxs_d = get_inputs_from_adatas(adata1, adata2, label_key=label_key, embedding_basis=embedding_basis)
+    embedding = try_run_our_models(x0=x0, x1=x1, y0=y0, y1=y1, model_name=model_name, **kwargs)
     
-    return adata
+    # how to get the 
+    
+    return embedding, y0, y1, idxs_d
 
 
 
@@ -216,7 +234,6 @@ def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours
     # runs either our methods or other methods depending on model_name
     # returns adata with embedding in adata.obsm[model_name]
     # label_key_ours is used for our methods only (if different from label_key)
-    
     
     start_time = time.time()
     tracemalloc.start()
@@ -507,10 +524,165 @@ def benchmark_from_adata(adata, methods, batch_key = "batch", label_key = "cell_
         
     df = bm.get_results()
 
+    # add label-free metrics from scib
+    trajectory_ = True if 'dpt_pseudotime' in adata.obs else False
+   
+    
+    for method in methods:
+    # only cell cycle and trajectory preservation, if the data has pseudotime information (dpt_pseudotime in adata.obs)
+        if trajectory_:
+            sc.pp.neighbors(adata, use_rep=method) 
+            # recompute the connectivities on the integrated embedding
+        
+
+        scib_results = scib.me.metrics(
+            adata,
+            adata,
+            embed=method,
+            verbose=True,
+            hvg_score_=False,
+            cluster_nmi=False,
+            batch_key=batch_key,
+            label_key=label_key,
+            silhouette_=False,
+            type_="embed",
+            nmi_=False,
+            nmi_method=None,
+            nmi_dir=None,
+            ari_=False,
+            pcr_=False,
+            cell_cycle_=True, # cell cycle
+            organism="human",
+            isolated_labels_=False,
+            n_isolated=None,
+            graph_conn_=False,
+            kBET_=False,
+            # lisi_=lisi_,
+            lisi_graph_=False,
+            trajectory_= trajectory_, # trajectory preservation (only if pseudotime exists in the data). could compute it but requires root cell identification and more preprocessing, so we skip it for now
+        )
+    
+        df.loc[df.index== method, "cell_cycle_score"] = scib_results.loc["cell_cycle_conservation"].values[0]
+        df.loc[df.index == "Metric Type", "cell_cycle_score"] = "Bio Conservation (label-free)"
+        if trajectory_:
+            df.loc[df.index == method, "trajectory_score"] = scib_results.loc["trajectory"].values[0]
+            df.loc[df.index == "Metric Type", "trajectory_score"] = "Bio Conservation (label-free)"
+ 
+
     # visualize
     bm.plot_results_table(min_max_scale=False, save_dir = save_path)
 
     return df
+
+
+
+def benchmark_from_adata_scib(adata, methods, batch_key = "batch", label_key = "cell_type", pre_integrated_embedding_obsm_key = "Unintegrated", save_path= None):
+    # Benchmarking with scIB_metrics
+    # saves to save_path if provided, otherwise not saved
+    # kind of a hack to follow this code: https://github.com/theislab/scib-pipeline/blob/main/scripts/metrics/metrics.py
+    # only keep the methods that are present in adata.obsm (to avoid crashes)
+    methods = [m for m in methods if m in adata.obsm.keys()]
+    
+    silhouette_ = True
+    nmi_ = True
+    ari_ = True
+    pcr_ = True
+    cell_cycle_ = True
+    isolated_labels_ = True
+    hvg_score_ = False # because we only have embeddings, not transformed counts
+    graph_conn_ = True
+    # kBET_ = True
+    kBET_ = False # because we need rpy2 which requires an R installation
+    # lisi_ = True
+    # lisi_graph_ = True
+    lisi_graph_ = False # was creating bugs. might be due to rare cell types (1 cell)
+    
+    
+    n_hvgs = None
+    recompute_neighbors = True
+    precompute_pca = True
+    embed = "X_emb"
+    organism='human' # or mouse if using another dataset. it's for the cell cycle metric only, so it doesn't affect the other metrics.
+    
+    output = f"{save_path}/scib_metrics_results.csv"
+    
+    # check if pseudotime data exists in original data
+    if 'dpt_pseudotime' in adata.obs:
+        trajectory_ = True
+    else:
+        trajectory_ = False
+    
+    
+    # create cluster NMI output file
+    file_stump = os.path.splitext(output)[0]
+    cluster_nmi = f'{file_stump}_nmi.txt'
+    
+     
+    for method in methods:
+        print(f"Running scIB benchmark for method {method}...")
+        adata_int = adata.copy()
+        adata_int.obsm["X_emb"] = adata.obsm[method]
+        
+        
+        scib.preprocessing.reduce_data(
+                adata_int,
+                n_top_genes=n_hvgs,
+                neighbors=recompute_neighbors,
+                use_rep=embed,
+                pca=precompute_pca,
+                umap=False
+            )
+        
+        scib.preprocessing.reduce_data( # need to rerun it because the neighbors need to be recomputed on the benchmark adata (subset from the whole thing with hidden labels)
+                adata,
+                overwrite_hvg = False, # skip HVG selection (should already be done from the original preprocessing)
+                neighbors=True,
+                use_rep='X_pca',
+                pca=True, # should already be done
+                umap=False
+            )
+        
+        
+        results = scib.me.metrics(
+            adata,
+            adata_int,
+            verbose=True,
+            hvg_score_=hvg_score_,
+            cluster_nmi=cluster_nmi,
+            batch_key=batch_key,
+            label_key=label_key,
+            silhouette_=silhouette_,
+            embed=embed,
+            type_="embed",
+            nmi_=nmi_,
+            nmi_method='arithmetic',
+            nmi_dir=None,
+            ari_=ari_,
+            pcr_=pcr_,
+            cell_cycle_=cell_cycle_,
+            organism=organism,
+            isolated_labels_=isolated_labels_,
+            n_isolated=None,
+            graph_conn_=graph_conn_,
+            kBET_=kBET_,
+            # lisi_=lisi_,
+            lisi_graph_=lisi_graph_,
+            trajectory_=trajectory_,
+        )
+        results.rename(columns={results.columns[0]: method}, inplace=True)
+
+        
+        results.insert(0, "method", method)
+        if 'results_df' in locals():
+            results_df = pd.concat([results_df, results], ignore_index=True)
+        else:
+            results_df = results
+    
+    results_df.to_csv(output)
+
+    return results_df
+
+
 
 
 def run_metrics_from_adata(adata, method_name, batch_key = "batch", label_key = "cell_type", masked_label_key = "labels_masked", **kwargs):

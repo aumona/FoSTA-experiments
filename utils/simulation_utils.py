@@ -95,13 +95,16 @@ def global_label_masking(adata, masking_frac = 0.5, label_key="cell_type", batch
     Does a masking of the labels per batch, stratified over classes.
     Ensures at least one sample per class per batch remains unmasked.
     Stores the masked labels in a new column in adata.obs named "{label_key}_masked"
+    creates a column "mask_indices" in adata.obs that indicates which samples were masked (1 if masked, 0 if not masked)
     '''
     rng = np.random.default_rng(seed=random_state)
     new_col = f"{label_key}_masked"
     
     # Initialize with original labels
     adata.obs[new_col] = adata.obs[label_key].copy()
+    adata.obs['mask_indices'] = 0  # Initialize the mask_indices column
     mask_indices = np.array([])
+    # mask_indices = []
     # Iterate through each batch
     for batch in adata.obs[batch_key].unique():
         batch_indices = adata.obs[adata.obs[batch_key] == batch].index
@@ -130,19 +133,27 @@ def global_label_masking(adata, masking_frac = 0.5, label_key="cell_type", batch
 
                 # Apply the "Unknown" label to the selected indices
                 adata.obs.loc[cur_mask_indices, new_col] = "Unknown"
-                mask_indices = np.concatenate([mask_indices, cur_mask_indices])
-    return adata, mask_indices
+                adata.obs.loc[cur_mask_indices, 'mask_indices'] = 1  # add a column to indicate which samples were masked so we can retrieve it
+                # mask_indices = np.concatenate([mask_indices, cur_mask_indices])
+                # mask_indices.extend(cur_mask_indices.tolist())
+        # mask_indices = list(set(mask_indices))
+    return adata
     
     
-def ensure_label_intersection(adata, labels=None, label_key=None, batch_key="batch", replace_by = "Unknown"):
+def ensure_label_intersection(adata, labels=None, label_key=None, batch_key="batch", replace_by = "Unknown"): 
     # updates adata[label_key] to ensures that all labels are present in both batches by removing samples of labels that are missing in one batch
     # the labels that are not shared are set to Unknown
     # can either provide labels as a series, or a label_key to use from adata.obs. if labels is provided, label_key is ignored. if labels is not provided, label_key must be provided and must be a column in adata.obs.
     # replace_by: value to replace the non-shared labels with. default is "Unknown". can be set to np.nan or -1 if you want to use a numeric label for the non-shared labels.
     
-    batch1 = adata.obs[batch_key].unique()[0]
-    batch2 = adata.obs[batch_key].unique()[1]
     
+    batch1 = adata.obs[batch_key].unique()[0]
+    try:
+        batch2 = adata.obs[batch_key].unique()[1]
+    except:
+        print(f"Only one batch found in adata.obs[{batch_key}]. No need to ensure label intersection.")
+        return labels, set(), set()
+        
     if labels is None:
         labels = adata.obs[label_key]
     # find labels that are missing in one of the batches
@@ -198,24 +209,28 @@ def clean_and_encode_labels(adata,
     return adata
 
 
-# def remove_dataset_specific_cells(adata, batch_key, label_key):
-#     batch1 = adata.obs[batch_key].unique()[0]
-#     batch2 = adata.obs[batch_key].unique()[1]
-#     # find labels that are missing in one of the batches
-#     labels_missing_in_batch1 = set(adata.obs[label_key][adata.obs[batch_key]==batch2]) - set(adata.obs[label_key][adata.obs[batch_key]==batch1])   
-#     labels_missing_in_batch2 = set(adata.obs[label_key][adata.obs[batch_key]==batch1]) - set(adata.obs[label_key][adata.obs[batch_key]==batch2])  
+def remove_dataset_specific_cells(adata, batch_key, label_key):
+    batch1 = adata.obs[batch_key].unique()[0]
+    batch2 = adata.obs[batch_key].unique()[1]
+    # find labels that are missing in one of the batches
+    labels_missing_in_batch1 = set(adata.obs[label_key][adata.obs[batch_key]==batch2]) - set(adata.obs[label_key][adata.obs[batch_key]==batch1])   
+    labels_missing_in_batch2 = set(adata.obs[label_key][adata.obs[batch_key]==batch1]) - set(adata.obs[label_key][adata.obs[batch_key]==batch2])  
 
-#     # remove all cells that belong to these labels
-#     adata = adata[~adata.obs[label_key].isin(labels_missing_in_batch1.union(labels_missing_in_batch2))]
-#     return adata, labels_missing_in_batch1, labels_missing_in_batch2
+    # remove all cells that belong to these labels
+    adata = adata[~adata.obs[label_key].isin(labels_missing_in_batch1.union(labels_missing_in_batch2))]
+    return adata, labels_missing_in_batch1, labels_missing_in_batch2
 
 
-def preprocess_adata(adata):
+def preprocess_adata(adata, batch_key, n_top_genes=2000, n_pcs=30):
     # find the 2000 highly variable genes and compute PCA. subset the adata to the highly variable genes.
+    # if pca is 0, do not run pca
+    # if n_top_genes is 0, do not run hvg selection
     
     # PCA AND HVG SELECTION
-    sc.pp.highly_variable_genes(adata, n_top_genes=2000, flavor="cell_ranger", batch_key= None)
-    sc.tl.pca(adata, n_comps=30, mask_var="highly_variable")
+    if n_top_genes > 0:
+        sc.pp.highly_variable_genes(adata, n_top_genes=n_top_genes, flavor="cell_ranger", batch_key= batch_key)
+    if n_pcs > 0:
+        sc.tl.pca(adata, n_comps=n_pcs, mask_var="highly_variable")
 
     # subset to the highly variable genes so that each method has the same input.
     adata = adata[:, adata.var.highly_variable].copy()

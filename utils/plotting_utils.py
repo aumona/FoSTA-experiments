@@ -306,13 +306,90 @@ def plot_metric_grouped_by(results_df, groupby_cols=["noise_std", "dropout_prob"
 
 
 
-def plot_bio_vs_batch_correction(results_df, save_path=None):
+# def plot_bio_vs_batch_correction(results_df, save_path=None):
+#     # 1. Calculate Mean and Standard Deviation
+#     mean_df = results_df.groupby(['method'])[["Bio conservation", "Batch correction"]].mean()
+#     std_df = results_df.groupby(['method'])[["Bio conservation", "Batch correction"]].std()
+#     std_df = std_df.fillna(0)
+
+#     # 2. Calculate Ranks (Assuming higher score is better -> ascending=False)
+#     mean_df['Bio Rank'] = mean_df['Bio conservation'].rank(ascending=False).astype(int)
+#     mean_df['Batch Rank'] = mean_df['Batch correction'].rank(ascending=False).astype(int)
+    
+#     # 3. Calculate Average Rank and Sort
+#     mean_df['Avg Rank'] = (mean_df['Bio Rank'] + mean_df['Batch Rank']) / 2
+#     mean_df = mean_df.sort_values('Avg Rank')
+
+#     plt.figure(figsize=(10, 8)) 
+    
+#     # Use a fixed color map so colors stay consistent regardless of sorting
+#     unique_methods = results_df['method'].unique()
+#     # Create palette
+#     palette_list = sns.color_palette("tab20", n_colors=len(unique_methods))
+#     color_map = dict(zip(unique_methods, palette_list))
+    
+#     # Iterate through the SORTED methods
+#     for method in mean_df.index:
+#         x = mean_df.loc[method, "Batch correction"]
+#         y = mean_df.loc[method, "Bio conservation"]
+#         x_err = std_df.loc[method, "Batch correction"]
+#         y_err = std_df.loc[method, "Bio conservation"]
+        
+#         bio_rank = mean_df.loc[method, 'Bio Rank']
+#         batch_rank = mean_df.loc[method, 'Batch Rank']
+#         avg_rank = mean_df.loc[method, 'Avg Rank']
+
+#         # Legend Label: Includes Bio and Batch ranks
+#         legend_label = f"{method} (Bio #{bio_rank}, Batch #{batch_rank})"
+
+#         # 4. Plot Error Bars
+#         plt.errorbar(
+#             x, y, 
+#             xerr=x_err, 
+#             yerr=y_err, 
+#             fmt='none',
+#             ecolor=color_map[method],
+#             elinewidth=1.5,
+#             capsize=5,
+#             alpha=0.4, 
+#             label=None 
+#         )
+
+#         # 5. Plot the Marker (No annotation on plot)
+#         plt.scatter(
+#             x, y, 
+#             s=100, 
+#             color=color_map[method], 
+#             label=legend_label, 
+#             zorder=3
+#         )
+
+#     # 6. Final Formatting
+#     plt.legend(
+#         bbox_to_anchor=(1.05, 1), 
+#         loc='upper left', 
+#         title="Method (Ordered by Avg Rank)",
+#         frameon=True
+#     )
+    
+#     plt.title("Bio conservation vs Batch correction")
+#     plt.xlabel("Batch correction")
+#     plt.ylabel("Bio conservation")
+#     plt.grid(True, linestyle='--', alpha=0.5)
+
+#     if save_path is not None:
+#         plt.tight_layout()
+#         plt.savefig(f"{save_path}/bio_vs_batch_correction.pdf", format='pdf')
+#         plt.savefig(f"{save_path}/bio_vs_batch_correction.png", format='png')
+#     plt.show()
+
+def plot_bio_vs_batch_correction(results_df, title = "Bio conservation vs Batch correction", save_path=None):
     # 1. Calculate Mean and Standard Deviation
     mean_df = results_df.groupby(['method'])[["Bio conservation", "Batch correction"]].mean()
     std_df = results_df.groupby(['method'])[["Bio conservation", "Batch correction"]].std()
     std_df = std_df.fillna(0)
 
-    # 2. Calculate Ranks (Assuming higher score is better -> ascending=False)
+    # 2. Calculate Ranks
     mean_df['Bio Rank'] = mean_df['Bio conservation'].rank(ascending=False).astype(int)
     mean_df['Batch Rank'] = mean_df['Batch correction'].rank(ascending=False).astype(int)
     
@@ -320,15 +397,13 @@ def plot_bio_vs_batch_correction(results_df, save_path=None):
     mean_df['Avg Rank'] = (mean_df['Bio Rank'] + mean_df['Batch Rank']) / 2
     mean_df = mean_df.sort_values('Avg Rank')
 
-    plt.figure(figsize=(10, 8)) 
+    # --- ADJUSTMENT: Smaller Figure Size ---
+    plt.figure(figsize=(5, 5)) 
     
-    # Use a fixed color map so colors stay consistent regardless of sorting
     unique_methods = results_df['method'].unique()
-    # Create palette
     palette_list = sns.color_palette("tab20", n_colors=len(unique_methods))
     color_map = dict(zip(unique_methods, palette_list))
     
-    # Iterate through the SORTED methods
     for method in mean_df.index:
         x = mean_df.loc[method, "Batch correction"]
         y = mean_df.loc[method, "Bio conservation"]
@@ -337,12 +412,9 @@ def plot_bio_vs_batch_correction(results_df, save_path=None):
         
         bio_rank = mean_df.loc[method, 'Bio Rank']
         batch_rank = mean_df.loc[method, 'Batch Rank']
-        avg_rank = mean_df.loc[method, 'Avg Rank']
-
-        # Legend Label: Includes Bio and Batch ranks
         legend_label = f"{method} (Bio #{bio_rank}, Batch #{batch_rank})"
 
-        # 4. Plot Error Bars
+        # Plot Error Bars
         plt.errorbar(
             x, y, 
             xerr=x_err, 
@@ -355,7 +427,7 @@ def plot_bio_vs_batch_correction(results_df, save_path=None):
             label=None 
         )
 
-        # 5. Plot the Marker (No annotation on plot)
+        # Plot Marker
         plt.scatter(
             x, y, 
             s=100, 
@@ -364,22 +436,23 @@ def plot_bio_vs_batch_correction(results_df, save_path=None):
             zorder=3
         )
 
-    # 6. Final Formatting
+    # --- ADJUSTMENT: Legend Styling ---
     plt.legend(
         bbox_to_anchor=(1.05, 1), 
         loc='upper left', 
         title="Method (Ordered by Avg Rank)",
-        frameon=True
+        frameon=True,
+        fontsize='small',  # Make text smaller to fit the smaller figure height
+        title_fontsize='medium'
     )
     
-    plt.title("Bio conservation vs Batch correction")
+    plt.title(title)
     plt.xlabel("Batch correction")
     plt.ylabel("Bio conservation")
     plt.grid(True, linestyle='--', alpha=0.5)
 
     if save_path is not None:
-        plt.tight_layout()
-        plt.savefig(f"{save_path}/bio_vs_batch_correction.pdf", format='pdf')
-        plt.savefig(f"{save_path}/bio_vs_batch_correction.png", format='png')
+        # 'bbox_inches="tight"' ensures the external legend is not cut off when saving
+        plt.savefig(f"{save_path}/bio_vs_batch_correction.pdf", format='pdf', bbox_inches="tight")
+        plt.savefig(f"{save_path}/bio_vs_batch_correction.png", format='png', bbox_inches="tight")
     plt.show()
-
