@@ -41,24 +41,25 @@ class FoSTA:
     def __init__(
         self,
         mu=0.5,
-        kernel_method="original",
+        kernel_method="original",  # oob or original
         model_type="rf",
         n_estimators=500,
+        bootstrap=True,
         n_svd=100,
-        n_neighbors=5,
+        n_neighbors=5,  # try maybe 10, 30 
         decay=40,
         knn_dist="euclidean",
-        t="auto",
+        t="auto",  # t=2 or 'auto'
         beta=0.9,
         prior_correct=True,
         semantic_norm="l2",
         embedder="PHATE",
         n_components=2,
-        ot_solver="hiref",
+        ot_solver="hiref", # dense or hiref
         entR=0,
         m=1,
         distance="cosine",
-        verbose=0,
+        verbose=1,
         random_state=None,
         n_jobs=-1,
     ):
@@ -72,12 +73,14 @@ class FoSTA:
         self.kernel_method = kernel_method
         self.model_type = model_type
         self.n_estimators = n_estimators
+        self.bootstrap = bootstrap
         self.kernel_params = {
             "random_state": random_state,
             "prediction_type": "classification",
             "n_estimators": self.n_estimators,
             "kernel_method": self.kernel_method,
             "model_type": self.model_type,
+            "bootstrap": self.bootstrap,
         }
 
         # Leaf preprocessing parameters
