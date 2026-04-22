@@ -54,8 +54,10 @@ echo "noise=$noise"
 echo "dropout=$dropout"
 echo "component=$component"
 
-python3 scripts/simulated_batches_benchmark_one.py \
+python3 scripts/simulated_batches.py \
     --noise "$noise" \
     --dropout "$dropout" \
     --components "$component" \
+    --seed $seed \
     --savename "simulated_batches/${SLURM_ARRAY_JOB_ID}"
+
