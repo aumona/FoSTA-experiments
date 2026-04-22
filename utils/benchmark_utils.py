@@ -487,7 +487,8 @@ def visualization(embedding, y_source, y_target, seed=42, title= "", save_path =
 
 
 def benchmark_from_adata(adata, methods, batch_key = "batch", label_key = "cell_type", pre_integrated_embedding_obsm_key = "Unintegrated", save_path= None):
-    # Benchmarking with scIB_metrics
+    # Benchmarking with scIB_metrics (faster)
+    # adds the missing metrics from scib (trajectory preservation and cell cycle conservation)
     # saves to save_path if provided, otherwise not saved
     
     # only keep the methods that are present in adata.obsm (to avoid crashes)
