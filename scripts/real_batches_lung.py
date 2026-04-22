@@ -26,10 +26,15 @@ scratch_path = "/home/mila/m/myriam.lizotte/scratch/RF-MALI"
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', default = "lung_atlas") 
+parser.add_argument('--seed', default = 3008874, type=int) 
 parser.add_argument('--batch1', default = "4") 
 parser.add_argument('--batch2', default = "5") 
 parser.add_argument('-s', '--save', default = True, type=bool) 
-parser.add_argument('-c', '--components', default = "30") 
+parser.add_argument('-c', '--components', default = "30", type=int) 
+parser.add_argument('--hvg', default = True, type=bool) 
+parser.add_argument('--pca', default = True, type=bool) 
+parser.add_argument('--globalmasking', default = 0.2, type=float) 
+# parser.add_argument('--savename', default = "real_batches_lung", type=str) 
 # parser.add_argument('-t', default = "auto") 
 
 args = parser.parse_args()
@@ -61,10 +66,21 @@ save_path_subfolder = save_path
 if args.save and not os.path.exists(save_path_subfolder):
     os.makedirs(save_path_subfolder)
     
-adata = preprocess_adata(adata)
+if args.hvg:
+    n_top_genes=2000
+else:
+    n_top_genes=0
+    
+if args.pca:
+    n_pcs=30
+else:
+    n_pcs=0
+    
+adata = preprocess_adata(adata, batch_key=batch_key, n_top_genes=n_top_genes, n_pcs=n_pcs)
+
 
 # mask some labels (adds a new column "cell_type_masked" with some values "Unknown")
-adata, mask_indices = global_label_masking(adata, masking_frac=0.5, label_key=label_key, batch_key=batch_key, random_state=42) 
+adata = global_label_masking(adata, masking_frac=args.globalmasking, label_key=label_key, batch_key=batch_key, random_state=args.seed) 
 original_label_key = label_key
 label_key = f"{label_key}_masked" # update label key to the masked version for benchmarking (so that methods that can leverage labels will be affected by the masking)
 
@@ -99,20 +115,20 @@ for method in methods:
             if embedder == "PHATE":
                 for t in ts:
                     print(f"Running method {method} with embedder={embedder}..., t={t}")
-                    adata, time_taken, memory_taken = run_models_from_adata(adata, method, batch_key = batch_key, label_key_ours = "cell_type_cleaned_encoded", label_key = label_key, embedding_basis="X_pca", embedder=embedder, seed=42, t=t, n_components = n_components)
+                    adata, time_taken, memory_taken = run_models_from_adata(adata, method, batch_key = batch_key, label_key_ours = "cell_type_cleaned_encoded", label_key = label_key, embedding_basis="X_pca", embedder=embedder, seed=args.seed, t=t, n_components = n_components)
                     adata.obsm[f"{method}_{embedder}_t{t}"] = adata.obsm[method]
                     times_dict[f"{method}_{embedder}_t{t}"] = time_taken
                     memory_dict[f"{method}_{embedder}_t{t}"] = memory_taken
                     adata.obsm.pop(method)  # remove adata.obsm[method] to avoid confusion
             else:
                 print(f"Running method {method} with embedder={embedder}...")
-                adata, time_taken, memory_taken = run_models_from_adata(adata, method, batch_key = batch_key, label_key_ours = "cell_type_cleaned_encoded", label_key = label_key, embedding_basis="X_pca", embedder=embedder, seed=42, n_components = n_components)
+                adata, time_taken, memory_taken = run_models_from_adata(adata, method, batch_key = batch_key, label_key_ours = "cell_type_cleaned_encoded", label_key = label_key, embedding_basis="X_pca", embedder=embedder, seed=args.seed, n_components = n_components)
                 adata.obsm[f"{method}_{embedder}"] = adata.obsm[method]
                 times_dict[f"{method}_{embedder}"] = time_taken
                 memory_dict[f"{method}_{embedder}"] = memory_taken
                 adata.obsm.pop(method)  # remove adata.obsm[method] to avoid confusion
     else:
-        adata, time_taken, memory_taken = run_models_from_adata(adata, method, batch_key = batch_key, label_key_ours = "cell_type_cleaned_encoded", label_key = label_key, embedding_basis="X_pca", embedder="PHATE", seed=42, n_components = n_components)
+        adata, time_taken, memory_taken = run_models_from_adata(adata, method, batch_key = batch_key, label_key_ours = "cell_type_cleaned_encoded", label_key = label_key, embedding_basis="X_pca", embedder="PHATE", seed=args.seed, n_components = n_components)
         times_dict[f"{method}"] = time_taken
         memory_dict[f"{method}"] = memory_taken
 
@@ -150,7 +166,10 @@ try:
 except ValueError:
     pass
 
-benchmark_adata = adata[mask_indices].copy()
+if args.globalmasking>0:
+   benchmark_adata = adata[adata.obs['mask_indices'] == 1].copy()
+else:
+    benchmark_adata = adata.copy() # if we masked nothing, evaluate on everything
 
 df = benchmark_from_adata(benchmark_adata, methods_to_benchmark, batch_key = batch_key, label_key = original_label_key, save_path= save_path_subfolder)
 # metric_type = df.loc["Metric Type"]

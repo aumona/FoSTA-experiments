@@ -1,15 +1,18 @@
 #!/bin/bash
-#SBATCH --job-name=real_batches
+#SBATCH --job-name=real_batches_20pct_masking
 #SBATCH --output=/home/mila/m/myriam.lizotte/scratch/RF-MALI/logs/%x/%A/%a.out
 #SBATCH --error=/home/mila/m/myriam.lizotte/scratch/RF-MALI/logs/%x/%A/%a.err
 #SBATCH --time=01:00:00
 #SBATCH --gres=gpu:1
-#SBATCH --mem=20Gb
+## SBATCH --partition=short-unkillable
+#SBATCH --mem=16Gb
 #SBATCH --mail-type=END,FAIL
-#SBATCH --array=0-119  
+#SBATCH --array=0-119%4  
 
 cd /home/mila/m/myriam.lizotte/RF-MALI
-source ~/envs/env_fosta/bin/activate
+# source ~/envs/env_fosta/bin/activate
+source ~/envs/env_rfmali/bin/activate
+
 
 batches=("1" "2" "3" "4" "5" "6" "A1" "A2" "A3" "A4" "A5" "A6" "B1" "B2" "B3" "B4")
 
@@ -28,7 +31,9 @@ batch2=$(echo $pair | awk '{print $2}')
 
 echo "Running pair: $batch1 vs $batch2"
 
-python3 scripts/real_batches_benchmark.py \
+python3 scripts/real_batches_lung.py \
   --batch1 "$batch1" \
   --batch2 "$batch2" \
-  --components 2
+  --components 2 \
+  --globalmasking 0.2 \
+  --savename "real_batches_20pct_masking"
