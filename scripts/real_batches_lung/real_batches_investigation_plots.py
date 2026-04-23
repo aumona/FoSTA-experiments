@@ -20,13 +20,17 @@ sys.path.insert(0, str(next(p for p in [pathlib.Path.cwd()] + list(pathlib.Path.
 from utils.benchmark_utils import visualization, run_models_from_adata, benchmark_from_adata, run_our_models_from_adatas
 from utils.simulation_utils import add_noise, dropout, global_label_masking, split_and_transform_batch, clean_and_encode_labels, preprocess_adata, ensure_label_intersection
 
+sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
+from personal_paths import BASE_PATH, BATCHES_DATA_PATH, RESULTS_PATH
+base_path = BASE_PATH
+data_path = BATCHES_DATA_PATH
+scratch_path = RESULTS_PATH
+
 original_methods = ["FoSTA", "RFMALI", "MALI", "Scanorama", "LIGER", "Harmony", "scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"]
 original_methods = ["FoSTA"]
 methods = original_methods.copy() # methods might be modified based on what is already run. but we still want to benchmark everything
 
-base_path = "/home/mila/m/myriam.lizotte/RF-MALI"
-mali_path = "/home/mila/m/myriam.lizotte/MALI"
-scratch_path = "/home/mila/m/myriam.lizotte/scratch/RF-MALI"
+
 
 
 parser = argparse.ArgumentParser()
@@ -48,7 +52,7 @@ save_path = f"{scratch_path}/results/{save_name}"
 
 
 # LOAD DATA 
-data_path = "/home/mila/m/myriam.lizotte/MALI/batch_correction/data/lung_atlas.h5ad"
+
 adata_full = sc.read(data_path)
 adata_full
 print(adata_full.uns)

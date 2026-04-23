@@ -16,9 +16,11 @@ from utils.benchmark_utils import visualization, run_models_from_adata, benchmar
 from utils.simulation_utils import add_noise, dropout, split_and_transform_batch, clean_and_encode_labels, preprocess_adata
 
 
-base_path = "/home/mila/m/myriam.lizotte/RF-MALI"
-mali_path = "/home/mila/m/myriam.lizotte/MALI"
-scratch_path = "/home/mila/m/myriam.lizotte/scratch/RF-MALI"
+sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
+from personal_paths import BASE_PATH, BATCHES_DATA_PATH, RESULTS_PATH
+base_path = BASE_PATH
+data_path = BATCHES_DATA_PATH
+scratch_path = RESULTS_PATH
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', default = "lung_atlas") 

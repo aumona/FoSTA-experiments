@@ -14,6 +14,13 @@ from utils.benchmark_utils import visualization, run_our_models, run_models_from
 
 from utils.simulation_utils import add_noise, dropout, split_and_transform_batch, clean_and_encode_labels, preprocess_adata, mask_labels
 
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
+from personal_paths import BASE_PATH, PAIRED_DATA_PATH, RESULTS_PATH
+base_path = BASE_PATH
+data_path = PAIRED_DATA_PATH
+scratch_path = RESULTS_PATH
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed', default = 3008874, type=int) 
 parser.add_argument('-t', default = 2) 
@@ -21,9 +28,6 @@ args = parser.parse_args()
 t = int(args.t) if args.t != "auto" else "auto"
 seed= args.seed
 
-base_path = "/home/mila/m/myriam.lizotte/RF-MALI"
-mali_path = "/home/mila/m/myriam.lizotte/MALI"
-scratch_path = "/home/mila/m/myriam.lizotte/scratch/RF-MALI"
 
 
 # set save location

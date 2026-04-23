@@ -14,14 +14,15 @@ from utils.utils import dataprep
 from utils.simulation_utils import add_noise, dropout, random_feature_split, importance_split, alternating_importance_split, add_noise_features_split, random_rotate, mask_labels
 
 
+sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
+from personal_paths import BASE_PATH, UCI_DATA_PATH, RESULTS_PATH
+base_path = BASE_PATH
+data_path = UCI_DATA_PATH
+scratch_path = RESULTS_PATH
+
 # methods = ["MALI", "RFMALI", "RFMALI_WIP", "Scanorama", "LIGER", "Harmony", "scVI", "scANVI", "Pamona", "KEMArbf"]
 # methods = ["RFMALI", "FoSTA", "MALI", "Pamona", "KEMArbf", "KEMAlin"]
 # methods = ["RFMALI_WIP"]
-
-
-base_path = "/home/mila/m/myriam.lizotte/RF-MALI"
-mali_path = "/home/mila/m/myriam.lizotte/MALI"
-scratch_path = "/home/mila/m/myriam.lizotte/scratch/RF-MALI"
 
 
 parser = argparse.ArgumentParser()

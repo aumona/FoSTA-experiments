@@ -13,16 +13,15 @@ from utils.utils import dataprep
 
 from utils.simulation_utils import add_noise, dropout, random_feature_split, importance_split, alternating_importance_split, add_noise_features_split, random_rotate, mask_labels_stratified
 
+sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
+from personal_paths import BASE_PATH, UCI_PATH, RESULTS_PATH
+base_path = BASE_PATH
+data_path = UCI_PATH
+scratch_path = RESULTS_PATH
 
 # methods = ["MALI", "RFMALI", "RFMALI_WIP", "Scanorama", "LIGER", "Harmony", "scVI", "scANVI", "Pamona", "KEMArbf"]
 methods = ["RFMALI", "FoSTA", "MALI", "Pamona", "KEMArbf", "KEMAlin"]
 # methods = ["RFMALI_WIP"]
-
-
-base_path = "/home/mila/m/myriam.lizotte/RF-MALI"
-mali_path = "/home/mila/m/myriam.lizotte/MALI"
-scratch_path = "/home/mila/m/myriam.lizotte/scratch/RF-MALI"
-
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--dataset', default = "diabetes") 
@@ -48,10 +47,9 @@ save_path = f"{scratch_path}/results/{save_name}"
 
 
 # LOAD DATA 
-datasets_path = "/home/mila/m/myriam.lizotte/scratch/RF-MALI/data"
 # for these datasets, we assume the first column is the target (labels)
 
-df = pd.read_csv(f"{datasets_path}/{data_name}.csv")
+df = pd.read_csv(f"{data_path}/{data_name}.csv")
 df, labels = dataprep(df) # labels are encoded
 # # remove and store labels
 # labels = df.pop(df.columns[0])

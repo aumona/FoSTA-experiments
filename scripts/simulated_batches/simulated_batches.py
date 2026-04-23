@@ -54,7 +54,7 @@ save_path = f"{scratch_path}/results/{save_name}"
 
 
 # LOAD DATA 
-data_path = "/home/mila/m/myriam.lizotte/MALI/batch_correction/data/lung_atlas.h5ad"
+
 adata_full = sc.read(data_path)
 adata_full
 
