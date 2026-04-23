@@ -399,43 +399,41 @@ import heapq
 #     return T
 
 
-def get_next_smooth_number(n):
+def get_next_admissible_size(
+    n,
+    hierarchy_depth=6,
+    max_Q=int(2**10),
+    max_rank=16,
+):
     """
-    Finds the smallest integer >= n that is 5-smooth 
-    (only prime factors 2, 3, and 5).
-    This guarantees HiRef can factorize it completely using small ranks.
+    Return the smallest integer >= n for which optimal_rank_schedule(...)
+    succeeds under the given constraints.
     """
-    if n <= 1: return 1
-    
-    # Priority queue to generate 2,3,5-smooth numbers in order
-    # Start with 1
-    h = [1]
-    seen = {1}
-    
+    n_try = int(n)
+
     while True:
-        curr = heapq.heappop(h)
-        
-        if curr >= n:
-            return curr
-        
-        # Generate next candidates
-        for factor in [2, 3, 5]:
-            nxt = curr * factor
-            if nxt not in seen:
-                seen.add(nxt)
-                heapq.heappush(h, nxt)
-
-
-
+        try:
+            rank_annealing.optimal_rank_schedule(
+                n=n_try,
+                hierarchy_depth=hierarchy_depth,
+                max_Q=max_Q,
+                max_rank=max_rank,
+            )
+            return n_try
+        except ValueError:
+            n_try += 1
 
 def solve_surjection_hiref(
     post_a, post_b,
+    hierarchy_depth=6,
+    max_Q=int(2**10),
+    max_rank=16,
     verbose=0,
     random_state=None,
 ):
     """
     Simplified HiRef Surjection.
-    1. Sets target size = max(N_a, N_b).
+    1. Sets target size = smallest admissible size >= max(N_a, N_b).
     2. Pads the smaller domain to match target size (stratified copies).
     3. Solves square HiRef.
     4. Collapses copies back to original indices by summing.
@@ -443,76 +441,79 @@ def solve_surjection_hiref(
     rng = np.random.default_rng(random_state)
     post_a = np.asarray(post_a)
     post_b = np.asarray(post_b)
-    
+
     n_a = post_a.shape[0]
     n_b = post_b.shape[0]
-    
-    # 1. Determine Target Size (No smooth numbers, just the bigger one)
-    n_target = max(n_a, n_b)
-    
-    if verbose:
-        print(f"HiRef: Aligning A({n_a}) and B({n_b}). Target square size: {n_target}")
 
-    # --- Helper: Augment Data & Keep Track of Indices ---
+    # 1. Determine target size compatible with the exposed schedule parameters
+    n_raw = max(n_a, n_b)
+    n_target = get_next_admissible_size(
+        n=n_raw,
+        hierarchy_depth=hierarchy_depth,
+        max_Q=max_Q,
+        max_rank=max_rank,
+    )
+
+    if verbose:
+        if n_target == n_raw:
+            print(f"HiRef: Aligning A({n_a}) and B({n_b}). Target square size: {n_target}")
+        else:
+            print(
+                f"HiRef: Aligning A({n_a}) and B({n_b}). "
+                f"Raw target size: {n_raw}, padded target size: {n_target}"
+            )
+
     def get_augmented_data(data, n_orig, n_dest):
         """
         Returns:
             data_aug: The stretched data (n_dest, d)
             map_indices: Array of shape (n_dest,) mapping new rows back to old rows
         """
-        # If sizes match, return as is (identity mapping)
         if n_orig == n_dest:
-            return data, np.arange(n_orig)
-            
-        # Stratified Oversampling (Equal representation)
+            return data, np.arange(n_orig, dtype=np.int64)
+
         n_repeats = n_dest // n_orig
         n_remainder = n_dest % n_orig
-        
-        # 1. Base repeats (e.g., [0,1,2, 0,1,2])
-        idx_base = np.tile(np.arange(n_orig), n_repeats)
-        
-        # 2. Remainder (randomly sample the rest without replacement)
-        idx_rem = rng.choice(np.arange(n_orig), n_remainder, replace=False)
-        
-        # 3. Combine and Shuffle
-        map_indices = np.concatenate([idx_base, idx_rem])
-        
-        # Shuffle ensures copies are distributed randomly, not clustered
+
+        idx_base = np.tile(np.arange(n_orig, dtype=np.int64), n_repeats)
+
+        if n_remainder > 0:
+            idx_rem = rng.choice(np.arange(n_orig, dtype=np.int64), n_remainder, replace=False)
+            map_indices = np.concatenate([idx_base, idx_rem])
+        else:
+            map_indices = idx_base
+
         perm = rng.permutation(n_dest)
         map_indices = map_indices[perm]
-        
+
         return data[map_indices], map_indices
 
     # 2. Prepare Augmented Inputs
-    # If A is bigger, map_a is identity, map_b is the tiled map.
-    # If B is bigger, map_a is the tiled map, map_b is identity.
     p_aug, map_a = get_augmented_data(post_a, n_a, n_target)
     s_aug, map_b = get_augmented_data(post_b, n_b, n_target)
 
     # 3. Solve HiRef (Square)
-    rank_schedule = rank_annealing.optimal_rank_schedule(n=n_target)
-    
-    # We ask for the coupling, which returns COO indices (rows, cols) and data (1s)
+    rank_schedule = rank_annealing.optimal_rank_schedule(
+        n=n_target,
+        hierarchy_depth=hierarchy_depth,
+        max_Q=max_Q,
+        max_rank=max_rank,
+    )
+
     (rows_aug, cols_aug, vals_aug), _ = HiRef.hiref_lr_fast(
-        p_aug, s_aug,
-        rank_schedule=rank_schedule, 
-        return_coupling=True
+        p_aug,
+        s_aug,
+        rank_schedule=rank_schedule,
+        return_coupling=True,
     )
 
     # 4. Merge Duplicates (Collapse)
-    # Instead of matrix multiplication, we simply map the indices back.
-    
-    # If we are at row `i` in the augmented matrix, that corresponds to row `map_a[i]` in original.
     rows_final = map_a[rows_aug]
     cols_final = map_b[cols_aug]
-    
-    # Construct CSR Matrix
-    # The (rows, cols) pairs will now have duplicates. 
-    # scipy.sparse automatically SUMS data for duplicate entries during construction.
-    # This achieves exactly what we want: summing the split mass back together.
+
     T_final = sparse.coo_matrix(
-        (vals_aug, (rows_final, cols_final)), 
-        shape=(n_a, n_b)
+        (vals_aug, (rows_final, cols_final)),
+        shape=(n_a, n_b),
     ).tocsr()
 
     return T_final
