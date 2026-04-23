@@ -55,7 +55,10 @@ class FoSTA:
         semantic_norm="l2",
         embedder="PHATE",
         n_components=2,
-        ot_solver="hiref", # dense or hiref
+        ot_solver="hiref",
+        hierarchy_depth = 6,
+        max_Q = int(2**10),
+        max_rank = 16,
         entR=0,
         m=1,
         distance="cosine",
@@ -96,6 +99,11 @@ class FoSTA:
 
         # OT parameters
         self.ot_solver = ot_solver
+        # HiRef
+        self.hierarchy_depth = hierarchy_depth
+        self.max_Q = max_Q
+        self.max_rank = max_rank
+        # Dense OT
         self.entR = entR
         self.m = m
         self.distance = distance
@@ -364,6 +372,9 @@ class FoSTA:
             return solve_surjection_hiref(
                 post_a,
                 post_b,
+                hierarchy_depth=self.hierarchy_depth,
+                max_Q=self.max_Q,
+                max_rank=self.max_rank,
                 verbose=self.verbose,
                 random_state=self.random_state,
             )
