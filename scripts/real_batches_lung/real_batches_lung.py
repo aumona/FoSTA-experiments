@@ -20,7 +20,8 @@ from personal_paths import BASE_PATH, BATCHES_DATA_PATH, RESULTS_PATH
 base_path = BASE_PATH
 scratch_path = RESULTS_PATH
 
-original_methods = ["FoSTA", "RFMALI", "MALI", "Scanorama", "LIGER", "Harmony", "scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"]
+original_methods = ["FoSTA", "MALI", "Scanorama", "LIGER", "Harmony", "scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"]
+original_methods = ["scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"]
 
 methods = original_methods.copy() # methods might be modified based on what is already run. but we still want to benchmark everything
 
@@ -61,7 +62,7 @@ batch_key = "batch"
 
 
 # subset to the current batches
-adata = adata_full[(adata_full.obs["batch"].isin(batches))]
+adata = adata_full[(adata_full.obs["batch"].isin(batches))].copy()
 # adata, labels_not_in1, labels_not_in2 = remove_dataset_specific_cells(adata, batch_key, label_key)
 
 
