@@ -23,7 +23,6 @@ from utils.simulation_utils import add_noise, dropout, global_label_masking, spl
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 from personal_paths import BASE_PATH, BATCHES_DATA_PATH, RESULTS_PATH
 base_path = BASE_PATH
-data_path = BATCHES_DATA_PATH
 scratch_path = RESULTS_PATH
 
 original_methods = ["FoSTA", "RFMALI", "MALI", "Scanorama", "LIGER", "Harmony", "scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"]
@@ -45,6 +44,7 @@ args = parser.parse_args()
 dataset_name = args.dataset
 batch = args.batch
 # t = args.t
+data_path = f"{BATCHES_DATA_PATH}/{dataset_name}.h5ad"
 
 # set save location (won't be used if args.save is False)
 save_name = f"{args.savename}/{batch}" #dataset}".format(dataset = dataset_name)

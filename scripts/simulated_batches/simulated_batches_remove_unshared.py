@@ -19,7 +19,6 @@ from utils.simulation_utils import add_noise, dropout, split_and_transform_batch
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 from personal_paths import BASE_PATH, BATCHES_DATA_PATH, RESULTS_PATH
 base_path = BASE_PATH
-data_path = BATCHES_DATA_PATH
 scratch_path = RESULTS_PATH
 
 
@@ -53,6 +52,8 @@ dropout_prob = float(args.dropout)
 n_components = int(args.components)
 seed = args.seed
 # t = args.t
+data_path = f"{BATCHES_DATA_PATH}/{dataset_name}.h5ad"
+
 
 # set save location (won't be used if args.save is False)
 save_name = f"{args.savename}/{batch}" #dataset}".format(dataset = dataset_name)

@@ -71,8 +71,7 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
                    mu = 0.5, 
                    t="auto", 
                    n_components = 2,
-                   prior_correct = True,
-                   euclidean_mode=False):
+                   **fosta_params):
     # this function works for MALI, RF-MALI, KEMA, Pamona
     # input: source and target datasets (x_source, x_target) and their labels (y_source, y_target)
     # output: embedding of shape (n_source + n_target, n_components (set to 2))
@@ -98,8 +97,7 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
             t=t,
             n_jobs=-1,
             verbose=1,
-            prior_correct=prior_correct,
-            euclidean_mode=euclidean_mode
+            **fosta_params
         )
         print("\nStarting alignment...")
         embedding = model.fit_transform(x_source, x_target, y_source, y_target)
@@ -214,7 +212,12 @@ def try_run_our_models(x0=None, x1=None, y0=None, y1=None, model_name=None, **kw
         x0 = x0.toarray()
         x1 = x1.toarray()
         print("(!) Sparse matrix conversion to dense due to error:", e)
+        
+        # try:
         embedding = run_our_models(model_name, x0, x1, y0, y1, **kwargs)
+        # except Exception as e2:
+        #     print(f"(!) Model {model_name} failed even after sparse to dense conversion:", e2)
+        #     embedding = np.zeros((x0.shape[0] + x1.shape[0],2))  # Dummy embedding to avoid crashes in downstream code
             
     return embedding
 

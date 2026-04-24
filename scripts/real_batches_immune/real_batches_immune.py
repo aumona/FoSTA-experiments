@@ -18,7 +18,6 @@ from utils.simulation_utils import add_noise, dropout, global_label_masking, spl
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 from personal_paths import BASE_PATH, BATCHES_DATA_PATH, RESULTS_PATH
 base_path = BASE_PATH
-data_path = BATCHES_DATA_PATH
 scratch_path = RESULTS_PATH
 
 # original_methods = ["FoSTA", "RFMALI", "MALI", "Scanorama", "LIGER", "Harmony", "scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"] 
@@ -44,7 +43,7 @@ dataset_name = args.dataset
 batches_idxs = [args.batch1idx, args.batch2idx]
 n_components = int(args.components)
 # t = args.t
-
+data_path = f"{BATCHES_DATA_PATH}/{dataset_name}.h5ad"
 # set save location (won't be used if args.save is False)
 save_name = f"{args.savename}/{batches_idxs[0]}_{batches_idxs[1]}" #dataset}".format(dataset = dataset_name)
 save_path = f"{scratch_path}/results/{save_name}"
@@ -114,18 +113,52 @@ embedders = ["PHATE"]#, "UMAP", "spectral"]
 times_dict = {}
 memory_dict = {}
 
+
+base_fosta_params = {
+    "kernel_method": "original",
+    "ot_solver": "HiRef"
+}
+
+oob_fosta_params = {
+    "kernel_method": "oob",
+    "ot_solver": "HiRef"
+}
+
+dense_fosta_params = {
+    "kernel_method": "original",
+    "ot_solver": "dense"
+}
+    
+    
+    
 for method in methods:
     # try: 
     if method in ["RFMALI_WIP", "RFMALI", "FoSTA"]: # for these methods, try different t values
         for embedder in embedders:
             if embedder == "PHATE":
                 for t in ts:
-                    print(f"Running method {method} with embedder={embedder}..., t={t}")
-                    adata, time_taken, memory_taken = run_models_from_adata(adata, method, batch_key = batch_key, label_key_ours = "cell_type_cleaned_encoded", label_key = label_key, embedding_basis="X_pca", embedder=embedder, seed=args.seed, t=t, n_components = n_components)
+                    print(f"Running method {method} with embedder={embedder}, t={t}")
+                    adata, time_taken, memory_taken = run_models_from_adata(adata, method, batch_key = batch_key, label_key_ours = "cell_type_cleaned_encoded", label_key = label_key, embedding_basis="X_pca", embedder=embedder, seed=args.seed, t=t, n_components = n_components, **base_fosta_params)
                     adata.obsm[f"{method}_{embedder}_t{t}"] = adata.obsm[method]
                     times_dict[f"{method}_{embedder}_t{t}"] = time_taken
                     memory_dict[f"{method}_{embedder}_t{t}"] = memory_taken
                     adata.obsm.pop(method)  # remove adata.obsm[method] to avoid confusion
+                
+            if method == "FoSTA": # only for FoSTA, also run the OOB and dense kernel and OT solver variants with the default t (2)
+                print(f"Running method {method} with embedder={embedder}, OOB kernel and HiRef OT solver with t=2...")
+                adata, time_taken, memory_taken = run_models_from_adata(adata, method, batch_key = batch_key, label_key_ours = "cell_type_cleaned_encoded", label_key = label_key, embedding_basis="X_pca", embedder=embedder, seed=args.seed, t=2, n_components = n_components, **oob_fosta_params)
+                adata.obsm[f"{method}_{embedder}_OOB"] = adata.obsm[method]
+                times_dict[f"{method}_{embedder}_OOB"] = time_taken
+                memory_dict[f"{method}_{embedder}_OOB"] = memory_taken
+                adata.obsm.pop(method)  # remove adata.obsm[method] to avoid confusion
+
+                print(f"Running method {method} with embedder={embedder}, original kernel and dense OT solver with t=2...")
+                adata, time_taken, memory_taken = run_models_from_adata(adata, method, batch_key = batch_key, label_key_ours = "cell_type_cleaned_encoded", label_key = label_key, embedding_basis="X_pca", embedder=embedder, seed=args.seed, t=2, n_components = n_components, **dense_fosta_params)
+                adata.obsm[f"{method}_{embedder}_denseOT"] = adata.obsm[method]
+                times_dict[f"{method}_{embedder}_denseOT"] = time_taken
+                memory_dict[f"{method}_{embedder}_denseOT"] = memory_taken
+                adata.obsm.pop(method)  # remove adata.obsm[method] to avoid confusion
+                
             else:
                 print(f"Running method {method} with embedder={embedder}...")
                 adata, time_taken, memory_taken = run_models_from_adata(adata, method, batch_key = batch_key, label_key_ours = "cell_type_cleaned_encoded", label_key = label_key, embedding_basis="X_pca", embedder=embedder, seed=args.seed, n_components = n_components)
