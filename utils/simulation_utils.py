@@ -326,22 +326,34 @@ def normalize_df(df):
     return (df - df.min()) / (df.max() - df.min())
 
 
-def add_gaussian_noise_features_split(df, signal_to_noise_ratio = 0.1, random_state=42):
-    # creates two domains: one with only signal features, one with signal + noise features
-    # will normalize data if not already normalized
-    
-    
-    # check if data is normalized
-    if not ((df.min().min() >= 0) and (df.max().max() <= 1)):
-        df = normalize_df(df)
-    
-    n_samples = df.shape[0]
-    n_noise_features = max(1, int(1/signal_to_noise_ratio * df.shape[1])) 
+def add_gaussian_noise_features_split(
+    df,
+    signal_to_noise_ratio=0.1,
+    sigma=1.0,
+    random_state=42,
+):
+    # Creates two domains:
+    # - df1: signal features only
+    # - df2: signal features + Gaussian noise features
+    # Assumes df is already standardized.
 
-    rng = np.random.default_rng(seed = random_state)
-    noise = rng.standard_normal(size = (n_samples, n_noise_features))
-    
-    df2 = pd.concat([df, pd.DataFrame(noise, columns = [f"noise_{i}" for i in range(n_noise_features)])], axis=1)
+    n_samples = df.shape[0]
+    n_noise_features = max(1, int((1 / signal_to_noise_ratio) * df.shape[1]))
+
+    rng = np.random.default_rng(seed=random_state)
+    noise = rng.normal(
+        loc=0.0,
+        scale=sigma,
+        size=(n_samples, n_noise_features),
+    )
+
+    noise_df = pd.DataFrame(
+        noise,
+        index=df.index,
+        columns=[f"noise_{i}" for i in range(n_noise_features)],
+    )
+
+    df2 = pd.concat([df.copy(), noise_df], axis=1)
     return df.copy(), df2
 
 
