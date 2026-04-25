@@ -88,11 +88,11 @@ SPLITS = [
     "distort",
 ]
 
-# SEEDS = list(range(10))
-SEEDS = list(range(5))
+# SEEDS = list(range(5))
+SEEDS = list(range(10))
 
-TRANSFORM = "standardize"  # or None, "normalize"
-MASK_FRACTION = 0.5  # fraction of target labels to mask (set to -1) for label transfer evaluation
+TRANSFORM = "standardize"
+MASK_FRACTIONS = [0.1, 0.3, 0.5, 0.7, 0.9]  # fraction of target labels to mask (set to -1) for label transfer evaluation
 NOISE_SIGMA = 0.2  # reasonable amount of noise
 SIGNAL_TO_NOISE_RATIO = 0.5  # don't be too aggressive here to not put Euclidean methods at an extreme disadvantage
 
@@ -138,7 +138,7 @@ def append_result(path: Path, row: dict) -> None:
 
 def aggregate_results(df: pd.DataFrame) -> pd.DataFrame:
     value_cols = ["label_transfer", "alignment_score", "foscttm"]
-    group_cols = ["dataset", "split", "method", "metric"]
+    group_cols = ["dataset", "split", "mask_fraction", "method", "metric"]
 
     long_rows = []
     for metric in value_cols:
@@ -248,6 +248,7 @@ def build_domains(df, labels, split, seed):
         df1, df2 = add_gaussian_noise_features_split(
             df.copy(),
             signal_to_noise_ratio=SIGNAL_TO_NOISE_RATIO,
+            sigma=1.0,
             random_state=seed,
         )
 
@@ -427,7 +428,7 @@ def run_experiment():
         "methods": METHODS,
         "splits": SPLITS,
         "seeds": SEEDS,
-        "mask_fraction": MASK_FRACTION,
+        "mask_fractions": MASK_FRACTIONS,
         "noise_sigma": NOISE_SIGMA,
         "signal_to_noise_ratio": SIGNAL_TO_NOISE_RATIO,
         "n_components": N_COMPONENTS,
@@ -453,27 +454,22 @@ def run_experiment():
 
         for seed in SEEDS:
             print(f"  Seed: {seed}")
-
+        
             for split in SPLITS:
                 print(f"    Split: {split}")
-
+        
                 try:
                     x_source, x_target = build_domains(df, labels, split, seed)
-
                     y_source = np.array(labels)
                     y_target_true = labels.copy()
-                    y_target, mask_missing_target = mask_target_labels(
-                        y_true=y_target_true,
-                        mask_fraction=MASK_FRACTION,
-                        seed=seed,
-                    )
-
+        
                 except Exception as e:
                     row = {
                         "timestamp": datetime.now().isoformat(),
                         "dataset": data_name,
                         "seed": seed,
                         "split": split,
+                        "mask_fraction": np.nan,
                         "method": None,
                         "label_transfer": np.nan,
                         "alignment_score": np.nan,
@@ -484,79 +480,110 @@ def run_experiment():
                     append_result(results_csv, row)
                     print(f"      Data error: {e}")
                     continue
-
-                for method in METHODS:
-                    print(f"      Method: {method}")
-
+        
+                for mask_fraction in MASK_FRACTIONS:
+                    print(f"      Mask fraction: {mask_fraction}")
+        
                     try:
-                        model = build_model(method, seed)
-                        embedding = fit_transform_model(
-                            model=model,
-                            x_source=x_source,
-                            x_target=x_target,
-                            y_source=y_source,
-                            y_target=y_target,
+                        y_target, mask_missing_target = mask_target_labels(
+                            y_true=y_target_true,
+                            mask_fraction=mask_fraction,
+                            seed=seed,
                         )
-                        embedding = sanitize_embedding(embedding)
-
+        
                     except Exception as e:
                         row = {
                             "timestamp": datetime.now().isoformat(),
                             "dataset": data_name,
                             "seed": seed,
                             "split": split,
-                            "method": method,
+                            "mask_fraction": mask_fraction,
+                            "method": None,
                             "label_transfer": np.nan,
                             "alignment_score": np.nan,
                             "foscttm": np.nan,
-                            "status": "fit_error",
+                            "status": "mask_error",
                             "error": repr(e),
                         }
                         append_result(results_csv, row)
-                        print(f"        Fit error: {e}")
+                        print(f"        Mask error: {e}")
                         continue
-
-                    try:
-                        metrics = compute_alignment_metrics(
-                            embedding=embedding,
-                            y_source=y_source,
-                            y_target_true=y_target_true,
-                            mask_missing_target=mask_missing_target,
-                        )
-
-                        row = {
-                            "timestamp": datetime.now().isoformat(),
-                            "dataset": data_name,
-                            "seed": seed,
-                            "split": split,
-                            "method": method,
-                            **metrics,
-                            "status": "ok",
-                            "error": "",
-                        }
-                        append_result(results_csv, row)
-
-                        print(
-                            f"        label_transfer={metrics['label_transfer']:.4f}, "
-                            f"alignment_score={metrics['alignment_score']:.4f}, "
-                            f"foscttm={metrics['foscttm']:.4f}"
-                        )
-
-                    except Exception as e:
-                        row = {
-                            "timestamp": datetime.now().isoformat(),
-                            "dataset": data_name,
-                            "seed": seed,
-                            "split": split,
-                            "method": method,
-                            "label_transfer": np.nan,
-                            "alignment_score": np.nan,
-                            "foscttm": np.nan,
-                            "status": "metric_error",
-                            "error": repr(e),
-                        }
-                        append_result(results_csv, row)
-                        print(f"        Metric error: {e}")
+        
+                    for method in METHODS:
+                        print(f"        Method: {method}")
+        
+                        try:
+                            model = build_model(method, seed)
+                            embedding = fit_transform_model(
+                                model=model,
+                                x_source=x_source,
+                                x_target=x_target,
+                                y_source=y_source,
+                                y_target=y_target,
+                            )
+                            embedding = sanitize_embedding(embedding)
+        
+                        except Exception as e:
+                            row = {
+                                "timestamp": datetime.now().isoformat(),
+                                "dataset": data_name,
+                                "seed": seed,
+                                "split": split,
+                                "mask_fraction": mask_fraction,
+                                "method": method,
+                                "label_transfer": np.nan,
+                                "alignment_score": np.nan,
+                                "foscttm": np.nan,
+                                "status": "fit_error",
+                                "error": repr(e),
+                            }
+                            append_result(results_csv, row)
+                            print(f"          Fit error: {e}")
+                            continue
+        
+                        try:
+                            metrics = compute_alignment_metrics(
+                                embedding=embedding,
+                                y_source=y_source,
+                                y_target_true=y_target_true,
+                                mask_missing_target=mask_missing_target,
+                            )
+        
+                            row = {
+                                "timestamp": datetime.now().isoformat(),
+                                "dataset": data_name,
+                                "seed": seed,
+                                "split": split,
+                                "mask_fraction": mask_fraction,
+                                "method": method,
+                                **metrics,
+                                "status": "ok",
+                                "error": "",
+                            }
+                            append_result(results_csv, row)
+        
+                            print(
+                                f"          label_transfer={metrics['label_transfer']:.4f}, "
+                                f"alignment_score={metrics['alignment_score']:.4f}, "
+                                f"foscttm={metrics['foscttm']:.4f}"
+                            )
+        
+                        except Exception as e:
+                            row = {
+                                "timestamp": datetime.now().isoformat(),
+                                "dataset": data_name,
+                                "seed": seed,
+                                "split": split,
+                                "mask_fraction": mask_fraction,
+                                "method": method,
+                                "label_transfer": np.nan,
+                                "alignment_score": np.nan,
+                                "foscttm": np.nan,
+                                "status": "metric_error",
+                                "error": repr(e),
+                            }
+                            append_result(results_csv, row)
+                            print(f"          Metric error: {e}")
 
     raw_df = pd.read_csv(results_csv)
     ok_df = raw_df[raw_df["status"] == "ok"].copy()
