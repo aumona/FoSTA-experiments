@@ -6,7 +6,7 @@ import numpy as np
 import scanpy as sc
 import pandas as pd
 import pickle
-
+import json
 import os
 import matplotlib.pyplot as plt
 
@@ -52,6 +52,14 @@ data_path = f"{BATCHES_DATA_PATH}/{dataset_name}.h5ad"
 save_name = f"{args.savename}/{batches[0]}_{batches[1]}" #dataset}".format(dataset = dataset_name)
 save_path = f"{scratch_path}/{save_name}"
 
+save_path_subfolder = save_path
+if args.save and not os.path.exists(save_path_subfolder):
+    os.makedirs(save_path_subfolder)
+    
+
+args = parser.parse_args()
+with open(f"{save_path}/config.json", "w") as f:
+    json.dump(vars(args), f, indent=4)
 
 # LOAD DATA 
 adata_full = sc.read(data_path)
@@ -65,10 +73,6 @@ batch_key = "batch"
 adata = adata_full[(adata_full.obs["batch"].isin(batches))].copy()
 # adata, labels_not_in1, labels_not_in2 = remove_dataset_specific_cells(adata, batch_key, label_key)
 
-
-save_path_subfolder = save_path
-if args.save and not os.path.exists(save_path_subfolder):
-    os.makedirs(save_path_subfolder)
     
 if args.hvg:
     n_top_genes=2000
