@@ -21,7 +21,7 @@ base_path = BASE_PATH
 scratch_path = RESULTS_PATH
 
 # original_methods = ["FoSTA", "RFMALI", "MALI", "Scanorama", "LIGER", "Harmony", "scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"] 
-original_methods = ["FoSTA", "RFMALI", "MALI", "Scanorama", "Harmony", "scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"] 
+original_methods = ["FoSTA", "MALI", "Scanorama", "Harmony", "scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"] 
 # original_methods = ["FoSTA"] # for testing. to delete
 methods = original_methods.copy() # methods might be modified based on what is already run. but we still want to benchmark everything
 
@@ -112,7 +112,7 @@ if os.path.exists(f"{save_path_subfolder}/adata_intermediate.h5ad"):
     
 results_df = pd.DataFrame()
 # ts = ["auto", 2, 10]
-ts = [2]
+ts = ["auto", 2]
 embedders = ["PHATE"]#, "UMAP", "spectral"]
 
 times_dict = {}
