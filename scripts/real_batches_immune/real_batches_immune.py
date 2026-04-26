@@ -121,12 +121,12 @@ memory_dict = {}
 
 base_fosta_params = {
     "kernel_method": "original",
-    "ot_solver": "HiRef"
+    "ot_solver": "hiref"
 }
 
 oob_fosta_params = {
     "kernel_method": "oob",
-    "ot_solver": "HiRef"
+    "ot_solver": "hiref"
 }
 
 dense_fosta_params = {
