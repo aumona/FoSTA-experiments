@@ -21,7 +21,7 @@ base_path = BASE_PATH
 scratch_path = RESULTS_PATH
 
 original_methods = ["FoSTA", "MALI", "Scanorama", "LIGER", "Harmony", "scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"]
-original_methods = ["scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"]
+# original_methods = ["scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"]
 
 methods = original_methods.copy() # methods might be modified based on what is already run. but we still want to benchmark everything
 
@@ -36,7 +36,7 @@ parser.add_argument('-c', '--components', default = "30", type=int)
 parser.add_argument('--hvg', default = True, type=bool) 
 parser.add_argument('--pca', default = True, type=bool) 
 parser.add_argument('--globalmasking', default = 0.2, type=float) 
-# parser.add_argument('--savename', default = "real_batches_lung", type=str) 
+parser.add_argument('--savename', default = "real_batches_lung", type=str) 
 # parser.add_argument('-t', default = "auto") 
 
 args = parser.parse_args()
@@ -49,8 +49,8 @@ data_path = f"{BATCHES_DATA_PATH}/{dataset_name}.h5ad"
 
 
 # set save location (won't be used if args.save is False)
-save_name = f"real_batches/{batches[0]}_{batches[1]}" #dataset}".format(dataset = dataset_name)
-save_path = f"{scratch_path}/results/{save_name}"
+save_name = f"{args.savename}/{batches[0]}_{batches[1]}" #dataset}".format(dataset = dataset_name)
+save_path = f"{scratch_path}/{save_name}"
 
 
 # LOAD DATA 
