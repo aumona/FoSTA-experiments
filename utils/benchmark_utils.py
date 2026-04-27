@@ -19,6 +19,7 @@ from src.kemarbf import KEMArbf
 from src.pamona_joint import JPamona
 from src.pamona import Pamona
 
+import scvi
 from scvi.model import SCVI
 from scvi.model import SCANVI
 import scanorama
@@ -232,7 +233,7 @@ def run_our_models_from_adatas(adata1, adata2, label_key="cell_type", model_name
 
 
 
-def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours = None, label_key = "cell_type", n_components = 30, embedding_basis="X", **kwargs):
+def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours = None, label_key = "cell_type", n_components = 30, seed = 42, embedding_basis="X", **kwargs):
     # kwargs are passed to our methods only
     # runs either our methods or other methods depending on model_name
     # returns adata with embedding in adata.obsm[model_name]
@@ -245,7 +246,7 @@ def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours
     
     if model_name.lower() in ["rfmali", "rfmali_wip", "mali", "pamona", "kemarbf", "kemalin", "fosta"]:
         label_key_to_use = label_key_ours if label_key_ours is not None else label_key
-        adata = run_our_models_from_adata(adata, model_name= model_name, batch_key = batch_key, label_key = label_key_to_use, embedding_basis=embedding_basis, n_components = n_components, **kwargs)
+        adata = run_our_models_from_adata(adata, model_name= model_name, batch_key = batch_key, label_key = label_key_to_use, embedding_basis=embedding_basis, n_components = n_components, seed= seed, **kwargs)
     
     else: # OTHER METHODS
         
@@ -306,7 +307,7 @@ def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours
 
         # ------------------- run scVI --------------------------------------------------
         elif model_name.lower() == "scvi":
-    
+            scvi.settings.seed = seed
             SCVI.setup_anndata(adata, layer="counts", batch_key=batch_key)
             vae = SCVI(adata, gene_likelihood="nb", n_layers=2, n_latent=n_components)
             vae.train()
@@ -314,7 +315,8 @@ def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours
 
         # ------------------ run scANVI ------------------------------------------------
         elif model_name.lower() == "scanvi":
-
+            
+            scvi.settings.seed = seed
             if not('vae' in locals() and vae is not None): # if vae is not defined (from previously running scvi)
                 SCVI.setup_anndata(adata, layer="counts", batch_key=batch_key)
                 vae = SCVI(adata, gene_likelihood="nb", n_layers=2, n_latent=n_components)
