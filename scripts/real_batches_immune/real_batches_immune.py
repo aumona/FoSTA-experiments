@@ -20,9 +20,8 @@ from personal_paths import BASE_PATH, IMMUNE_BATCHES_DATA_PATH, RESULTS_PATH
 base_path = BASE_PATH
 scratch_path = RESULTS_PATH
 
-# original_methods = ["FoSTA", "RFMALI", "MALI", "Scanorama", "LIGER", "Harmony", "scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"] 
-original_methods = ["FoSTA", "MALI", "Scanorama", "Harmony", "scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"] 
-# original_methods = ["FoSTA"] # for testing. to delete
+original_methods = ["FoSTA", "MALI", "Scanorama", "Harmony", "LIGER", "scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"] 
+# original_methods = ["LIGER"] # for testing. to delete
 methods = original_methods.copy() # methods might be modified based on what is already run. but we still want to benchmark everything
 
 parser = argparse.ArgumentParser()
