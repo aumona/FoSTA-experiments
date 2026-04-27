@@ -28,7 +28,7 @@ for i in "${!pairs[@]}"; do
   batch2=$(echo $pair | awk '{print $2}')
 
   echo "Running pair: $batch1 vs $batch2"
-  savename="real_batches_20pct_masking/${timestamp}"
+  savename="real_batches_lung/${timestamp}"
   
   python3 scripts/real_batches_lung/real_batches_lung.py \
     --batch1 "$batch1" \
