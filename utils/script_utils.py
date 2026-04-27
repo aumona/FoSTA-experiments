@@ -1,0 +1,156 @@
+# this code was inspired by from https://scib-metrics.readthedocs.io/en/stable/notebooks/lung_example.html
+
+#%%
+import argparse
+import numpy as np
+import scanpy as sc
+import pandas as pd
+import pickle
+import json
+import os
+import matplotlib.pyplot as plt
+
+import sys, pathlib
+sys.path.insert(0, str(next(p for p in [pathlib.Path.cwd()] + list(pathlib.Path.cwd().parents) if (p/"src").is_dir())))
+from utils.benchmark_utils import visualization, run_models_from_adata, benchmark_from_adata
+from utils.simulation_utils import add_noise, dropout, global_label_masking, split_and_transform_batch, clean_and_encode_labels, preprocess_adata, ensure_label_intersection
+
+
+def main_argparser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--seed', default = 3008874, type=int) 
+    parser.add_argument('-c', '--components', default = 2, type=int) 
+    parser.add_argument('--nhvg', default = 2000, type=int) 
+    parser.add_argument('--npca', default = 30, type=int) 
+    parser.add_argument('--globalmasking', default = 0.2, type=float) 
+    parser.add_argument('--savename', default = "real_batches_lung", type=str) 
+    # parser.add_argument('-t', default = "auto") 
+
+    args = parser.parse_args()
+    
+    return args
+
+
+
+def prepare_adata(adata, save_path, label_key, batch_key, args):
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+
+    with open(f"{save_path}/config.json", "w") as f:
+        json.dump(vars(args), f, indent=4)
+
+        
+    adata = preprocess_adata(adata, batch_key=batch_key, n_top_genes=args.nhvg, n_pcs=args.npca)
+
+
+    # mask some labels (adds a new column "cell_type_masked" with some values "Unknown")
+    adata = global_label_masking(adata, masking_frac=args.globalmasking, label_key=label_key, batch_key=batch_key, random_state=args.seed) 
+    original_label_key = label_key
+    label_key = f"{label_key}_masked" # update label key to the masked version for benchmarking (so that methods that can leverage labels will be affected by the masking)
+
+    # creates a new column "cell_type_cleaned_encoded" with cleaned and encoded labels for our methods (that need numbers)
+    adata = clean_and_encode_labels(adata, label_key=label_key, batch_key= batch_key, encoded_label_key="cell_type_cleaned_encoded", min_cells=0)
+
+
+    # # ensure our encoded labels are present in both batches. if not, set them as unlabeled -- not needed, already done in clean_and_encode_labels with replace_by=np.nan
+    # adata, labels_missing_in_batch1, labels_missing_in_batch2 = ensure_label_intersection(adata, label_key="cell_type_cleaned_encoded", batch_key=batch_key)
+
+    return adata, original_label_key, label_key
+
+def run_methods(adata, save_path, label_key, batch_key, methods_params_dict, args):
+    times_dict = {}
+    memory_dict = {}
+    
+    # only run methods that have not been run yet
+    # load previously computed intermediate adata if it exists
+    if os.path.exists(f"{save_path}/adata_intermediate.h5ad"):
+        print("Loading previously computed intermediate adata...")
+        adata = sc.read_h5ad(f"{save_path}/adata_intermediate.h5ad")
+        for method_ran in adata.obsm.keys():
+            print(f"Method {method_ran} already computed, skipping...")
+            methods_params_dict.pop(method_ran)
+                
+        print(f"Methods left to run: {list(methods_params_dict.keys())}")
+
+    for method_name, method_params in methods_params_dict.items():
+        
+        # if there is a parameter called "method_type" in method_params, then we assume "method_name" is the save name, and "method_type" is the actual method to run (ex. FoSTA with different t's will be called "FostA_t2" and "FoSTA_t10" but the method type is "FoSTA" for both)
+        # if "method_type" is not present, add it and set it to method_name for simplicity
+        if "method_type" not in method_params:
+            method_params["method_type"] = method_name
+        
+        
+        print(f"Running method {method_name}...")
+        adata, time_taken, memory_taken = run_models_from_adata(adata, method_params["method_type"], batch_key = batch_key, label_key_ours = "cell_type_cleaned_encoded", label_key = label_key, embedding_basis="X_pca", seed=args.seed, n_components = args.n_components, **method_params)
+        times_dict[f"{method_name}"] = time_taken
+        memory_dict[f"{method_name}"] = memory_taken
+
+        # save adata so that if it crashes later, we don't have to recompute everything
+        adata.write(f"{save_path}/adata_intermediate.h5ad")
+            
+        print(f"\nMethod {method_name} completed in {time_taken:.2f} seconds\n")
+    
+    return adata, times_dict, memory_dict
+
+def evaluate_and_save_results(adata, save_path, original_label_key, batch_key, times_dict, memory_dict, args):
+    methods_to_benchmark = list(adata.obsm.keys())
+    try:
+        methods_to_benchmark.remove("X_pca")
+    except ValueError:
+        pass
+    try:
+        methods_to_benchmark.remove("Unintegrated")
+    except ValueError:
+        pass
+    
+    
+    if args.globalmasking>0:
+        benchmark_adata = adata[adata.obs['mask_indices'] == 1].copy()
+    else:
+        benchmark_adata = adata.copy() # if we masked nothing, evaluate on everything
+
+    df = benchmark_from_adata(benchmark_adata, methods_to_benchmark, batch_key = batch_key, label_key = original_label_key, save_path= save_path)
+    # metric_type = df.loc["Metric Type"]
+    # df = df.drop("Metric Type")
+
+    df.insert(0, "method", df.index)
+    df.insert(0, "n_components", args.n_components)
+
+    df["time"] = df["method"].map(times_dict)
+    df["memory"] = df["method"].map(memory_dict)
+
+
+    # results_df = pd.concat([results_df, df], ignore_index=True)
+    results_df = df
+    # results_df.to_csv(f"{save_path}/simulated_batches_benchmark_results.csv", index=False)
+                
+            
+    # pd.concat([metric_type, results_df]) # adding back the metric type row for display
+    print(results_df)
+    results_df.to_csv(f"{save_path}/real_batches_results.csv", index=False)
+                    
+    # add results to a common file in the parent
+    if os.path.exists(f"{save_path}/real_batches_results.csv"):
+        print("Adding to previously computed results...")
+        all_results_df = pd.read_csv(f"{save_path}/real_batches_results.csv")
+        all_results_df = pd.concat([all_results_df, results_df], ignore_index=True)
+    else:
+        all_results_df = results_df       
+        print("Saving results as a new result file in the parent folder...")   
+
+
+    
+    all_results_df.to_csv(f"{save_path}/real_batches_results.csv", index=False)
+                    
+                    
+                    
+# SAVE THE EMBEDDINGS
+def save_embeddings(adata, save_path, methods_to_benchmark, label_key, batch_key):
+    for method in methods_to_benchmark:
+        sc.pl.embedding(adata, basis=method, color=[label_key, batch_key], title=method)
+        plt.savefig(f"{save_path}/{method}.png")
+
+        #%%     
+
+
+
