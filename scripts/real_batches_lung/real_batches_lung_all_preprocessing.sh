@@ -9,8 +9,8 @@
 #SBATCH --array=0-119  
 
 cd /home/mila/m/myriam.lizotte/RF-MALI
-# source ~/envs/env_fosta/bin/activate
-source ~/envs/env_rfmali/bin/activate
+source ~/envs/env_fosta_neurips/bin/activate
+# source ~/envs/env_rfmali/bin/activate
 
 
 batches=("1" "2" "3" "4" "5" "6" "A1" "A2" "A3" "A4" "A5" "A6" "B1" "B2" "B3" "B4") # 16 batches, 120 unique pairs
