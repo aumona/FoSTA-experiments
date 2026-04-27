@@ -22,7 +22,7 @@ SS = 3           # supersampling factor (2–4)
 R = 1.0          # radius
 FEATHER_PX = 2.5 # soft edge width in final pixels
 
-TARGET_HEX = "A9C4EB"
+TARGET_HEX = "8FBF9F"
 
 # Outline styling (BLACK)
 OUTLINE_LW = 3
