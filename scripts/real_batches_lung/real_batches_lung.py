@@ -16,18 +16,17 @@ from utils.benchmark_utils import visualization, run_models_from_adata, benchmar
 from utils.simulation_utils import add_noise, dropout, global_label_masking, split_and_transform_batch, clean_and_encode_labels, preprocess_adata, ensure_label_intersection
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
-from personal_paths import BASE_PATH, BATCHES_DATA_PATH, RESULTS_PATH
+from personal_paths import BASE_PATH, LUNG_BATCHES_DATA_PATH, RESULTS_PATH
 base_path = BASE_PATH
 scratch_path = RESULTS_PATH
 
-original_methods = ["FoSTA", "MALI", "Scanorama", "LIGER", "Harmony", "scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"]
-# original_methods = ["scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"]
+# original_methods = ["FoSTA", "MALI", "Scanorama", "LIGER", "Harmony", "scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"]
+original_methods = ["scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"]
 
 methods = original_methods.copy() # methods might be modified based on what is already run. but we still want to benchmark everything
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--dataset', default = "lung_atlas") 
 parser.add_argument('--seed', default = 3008874, type=int) 
 parser.add_argument('--batch1', default = "4") 
 parser.add_argument('--batch2', default = "5") 
@@ -40,12 +39,11 @@ parser.add_argument('--savename', default = "real_batches_lung", type=str)
 # parser.add_argument('-t', default = "auto") 
 
 args = parser.parse_args()
-dataset_name = args.dataset
 batches = [args.batch1, args.batch2]
 n_components = int(args.components)
 # t = args.t
 
-data_path = f"{BATCHES_DATA_PATH}/{dataset_name}.h5ad"
+data_path = f"{LUNG_BATCHES_DATA_PATH}"
 
 
 # set save location (won't be used if args.save is False)
