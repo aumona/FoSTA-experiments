@@ -14,7 +14,7 @@ from utils.benchmark_utils import visualization, run_our_models, run_models_from
 from utils.simulation_utils import add_noise, dropout, split_and_transform_batch, clean_and_encode_labels, preprocess_adata, mask_labels
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
-from personal_paths import BASE_PATH, BATCHES_DATA_PATH, RESULTS_PATH
+from personal_paths import BASE_PATH, LUNG_BATCHES_DATA_PATH, IMMUNE_BATCHES_DATA_PATH, RESULTS_PATH
 base_path = BASE_PATH
 scratch_path = RESULTS_PATH
 
@@ -43,14 +43,13 @@ noise_std = float(args.noise)
 dropout_prob = float(args.dropout)
 n_components = int(args.components)
 
-data_path = f"{BATCHES_DATA_PATH}/{dataset_name}.h5ad"
+data_path = f"{LUNG_BATCHES_DATA_PATH}"
 
 # set save location (will create subfolders per dataset and split type)
 save_name = f"simulated_paired_batches" #dataset}".format(dataset = dataset_name)
 save_path = f"{scratch_path}/results/{save_name}"
 
 # LOAD DATA
-
 adata_full = sc.read(data_path)
 adata_full
 
