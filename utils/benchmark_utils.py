@@ -275,11 +275,15 @@ def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours
                 ad.uns["sample_name"] = batch_cats[i]
                 # Hack to make sure each method uses the same genes
                 ad.uns["var_gene_idx"] = np.arange(bdata.n_vars)
-
-
+                
+                if isinstance(adata_list[i].X, np.ndarray):
+                    print(f"Converting dataset {i} to sparse...")
+                    adata_list[i].X = csr_matrix(adata_list[i].X)
+            
             liger_data = pyliger.create_liger(adata_list, remove_missing=False, make_sparse=False)
             # Hack to make sure each method uses the same genes
             liger_data.var_genes = bdata.var_names
+            
             
             print(liger_data)
             
