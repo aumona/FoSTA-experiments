@@ -9,6 +9,8 @@ import pickle
 import json
 import os
 import matplotlib.pyplot as plt
+import random
+import torch
 
 import sys, pathlib
 sys.path.insert(0, str(next(p for p in [pathlib.Path.cwd()] + list(pathlib.Path.cwd().parents) if (p/"src").is_dir())))
@@ -92,6 +94,14 @@ def run_methods(adata, save_path, label_key, batch_key, methods_params_dict, arg
     
     return adata, times_dict, memory_dict
 
+def set_seeds(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+   
+    
+    
 def evaluate_and_save_results(adata, save_path, original_label_key, batch_key, times_dict, memory_dict, args):
     methods_to_benchmark = list(adata.obsm.keys())
     try:
