@@ -230,7 +230,7 @@ def preprocess_adata(adata, batch_key, n_top_genes=2000, n_pcs=30):
     if n_top_genes > 0:
         sc.pp.highly_variable_genes(adata, n_top_genes=n_top_genes, flavor="cell_ranger", batch_key= batch_key)
     if n_pcs > 0:
-        sc.tl.pca(adata, n_comps=n_pcs, mask_var="highly_variable")
+        sc.tl.pca(adata, n_comps=n_pcs, mask_var="highly_variable", svd_solver='arpack')  # svd_solver='arpack' is for reproducibility, more stable than randomized
 
     # subset to the highly variable genes so that each method has the same input.
     adata = adata[:, adata.var.highly_variable].copy()
