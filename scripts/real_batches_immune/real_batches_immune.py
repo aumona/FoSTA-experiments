@@ -16,7 +16,7 @@ from utils.benchmark_utils import visualization, run_models_from_adata, benchmar
 from utils.simulation_utils import add_noise, dropout, global_label_masking, split_and_transform_batch, clean_and_encode_labels, preprocess_adata, ensure_label_intersection
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
-from personal_paths import BASE_PATH, BATCHES_DATA_PATH, RESULTS_PATH
+from personal_paths import BASE_PATH, IMMUNE_BATCHES_DATA_PATH, RESULTS_PATH
 base_path = BASE_PATH
 scratch_path = RESULTS_PATH
 
@@ -43,10 +43,10 @@ dataset_name = args.dataset
 batches_idxs = [args.batch1idx, args.batch2idx]
 n_components = int(args.components)
 # t = args.t
-data_path = f"{BATCHES_DATA_PATH}/{dataset_name}.h5ad"
+data_path = f"{IMMUNE_BATCHES_DATA_PATH}/{dataset_name}.h5ad"
 # set save location (won't be used if args.save is False)
 save_name = f"{args.savename}/{batches_idxs[0]}_{batches_idxs[1]}" #dataset}".format(dataset = dataset_name)
-save_path = f"{scratch_path}/results/{save_name}"
+save_path = f"{scratch_path}/{save_name}"
 
 save_path_subfolder = save_path
 if args.save and not os.path.exists(save_path_subfolder):
@@ -58,8 +58,7 @@ with open(f"{save_path}/config.json", "w") as f:
     json.dump(vars(args), f, indent=4)
 
 # LOAD DATA 
-data_path = "/home/mila/m/myriam.lizotte/scratch/RF-MALI/data/Immune_ALL_human.h5ad"
-adata_full = sc.read(data_path)
+adata_full = sc.read(IMMUNE_BATCHES_DATA_PATH)
 adata_full
 
 label_key = "final_annotation"

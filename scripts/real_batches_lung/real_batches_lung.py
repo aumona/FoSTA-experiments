@@ -6,7 +6,7 @@ import numpy as np
 import scanpy as sc
 import pandas as pd
 import pickle
-
+import json
 import os
 import matplotlib.pyplot as plt
 
@@ -16,18 +16,17 @@ from utils.benchmark_utils import visualization, run_models_from_adata, benchmar
 from utils.simulation_utils import add_noise, dropout, global_label_masking, split_and_transform_batch, clean_and_encode_labels, preprocess_adata, ensure_label_intersection
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
-from personal_paths import BASE_PATH, BATCHES_DATA_PATH, RESULTS_PATH
+from personal_paths import BASE_PATH, LUNG_BATCHES_DATA_PATH, RESULTS_PATH
 base_path = BASE_PATH
 scratch_path = RESULTS_PATH
 
-original_methods = ["FoSTA", "MALI", "Scanorama", "LIGER", "Harmony", "scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"]
+# original_methods = ["FoSTA", "MALI", "Scanorama", "LIGER", "Harmony", "scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"]
 original_methods = ["scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"]
 
 methods = original_methods.copy() # methods might be modified based on what is already run. but we still want to benchmark everything
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--dataset', default = "lung_atlas") 
 parser.add_argument('--seed', default = 3008874, type=int) 
 parser.add_argument('--batch1', default = "4") 
 parser.add_argument('--batch2', default = "5") 
@@ -36,22 +35,29 @@ parser.add_argument('-c', '--components', default = "30", type=int)
 parser.add_argument('--hvg', default = True, type=bool) 
 parser.add_argument('--pca', default = True, type=bool) 
 parser.add_argument('--globalmasking', default = 0.2, type=float) 
-# parser.add_argument('--savename', default = "real_batches_lung", type=str) 
+parser.add_argument('--savename', default = "real_batches_lung", type=str) 
 # parser.add_argument('-t', default = "auto") 
 
 args = parser.parse_args()
-dataset_name = args.dataset
 batches = [args.batch1, args.batch2]
 n_components = int(args.components)
 # t = args.t
 
-data_path = f"{BATCHES_DATA_PATH}/{dataset_name}.h5ad"
+data_path = f"{LUNG_BATCHES_DATA_PATH}"
 
 
 # set save location (won't be used if args.save is False)
-save_name = f"real_batches/{batches[0]}_{batches[1]}" #dataset}".format(dataset = dataset_name)
-save_path = f"{scratch_path}/results/{save_name}"
+save_name = f"{args.savename}/{batches[0]}_{batches[1]}" #dataset}".format(dataset = dataset_name)
+save_path = f"{scratch_path}/{save_name}"
 
+save_path_subfolder = save_path
+if args.save and not os.path.exists(save_path_subfolder):
+    os.makedirs(save_path_subfolder)
+    
+
+args = parser.parse_args()
+with open(f"{save_path}/config.json", "w") as f:
+    json.dump(vars(args), f, indent=4)
 
 # LOAD DATA 
 adata_full = sc.read(data_path)
@@ -65,10 +71,6 @@ batch_key = "batch"
 adata = adata_full[(adata_full.obs["batch"].isin(batches))].copy()
 # adata, labels_not_in1, labels_not_in2 = remove_dataset_specific_cells(adata, batch_key, label_key)
 
-
-save_path_subfolder = save_path
-if args.save and not os.path.exists(save_path_subfolder):
-    os.makedirs(save_path_subfolder)
     
 if args.hvg:
     n_top_genes=2000
@@ -106,7 +108,7 @@ if os.path.exists(f"{save_path_subfolder}/adata_intermediate.h5ad"):
     
 results_df = pd.DataFrame()
 # ts = ["auto", 2, 10]
-ts = [2]
+ts = ["auto", 2]
 embedders = ["PHATE"]#, "UMAP", "spectral"]
 
 times_dict = {}
