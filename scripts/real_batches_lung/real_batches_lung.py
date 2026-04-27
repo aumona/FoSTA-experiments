@@ -20,8 +20,8 @@ from personal_paths import BASE_PATH, LUNG_BATCHES_DATA_PATH, RESULTS_PATH
 base_path = BASE_PATH
 scratch_path = RESULTS_PATH
 
-# original_methods = ["FoSTA", "MALI", "Scanorama", "LIGER", "Harmony", "scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"]
-original_methods = ["scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"]
+original_methods = ["FoSTA", "MALI", "Scanorama", "LIGER", "Harmony", "scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"]
+# original_methods = ["scVI", "scANVI", "Pamona", "KEMArbf", "KEMAlin"]
 
 methods = original_methods.copy() # methods might be modified based on what is already run. but we still want to benchmark everything
 
