@@ -30,8 +30,8 @@ class DTA():
              embedder = "spectral",
              rfgap=False,
              n_estimators=1000,
-             knn=10,  # same params as paper
-             decay=10,  # same params as paper
+             knn=5,
+             decay=40,
              t_dpt=1,   # we set this to 1 to compare diffusion (DPT, distances='DPT') VS no diffusion (distances='none')
              t = 'auto',
              beta = 0.7,
