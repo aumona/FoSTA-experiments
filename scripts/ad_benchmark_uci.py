@@ -31,7 +31,6 @@ from src.Pamona.eval import (
 )
 
 from src.fosta import FoSTA
-from src.rfmali import RFMALI
 from src.mali import MALI
 from src.pamona import Pamona
 from src.kemalin import KEMAlin
@@ -46,11 +45,11 @@ DATASETS_PATH = Path("data_uci")
 RESULTS_DIR = Path("results_uci")
 
 DATASETS = [
-    "balance_scale",
-    "breast_cancer",
-    "crx",
-    "diabetes",
-    "ecoli_5",
+    # "balance_scale",
+    # "breast_cancer",
+    # "crx",
+    # "diabetes",
+    # "ecoli_5",
     "flare1",
     "glass",
     "heart_disease",
@@ -64,16 +63,34 @@ DATASETS = [
 ]
 
 METHODS = [
-    "FoSTA_orig",
-    "FoSTA_orig_dense",
-    "FoSTA_oob",
-    "FoSTA_oob_dense",
+    
+
+    # "FoSTA_gap_l2",
+    # "FoSTA_gap_tsem=auto_l2",
+    # "FoSTA_gap_tsem=auto_avg_l2",
+
+
+    "FoSTA_gap",
+    "FoSTA_gap_tsem=auto",
+    "FoSTA_gap_tsem=auto_avg",
+
+
+
+    # "FoSTA_kerf_l2",
+    # "FoSTA_kerf_tsem=auto_l2",
+    # "FoSTA_kerf_tsem=auto_avg_l2",
+    
+
+    "FoSTA_kerf",
+    "FoSTA_kerf_tsem=auto",
+    "FoSTA_kerf_tsem=auto_avg",
 
 
     "MALI",
     "MALI_nodpt",
 
-    "Pamona",
+
+    # "Pamona",
 
     "KEMAlin",
     "KEMArbf",
@@ -88,19 +105,19 @@ SPLITS = [
     "distort",
 ]
 
-# SEEDS = list(range(5))
-SEEDS = list(range(10))
+SEEDS = list(range(5))
 
 TRANSFORM = "standardize"
-MASK_FRACTIONS = [0.1, 0.3, 0.5, 0.7, 0.9]  # fraction of target labels to mask (set to -1) for label transfer evaluation
+# MASK_FRACTIONS = [0.1, 0.3, 0.5, 0.7, 0.9]  # fraction of target labels to mask (set to -1) for label transfer evaluation
+MASK_FRACTIONS = [0.5]  # fraction of target labels to mask (set to -1) for label transfer evaluation
+
 NOISE_SIGMA = 0.2  # reasonable amount of noise
-SIGNAL_TO_NOISE_RATIO = 0.5  # don't be too aggressive here to not put Euclidean methods at an extreme disadvantage
+SIGNAL_TO_NOISE_RATIO = 0.1
 
 N_COMPONENTS = 2
 EMBEDDER = "PHATE"
 MU = 0.5
 GAMMA = 0.5
-SEMANTIC_NORM = "l2"
 MODEL_TYPE = "rf"
 N_ESTIMATORS = 500
 T = 'auto'
@@ -285,14 +302,14 @@ def mask_target_labels(y_true, mask_fraction, seed):
 def build_model(method: str, seed: int):
     m = method.lower()
 
-    if m == "fosta_oob":
+    if m == "fosta_gap":
         return FoSTA(
             embedder=EMBEDDER,
             mu=MU,
             n_components=N_COMPONENTS,
-            semantic_norm=SEMANTIC_NORM,
-            prior_correct=True,
-            kernel_method='oob',
+            kernel_method='gap',
+            t_sem_a=None,
+            t_sem_b=None,
             model_type=MODEL_TYPE,
             n_estimators=N_ESTIMATORS,
             t=T,
@@ -303,32 +320,14 @@ def build_model(method: str, seed: int):
             verbose=VERBOSE,
         )
     
-    if m == "fosta_oob_dense":
+    if m == "fosta_gap_tsem=auto":
         return FoSTA(
             embedder=EMBEDDER,
             mu=MU,
             n_components=N_COMPONENTS,
-            semantic_norm=SEMANTIC_NORM,
-            prior_correct=True,
-            kernel_method='oob',
-            model_type=MODEL_TYPE,
-            n_estimators=N_ESTIMATORS,
-            t=T,
-            ot_solver='dense',
-            beta=BETA,
-            random_state=seed,
-            n_jobs=N_JOBS,
-            verbose=VERBOSE,
-        )
-    
-    if m == "fosta_orig":
-        return FoSTA(
-            embedder=EMBEDDER,
-            mu=MU,
-            n_components=N_COMPONENTS,
-            semantic_norm=SEMANTIC_NORM,
-            prior_correct=True,
-            kernel_method='original',
+            kernel_method='gap',
+            t_sem_a='auto',
+            t_sem_b='auto',
             model_type=MODEL_TYPE,
             n_estimators=N_ESTIMATORS,
             t=T,
@@ -339,23 +338,82 @@ def build_model(method: str, seed: int):
             verbose=VERBOSE,
         )
     
-    if m == "fosta_orig_dense":
+    if m == "fosta_gap_tsem=auto_avg":
         return FoSTA(
             embedder=EMBEDDER,
             mu=MU,
             n_components=N_COMPONENTS,
-            semantic_norm=SEMANTIC_NORM,
-            prior_correct=True,
-            kernel_method='original',
+            kernel_method='gap',
+            t_sem_a='auto',
+            t_sem_b='auto',
+            average_semantic_diffusion=True,
             model_type=MODEL_TYPE,
             n_estimators=N_ESTIMATORS,
             t=T,
-            ot_solver='dense',
+            ot_solver='hiref',
             beta=BETA,
             random_state=seed,
             n_jobs=N_JOBS,
             verbose=VERBOSE,
         )
+    
+ 
+    
+    if m == "fosta_kerf":
+        return FoSTA(
+            embedder=EMBEDDER,
+            mu=MU,
+            n_components=N_COMPONENTS,
+            kernel_method='kerf',
+            t_sem_a=None,
+            t_sem_b=None,
+            model_type=MODEL_TYPE,
+            n_estimators=N_ESTIMATORS,
+            t=T,
+            ot_solver='hiref',
+            beta=BETA,
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
+        )
+    
+    if m == "fosta_kerf_tsem=auto":
+        return FoSTA(
+            embedder=EMBEDDER,
+            mu=MU,
+            n_components=N_COMPONENTS,
+            kernel_method='kerf',
+            t_sem_a='auto',
+            t_sem_b='auto',
+            model_type=MODEL_TYPE,
+            n_estimators=N_ESTIMATORS,
+            t=T,
+            ot_solver='hiref',
+            beta=BETA,
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
+        )
+    
+    if m == "fosta_kerf_tsem=auto_avg":
+        return FoSTA(
+            embedder=EMBEDDER,
+            mu=MU,
+            n_components=N_COMPONENTS,
+            kernel_method='kerf',
+            t_sem_a='auto',
+            t_sem_b='auto',
+            average_semantic_diffusion=True,
+            model_type=MODEL_TYPE,
+            n_estimators=N_ESTIMATORS,
+            t=T,
+            ot_solver='hiref',
+            beta=BETA,
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
+        )
+    
 
     if m == "mali":
         return MALI(
@@ -435,7 +493,6 @@ def run_experiment():
         "embedder": EMBEDDER,
         "mu": MU,
         "gamma": GAMMA,
-        "semantic_norm": SEMANTIC_NORM,
         "model_type": MODEL_TYPE,
         "n_estimators": N_ESTIMATORS,
         "t": T,
