@@ -6,7 +6,7 @@ source /opt/anaconda/anaconda3/etc/profile.d/conda.sh
 conda activate $ENV_FOSTA
 
 timestamp=$(date +%Y-%m-%d_%H-%M-%S)
-log_dir=/home/lizottem/RF-MALI/logs/real_batches_lung/$timestamp
+log_dir=/NOBACKUP/lizottem/fosta/logs/real_batches_lung/$timestamp
 # create log directory
 mkdir -p "$log_dir"
 # batches=("1" "2" "3" "4" "5" "6" "A1" "A2" "A3" "A4" "A5" "A6" "B1" "B2" "B3" "B4")
