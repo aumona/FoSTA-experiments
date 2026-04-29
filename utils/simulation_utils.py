@@ -97,14 +97,15 @@ def global_label_masking(adata, masking_frac = 0.5, label_key="cell_type", batch
     Stores the masked labels in a new column in adata.obs named "{label_key}_masked"
     creates a column "mask_indices" in adata.obs that indicates which samples were masked (1 if masked, 0 if not masked)
     '''
+    
+    adata.uns["global_masking_fraction"] = masking_frac  # store the masking fraction in adata.uns for reference
     rng = np.random.default_rng(seed=random_state)
     new_col = f"{label_key}_masked"
     
     # Initialize with original labels
     adata.obs[new_col] = adata.obs[label_key].copy()
     adata.obs['mask_indices'] = 0  # Initialize the mask_indices column
-    mask_indices = np.array([])
-    # mask_indices = []
+    
     # Iterate through each batch
     for batch in adata.obs[batch_key].unique():
         batch_indices = adata.obs[adata.obs[batch_key] == batch].index
