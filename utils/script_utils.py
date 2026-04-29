@@ -59,8 +59,18 @@ def prepare_adata(adata, save_path, label_key, batch_key, args):
     return adata, original_label_key, label_key
 
 def run_methods(adata, save_path, label_key, batch_key, methods_params_dict, args):
-    times_dict = {}
-    memory_dict = {}
+    if os.path.exists(f"{save_path}/adata_intermediate.h5ad"):
+        print("Loading previously computed intermediate adata...")
+        adata = sc.read_h5ad(f"{save_path}/adata_intermediate.h5ad")
+        for method_ran in adata.obsm.keys():
+            print(f"Method {method_ran} already computed, skipping...")
+            methods_params_dict.pop(method_ran, None)
+        print(f"Methods left to run: {list(methods_params_dict.keys())}")
+        times_dict = adata.uns.get("times_dict", {})
+        memory_dict = adata.uns.get("memory_dict", {})
+    else:
+        times_dict = {}
+        memory_dict = {}
     
     for method_name, method_params in methods_params_dict.items():
         
