@@ -75,6 +75,8 @@ def run_methods(adata, save_path, label_key, batch_key, methods_params_dict, arg
         times_dict[f"{method_name}"] = time_taken
         memory_dict[f"{method_name}"] = memory_taken
 
+        adata.uns["times_dict"] = times_dict
+        adata.uns["memory_dict"] = memory_dict
         # save adata so that if it crashes later, we don't have to recompute everything
         adata.write(f"{save_path}/adata_intermediate.h5ad")
             
@@ -90,7 +92,10 @@ def set_seeds(seed):
    
     
     
-def evaluate_and_save_results(adata, save_path_subfolder, save_path_parent, original_label_key, batch_key, times_dict, memory_dict, args, save_name=""):
+def evaluate_and_save_results(adata, save_path_subfolder, save_path_parent, original_label_key, batch_key, args, save_name=""):
+    times_dict = adata.uns.get("times_dict", {})
+    memory_dict = adata.uns.get("memory_dict", {})
+    
     methods_to_benchmark = list(adata.obsm.keys())
     try:
         methods_to_benchmark.remove("X_pca")
@@ -134,7 +139,10 @@ def evaluate_and_save_results(adata, save_path_subfolder, save_path_parent, orig
                     
                     
                     
-def paired_evaluate_and_save_results(adata, save_path_subfolder, save_path_parent, original_label_key, batch_key, times_dict, memory_dict, args, save_name =""):
+def paired_evaluate_and_save_results(adata, save_path_subfolder, save_path_parent, original_label_key, batch_key, args, save_name =""):
+    times_dict = adata.uns.get("times_dict", {})
+    memory_dict = adata.uns.get("memory_dict", {})
+    
     methods_to_benchmark = list(adata.obsm.keys())
 
     if args.globalmasking>0:
