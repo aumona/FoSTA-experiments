@@ -18,13 +18,13 @@ from utils.benchmark_utils import visualization, run_models_from_adata, benchmar
 from utils.simulation_utils import add_noise, dropout, global_label_masking, split_and_transform_batch, clean_and_encode_labels, preprocess_adata, ensure_label_intersection
 
 
-def main_argparser(default_savename="experiment"):
+def main_argparser(default_savename="experiment", default_globalmasking=0):
     parser = argparse.ArgumentParser()
     parser.add_argument('--seed', default = 3008874, type=int) 
     parser.add_argument('-c', '--components', default = 2, type=int) 
     parser.add_argument('--nhvg', default = 2000, type=int) 
     parser.add_argument('--npca', default = 30, type=int) 
-    parser.add_argument('--globalmasking', default = 0.2, type=float) 
+    parser.add_argument('--globalmasking', default = default_globalmasking, type=float) 
     parser.add_argument('--savename', default = default_savename, type=str) 
     # parser.add_argument('-t', default = "auto") 
 
