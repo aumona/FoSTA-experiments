@@ -70,6 +70,6 @@ adata = split_and_transform_batch_stratified(adata, noise_std=noise_std, dropout
 save_path_subfolder = f"{save_path}/noise_{noise_std}_dropout_{dropout_prob}/{n_components}_components"
 
 adata, original_label_key, masked_label_key = prepare_adata(adata, save_path_subfolder, label_key, batch_key, args=args)
-adata, times_dict, memory_dict = run_methods(adata, save_path, masked_label_key, batch_key, methods_params_dict=methods_params_dict, args=args)
-evaluate_and_save_results(adata, save_path_subfolder=save_path, save_path_parent=save_path_parent, original_label_key=original_label_key, batch_key=batch_key, times_dict=times_dict, memory_dict=memory_dict, args=args, save_name = "simulated_batches")
+adata = run_methods(adata, save_path, masked_label_key, batch_key, methods_params_dict=methods_params_dict, args=args)
+evaluate_and_save_results(adata, save_path_subfolder=save_path, save_path_parent=save_path_parent, original_label_key=original_label_key, batch_key=batch_key, args=args, save_name = "simulated_batches")
 save_embeddings(adata, save_path, label_key, batch_key)
