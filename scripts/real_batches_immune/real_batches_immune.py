@@ -20,12 +20,16 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 from personal_paths import BASE_PATH, IMMUNE_BATCHES_DATA_PATH, RESULTS_PATH
 
 from methods_configs import methods_params_dict
-# methods_params_dict = {"Pamona": {}
-#                     } # for testing purposes, only run Pamona.
+
+
 parser = main_argparser(default_savename="real_batches_immune")
 parser.add_argument('--batch1idx', default = 0, type=int) 
 parser.add_argument('--batch2idx', default = 1, type=int) 
 args = parser.parse_args()
+
+if args.test:
+    from methods_configs_test import methods_params_dict
+
 
 batches_idxs = [args.batch1idx, args.batch2idx]
 
