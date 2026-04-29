@@ -26,6 +26,7 @@ def main_argparser(default_savename="experiment", default_globalmasking=0):
     parser.add_argument('--npca', default = 30, type=int) 
     parser.add_argument('--globalmasking', default = default_globalmasking, type=float) 
     parser.add_argument('--savename', default = default_savename, type=str) 
+    parser.add_argument('--test', action='store_true') 
     # parser.add_argument('-t', default = "auto") 
 
     return parser
