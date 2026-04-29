@@ -1,0 +1,17 @@
+methods_params_dict = {"FoSTA t=2": {"method_type": "FoSTA", 
+                                    "kernel_method": "original", 
+                                    "ot_solver": "hiref", 
+                                    "t": 2},
+                       "FoSTA t=auto": {"method_type": "FoSTA",
+                                        "kernel_method": "original", 
+                                        "ot_solver": "hiref", 
+                                        "t": "auto"},
+                       "Scanorama":{},
+                        "LIGER":{},
+                        "Harmony":{},
+                        "scVI":{},
+                        "scANVI":{},
+                        "Pamona":{},
+                        "KEMArbf": {},
+                        "KEMAlin": {}
+                    }
