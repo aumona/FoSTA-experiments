@@ -5,7 +5,7 @@ source ../.profile
 source /opt/anaconda/anaconda3/etc/profile.d/conda.sh
 conda activate $ENV_FOSTA
 
-timestamp=$(date +%Y-%m-%d_%H-%M-%S)
+timestamp=${1:-$(date +%Y-%m-%d_%H-%M-%S)}
 log_dir=/home/lizottem/RF-MALI/logs/real_batches_immune/$timestamp
 # create log directory
 mkdir -p "$log_dir"

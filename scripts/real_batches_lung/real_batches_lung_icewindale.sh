@@ -5,7 +5,8 @@ source ../.profile
 source /opt/anaconda/anaconda3/etc/profile.d/conda.sh
 conda activate $ENV_FOSTA
 
-timestamp=$(date +%Y-%m-%d_%H-%M-%S)
+timestamp=${1:-$(date +%Y-%m-%d_%H-%M-%S)}
+
 log_dir=/NOBACKUP/lizottem/fosta/logs/real_batches_lung/$timestamp
 # create log directory
 mkdir -p "$log_dir"
@@ -20,7 +21,6 @@ for ((i=0; i<${#batches[@]}; i++)); do
     pairs+=("${batches[i]} ${batches[j]}")
   done
 done
-
 
 for i in "${!pairs[@]}"; do
  
