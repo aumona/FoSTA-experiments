@@ -79,9 +79,12 @@ def run_methods(adata, save_path, label_key, batch_key, methods_params_dict, arg
         if "method_type" not in method_params:
             method_params["method_type"] = method_name
         
+        method_type = method_params.pop("method_type", None)
         
         print(f"Running method {method_name}...")
-        adata, time_taken, memory_taken = run_models_from_adata(adata, method_params.pop("method_type"), batch_key = batch_key, label_key_ours = "cell_type_cleaned_encoded", label_key = label_key, embedding_basis="X_pca", seed=args.seed, n_components = args.components, **method_params)
+        adata, time_taken, memory_taken = run_models_from_adata(adata, method_type, batch_key = batch_key, label_key_ours = "cell_type_cleaned_encoded", label_key = label_key, embedding_basis="X_pca", seed=args.seed, n_components = args.components, **method_params)
+        adata.obsm[f"{method_name}"] = adata.obsm.pop(method_type) # move the embedding to the correct key in obsm. bc the above function saves it in the method_type key, but we want it to be saved in the method_name key (ex. "FoSTA_t2" instead of "FoSTA")
+        
         times_dict[f"{method_name}"] = time_taken
         memory_dict[f"{method_name}"] = memory_taken
 
@@ -116,13 +119,15 @@ def evaluate_and_save_results(adata, save_path_subfolder, save_path_parent, orig
     except ValueError:
         pass
     
-    
-    if args.globalmasking>0:
+    if not "global_masking_fraction" in adata.uns.keys():
+        adata.uns["global_masking_fraction"] = 0
+        
+    if adata.uns["global_masking_fraction"]>0:
         benchmark_adata = adata[adata.obs['mask_indices'] == 1].copy()
     else:
         benchmark_adata = adata.copy() # if we masked nothing, evaluate on everything
 
-    results_df = benchmark_from_adata(benchmark_adata, methods_to_benchmark, batch_key = batch_key, label_key = original_label_key, save_path= save_path)
+    results_df = benchmark_from_adata(benchmark_adata, methods_to_benchmark, batch_key = batch_key, label_key = original_label_key, save_path= save_path_subfolder)
     # metric_type = df.loc["Metric Type"]
     # df = df.drop("Metric Type")
 
@@ -155,7 +160,7 @@ def paired_evaluate_and_save_results(adata, save_path_subfolder, save_path_paren
     
     methods_to_benchmark = list(adata.obsm.keys())
 
-    if args.globalmasking>0:
+    if adata.uns["global_masking_fraction"]>0:
         benchmark_adata = adata[adata.obs['mask_indices'] == 1].copy()
     else:
         benchmark_adata = adata.copy() # if we masked nothing, evaluate on everything
