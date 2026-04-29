@@ -5,7 +5,8 @@ LUNG_BATCHES_DATA_PATH = "/home/lizottem/RF-MALI/data/lung_atlas.h5ad"
 IMMUNE_BATCHES_DATA_PATH = "/home/lizottem/RF-MALI/data/Immune_ALL_human.h5ad"
 PAIRED_DATA_PATH = "/NOBACKUP/lizottem/fosta/data"
 UCI_DATA_FOLDER = "/NOBACKUP/lizottem/fosta/data"
-RESULTS_PATH = "/home/lizottem/RF-MALI/results"
+# RESULTS_PATH = "/home/lizottem/RF-MALI/results"
+RESULTS_PATH = "/NOBACKUP/lizottem/fosta/results"
 
 
 ## MILA CLUSTER -- MYRIAM
