@@ -9,7 +9,9 @@ timestamp=$(date +%Y-%m-%d_%H-%M-%S)
 log_dir=/home/lizottem/RF-MALI/logs/real_batches_lung/$timestamp
 # create log directory
 mkdir -p "$log_dir"
-batches=("1" "2" "3" "4" "5" "6" "A1" "A2" "A3" "A4" "A5" "A6" "B1" "B2" "B3" "B4")
+# batches=("1" "2" "3" "4" "5" "6" "A1" "A2" "A3" "A4" "A5" "A6" "B1" "B2" "B3" "B4")
+batches=("A1" "A2" "A3" "A4" "A5" "A6")
+
 
 # Build list of unique pairs
 pairs=()
