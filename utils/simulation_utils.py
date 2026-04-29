@@ -127,7 +127,7 @@ def global_label_masking(adata, masking_frac = 0.5, label_key="cell_type", batch
                 cur_mask_indices = rng.choice(cls_batch_indices, size=n_to_mask, replace=False)
                 # Ensure "Unknown" is a valid category
                 col = adata.obs[new_col]
-                if pd.api.types.is_categorical_dtype(col):
+                if isinstance(col.dtype, pd.CategoricalDtype):
                     if "Unknown" not in col.cat.categories:
                         adata.obs[new_col] = col.cat.add_categories(["Unknown"])
 
