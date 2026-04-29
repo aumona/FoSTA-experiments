@@ -42,10 +42,9 @@ n_components = int(args.components)
 seed = args.seed
 # t = args.t
 
-# set save location (won't be used if args.save is False)
-save_name = f"{args.savename}/{batch}" #dataset}".format(dataset = dataset_name)
-save_path = f"{RESULTS_PATH}/{save_name}"
-
+# set save location 
+save_path_parent = f"{RESULTS_PATH}/{args.savename}"
+save_path = f"{save_path_parent}/{batch}" 
 
 # LOAD DATA 
 adata_full = sc.read(data_path)
@@ -72,5 +71,5 @@ save_path_subfolder = f"{save_path}/noise_{noise_std}_dropout_{dropout_prob}/{n_
 
 adata, original_label_key, masked_label_key = prepare_adata(adata, save_path_subfolder, label_key, batch_key, args=args)
 adata, times_dict, memory_dict = run_methods(adata, save_path, masked_label_key, batch_key, methods_params_dict=methods_params_dict, args=args)
-evaluate_and_save_results(adata, save_path, original_label_key, batch_key, times_dict, memory_dict, args)
+evaluate_and_save_results(adata, save_path_subfolder=save_path, save_path_parent=save_path_parent, original_label_key=original_label_key, batch_key=batch_key, times_dict=times_dict, memory_dict=memory_dict, args=args, save_name = "simulated_batches")
 save_embeddings(adata, save_path, label_key, batch_key)
