@@ -25,7 +25,7 @@ data_path = LUNG_BATCHES_DATA_PATH
 label_key = "cell_type"
 batch_key = "batch"
 
-parser = main_argparser()
+parser = main_argparser(default_savename="real_batches_lung")
 parser.add_argument('--batch1', default = "4")
 parser.add_argument('--batch2', default = "5")
 args = parser.parse_args()
@@ -33,8 +33,8 @@ args = parser.parse_args()
 batches = [args.batch1, args.batch2]
 
 # set save location 
-save_name = f"{args.savename}/{batches[0]}_{batches[1]}" #dataset}".format(dataset = dataset_name)
-save_path = f"{RESULTS_PATH}/{save_name}"
+save_path_parent = f"{RESULTS_PATH}/{args.savename}"
+save_path = f"{save_path_parent}/{batches[0]}_{batches[1]}" 
 
 # LOAD DATA 
 adata_full = sc.read(data_path)
@@ -61,5 +61,5 @@ adata = adata_full[(adata_full.obs["batch"].isin(batches))].copy()
 set_seeds(args.seed)
 adata, original_label_key, masked_label_key = prepare_adata(adata, save_path, label_key, batch_key, args=args)
 adata, times_dict, memory_dict = run_methods(adata, save_path, masked_label_key, batch_key, methods_params_dict=methods_params_dict, args=args)
-evaluate_and_save_results(adata, save_path, original_label_key, batch_key, times_dict, memory_dict, args)
+evaluate_and_save_results(adata, save_path=save_path, save_path_parent=save_path_parent, original_label_key=original_label_key, batch_key=batch_key, times_dict=times_dict, memory_dict=memory_dict, args=args, save_name = "real_batches_lung")
 save_embeddings(adata, save_path, label_key, batch_key)

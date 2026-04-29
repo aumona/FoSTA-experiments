@@ -22,7 +22,7 @@ from personal_paths import BASE_PATH, IMMUNE_BATCHES_DATA_PATH, RESULTS_PATH
 from methods_configs import methods_params_dict
 # methods_params_dict = {"Pamona": {}
 #                     } # for testing purposes, only run Pamona.
-parser = main_argparser()
+parser = main_argparser(default_savename="real_batches_immune")
 parser.add_argument('--batch1idx', default = 0, type=int) 
 parser.add_argument('--batch2idx', default = 1, type=int) 
 args = parser.parse_args()
@@ -35,10 +35,10 @@ label_key = "final_annotation"
 batch_key = "batch"
 
 
-# set save location (won't be used if args.save is False)
-save_name = f"{args.savename}/{batches_idxs[0]}_{batches_idxs[1]}" #dataset}".format(dataset = dataset_name)
-save_path = f"{RESULTS_PATH}/{save_name}"
-    
+# set save location
+save_path_parent = f"{RESULTS_PATH}/{args.savename}"
+save_path = f"{save_path_parent}/{batches_idxs[0]}_{batches_idxs[1]}" 
+
 
 # LOAD DATA 
 adata_full = sc.read(data_path)
@@ -55,7 +55,7 @@ adata = adata_full[(adata_full.obs["batch"].isin(batches))]
 set_seeds(args.seed)
 adata, original_label_key, masked_label_key = prepare_adata(adata, save_path, label_key, batch_key, args=args)
 adata, times_dict, memory_dict = run_methods(adata, save_path, masked_label_key, batch_key, methods_params_dict=methods_params_dict, args=args)
-evaluate_and_save_results(adata, save_path, original_label_key, batch_key, times_dict, memory_dict, args)
+evaluate_and_save_results(adata, save_path, save_path_parent, original_label_key, batch_key, times_dict, memory_dict, args, save_name = "real_batches_immune")
 save_embeddings(adata, save_path, label_key, batch_key)
 
 
