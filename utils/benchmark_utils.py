@@ -188,15 +188,15 @@ def split_adata(adata, batch_key="batch", **kwargs):
 
 
 
-def run_our_models_from_adata(adata, model_name= None, batch_key = "batch", label_key = "cell_type", embedding_basis="X", **kwargs):
+def run_our_models_from_adata(adata, model_name= None, batch_key = "batch", label_key = "cell_type", embedding_basis="X", seed = 42, **kwargs):
     # for some methods (MALI, RF-MALI, KEMA, Pamona), the expected input is two datasets (source and target) and two labels
     # this function allows to extract these from adata object given the batch_key and label_key
     # the embedding is then stored in adata.obsm[model_name]
     # return adata with embedding added
-    
+
     x0, x1, y0, y1, idxs_d = split_adata(adata, batch_key=batch_key, label_key=label_key, embedding_basis=embedding_basis)
    
-    embedding = try_run_our_models(x0=x0, x1=x1, y0=y0, y1=y1, model_name=model_name, **kwargs)
+    embedding = try_run_our_models(x0=x0, x1=x1, y0=y0, y1=y1, model_name=model_name, seed=seed, **kwargs)
     
     # put embedding in adata (after reordering rows of the embedding to match adata.obs.index)
     emb = pd.DataFrame(embedding)
@@ -205,9 +205,9 @@ def run_our_models_from_adata(adata, model_name= None, batch_key = "batch", labe
     adata.obsm[model_name] = np.asarray(emb)
     return adata
 
-def try_run_our_models(x0=None, x1=None, y0=None, y1=None, model_name=None, **kwargs):
+def try_run_our_models(x0=None, x1=None, y0=None, y1=None, model_name=None, seed=None, **kwargs):
     try:
-        embedding = run_our_models(model_name, x0, x1, y0, y1, **kwargs)
+        embedding = run_our_models(model_name, x0, x1, y0, y1, seed = seed, **kwargs)
         
     except Exception as e:
         x0 = x0.toarray()
@@ -215,7 +215,7 @@ def try_run_our_models(x0=None, x1=None, y0=None, y1=None, model_name=None, **kw
         print("(!) Sparse matrix conversion to dense due to error:", e)
         
         # try:
-        embedding = run_our_models(model_name, x0, x1, y0, y1, **kwargs)
+        embedding = run_our_models(model_name, x0, x1, y0, y1, seed = seed, **kwargs)
         # except Exception as e2:
         #     print(f"(!) Model {model_name} failed even after sparse to dense conversion:", e2)
         #     embedding = np.zeros((x0.shape[0] + x1.shape[0],2))  # Dummy embedding to avoid crashes in downstream code
@@ -223,9 +223,9 @@ def try_run_our_models(x0=None, x1=None, y0=None, y1=None, model_name=None, **kw
     return embedding
 
 
-def run_our_models_from_adatas(adata1, adata2, label_key="cell_type", model_name=None, embedding_basis="X", **kwargs):
+def run_our_models_from_adatas(adata1, adata2, label_key="cell_type", model_name=None, embedding_basis="X", seed=42, **kwargs):
     x0, x1, y0, y1, idxs_d = get_inputs_from_adatas(adata1, adata2, label_key=label_key, embedding_basis=embedding_basis)
-    embedding = try_run_our_models(x0=x0, x1=x1, y0=y0, y1=y1, model_name=model_name, **kwargs)
+    embedding = try_run_our_models(x0=x0, x1=x1, y0=y0, y1=y1, model_name=model_name, seed=seed, **kwargs)
     
     # how to get the 
     
