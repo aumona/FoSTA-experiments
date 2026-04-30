@@ -56,9 +56,11 @@ adata = adata_full[(adata_full.obs["batch"].isin(batches))]
 # adata, labels_not_in1, labels_not_in2 = remove_dataset_specific_cells(adata, batch_key, label_key)
 
 
+
+
 set_seeds(args.seed)
-adata, original_label_key, masked_label_key = prepare_adata(adata, save_path, label_key, batch_key, args=args)
-adata = run_methods(adata, save_path, masked_label_key, batch_key, methods_params_dict=methods_params_dict, args=args)
+adata, original_label_key, masked_label_key, masked_encoded_label_key = prepare_adata(adata, save_path, label_key, batch_key, args=args)
+adata = run_methods(adata, save_path, masked_label_key, encoded_label_key = masked_encoded_label_key, batch_key = batch_key, methods_params_dict=methods_params_dict, args=args)
 evaluate_and_save_results(adata, save_path_subfolder= save_path, save_path_parent=save_path_parent, original_label_key=original_label_key, batch_key=batch_key, args=args, save_name = "real_batches_immune")
 save_embeddings(adata, save_path, label_key, batch_key)
 
