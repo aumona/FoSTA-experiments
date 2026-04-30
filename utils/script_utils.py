@@ -33,7 +33,7 @@ def main_argparser(default_savename="experiment", default_globalmasking=0):
 
 
 
-def prepare_adata(adata, save_path, label_key, batch_key, args):
+def prepare_adata(adata, save_path, label_key, batch_key, args, masked_encoded_label_key="cell_type_cleaned_encoded"):
     if not os.path.exists(save_path):
         os.makedirs(save_path)
 
@@ -48,18 +48,18 @@ def prepare_adata(adata, save_path, label_key, batch_key, args):
         adata = global_label_masking(adata, masking_frac=args.globalmasking, label_key=label_key, batch_key=batch_key, random_state=args.seed) 
     
     original_label_key = label_key
-    label_key = f"{label_key}_masked" # update label key to the masked version for benchmarking (so that methods that can leverage labels will be affected by the masking)
+    masked_label_key = f"{label_key}_masked" # update label key to the masked version for benchmarking (so that methods that can leverage labels will be affected by the masking)
 
     # creates a new column "cell_type_cleaned_encoded" with cleaned and encoded labels for our methods (that need numbers)
-    adata = clean_and_encode_labels(adata, label_key=label_key, batch_key= batch_key, encoded_label_key="cell_type_cleaned_encoded", min_cells=0)
+    adata = clean_and_encode_labels(adata, label_key=masked_label_key, batch_key= batch_key, encoded_label_key= masked_encoded_label_key, min_cells=0)
 
 
     # # ensure our encoded labels are present in both batches. if not, set them as unlabeled -- not needed, already done in clean_and_encode_labels with replace_by=np.nan
     # adata, labels_missing_in_batch1, labels_missing_in_batch2 = ensure_label_intersection(adata, label_key="cell_type_cleaned_encoded", batch_key=batch_key)
 
-    return adata, original_label_key, label_key
+    return adata, original_label_key, label_key, masked_encoded_label_key
 
-def run_methods(adata, save_path, label_key, batch_key, methods_params_dict, args):
+def run_methods(adata, save_path, label_key, encoded_label_key, batch_key, methods_params_dict, args):
     if os.path.exists(f"{save_path}/adata_intermediate.h5ad"):
         print("Loading previously computed intermediate adata...")
         adata = sc.read_h5ad(f"{save_path}/adata_intermediate.h5ad")
@@ -83,7 +83,7 @@ def run_methods(adata, save_path, label_key, batch_key, methods_params_dict, arg
         method_type = method_params.pop("method_type", None)
         
         print(f"Running method {method_name}...")
-        adata, time_taken, memory_taken = run_models_from_adata(adata, method_type, batch_key = batch_key, label_key_ours = "cell_type_cleaned_encoded", label_key = label_key, embedding_basis="X_pca", seed=args.seed, n_components = args.components, **method_params)
+        adata, time_taken, memory_taken = run_models_from_adata(adata, method_type, batch_key = batch_key, label_key_ours = encoded_label_key, label_key = label_key, embedding_basis="X_pca", seed=args.seed, n_components = args.components, **method_params)
         adata.obsm[f"{method_name}"] = adata.obsm.pop(method_type) # move the embedding to the correct key in obsm. bc the above function saves it in the method_type key, but we want it to be saved in the method_name key (ex. "FoSTA_t2" instead of "FoSTA")
         
         times_dict[f"{method_name}"] = time_taken
@@ -96,14 +96,7 @@ def run_methods(adata, save_path, label_key, batch_key, methods_params_dict, arg
             
         print(f"\nMethod {method_name} completed in {time_taken:.2f} seconds\n")
     
-    return adata, times_dict, memory_dict
-
-def set_seeds(seed):
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    np.random.seed(seed)
-    random.seed(seed)
-   
+    return adata
     
     
 def evaluate_and_save_results(adata, save_path_subfolder, save_path_parent, original_label_key, batch_key, args, save_name=""):
@@ -120,15 +113,15 @@ def evaluate_and_save_results(adata, save_path_subfolder, save_path_parent, orig
     except ValueError:
         pass
     
-    if not "global_masking_fraction" in adata.uns.keys():
+    if "global_masking_fraction" not in adata.uns.keys():
         adata.uns["global_masking_fraction"] = 0
         
-    if adata.uns["global_masking_fraction"]>0:
+    if float(adata.uns["global_masking_fraction"])>0:
         benchmark_adata = adata[adata.obs['mask_indices'] == 1].copy()
     else:
         benchmark_adata = adata.copy() # if we masked nothing, evaluate on everything
 
-    results_df = benchmark_from_adata(benchmark_adata, methods_to_benchmark, batch_key = batch_key, label_key = original_label_key, save_path= save_path_subfolder)
+    results_df = benchmark_from_adata(benchmark_adata, methods_to_benchmark, batch_key = batch_key, label_key = original_label_key, save_path= save_path_subfolder, seed=args.seed)
     # metric_type = df.loc["Metric Type"]
     # df = df.drop("Metric Type")
 
@@ -155,13 +148,16 @@ def evaluate_and_save_results(adata, save_path_subfolder, save_path_parent, orig
                     
                     
                     
-def paired_evaluate_and_save_results(adata, save_path_subfolder, save_path_parent, original_label_key, batch_key, args, save_name =""):
+def paired_evaluate_and_save_results(adata, save_path_subfolder, save_path_parent,  encoded_label_key, masked_encoded_label_key,  batch_key, args, save_name =""):
     times_dict = adata.uns.get("times_dict", {})
     memory_dict = adata.uns.get("memory_dict", {})
     
     methods_to_benchmark = list(adata.obsm.keys())
 
-    if adata.uns["global_masking_fraction"]>0:
+    if "global_masking_fraction" not in adata.uns.keys():
+        adata.uns["global_masking_fraction"] = 0
+        
+    if float(adata.uns["global_masking_fraction"])>0:
         benchmark_adata = adata[adata.obs['mask_indices'] == 1].copy()
     else:
         benchmark_adata = adata.copy() # if we masked nothing, evaluate on everything
