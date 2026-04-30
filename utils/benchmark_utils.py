@@ -324,12 +324,15 @@ def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours
 
         # ------------------ run scANVI ------------------------------------------------
         elif model_name.lower() == "scanvi":
-            
+            torch.use_deterministic_algorithms(True)
+            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.deterministic = True
             scvi.settings.seed = seed
-            if not('vae' in locals() and vae is not None): # if vae is not defined (from previously running scvi)
-                SCVI.setup_anndata(adata, layer="counts", batch_key=batch_key)
-                vae = SCVI(adata, gene_likelihood="nb", n_layers=2, n_latent=n_components)
-                vae.train()
+            # if not('vae' in locals() and vae is not None): # if vae is not defined (from previously running scvi)
+            # retrain scvi to avoid reproducibility issues
+            SCVI.setup_anndata(adata, layer="counts", batch_key=batch_key)
+            vae = SCVI(adata, gene_likelihood="nb", n_layers=2, n_latent=n_components)
+            vae.train()
             
             lvae = SCANVI.from_scvi_model(
                 vae,
