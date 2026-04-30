@@ -127,7 +127,8 @@ def evaluate_and_save_results(adata, save_path_subfolder, save_path_parent, orig
 
     results_df.insert(0, "method", results_df.index)
     results_df.insert(0, "n_components", args.components)
-
+    results_df.insert(0, "seed", args.seed)
+    
     results_df["time"] = results_df["method"].map(times_dict)
     results_df["memory"] = results_df["method"].map(memory_dict)
        
@@ -165,7 +166,8 @@ def paired_evaluate_and_save_results(adata, save_path_subfolder, save_path_paren
     for method in methods_to_benchmark:
         res, sil_dom, foscttm, alignment_score = run_metrics_from_adata(benchmark_adata, method, batch_key = batch_key, label_key = encoded_label_key, masked_label_key = masked_encoded_label_key)
         rows_list = []
-        result_row = {"n_components": args.components, 
+        result_row = {"seed": args.seed, 
+                      "n_components": args.components, 
                     "model": method, 
                     "FOSCTTM": foscttm, 
                     "Silhouette_domain": sil_dom,
