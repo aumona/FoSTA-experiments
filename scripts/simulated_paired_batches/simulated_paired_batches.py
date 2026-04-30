@@ -38,7 +38,7 @@ save_name = f"simulated_paired_batches" #dataset}".format(dataset = dataset_name
 
 # set save location 
 save_path_parent = f"{RESULTS_PATH}/{args.savename}"
-save_path = f"{save_path_parent}/{batch}" 
+save_path = f"{save_path_parent}/{batch}/seed_{args.seed}" 
 
 # LOAD DATA
 adata_full = sc.read(LUNG_BATCHES_DATA_PATH)
