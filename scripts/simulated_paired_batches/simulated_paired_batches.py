@@ -54,7 +54,7 @@ label_key = "cell_type"
 batch_key = "simulated_batch"
 encoded_label_key = "cell_type_cleaned_encoded" # never instantiated
 masked_encoded_label_key = f"{encoded_label_key}_masked"
-# masked_encoded_label_key = f"{label_key}_cleaned_encoded_masked"
+masked_encoded_label_key = f"{label_key}_cleaned_encoded_masked"
 # embedding_basis = "X_pca"
 
 # adata = clean_and_encode_labels(adata, label_key=label_key, new_label_key=encoded_label_key, min_cells=0)   
@@ -64,7 +64,7 @@ masked_encoded_label_key = f"{encoded_label_key}_masked"
 # adata.obs[masked_encoded_label_key] = labels_masked
 
 
-# creates a new column masked_encoded_label_key with cleaned and encoded labels for our methods (that need numbers)
+# creates a new column encoded_label_key with cleaned and encoded labels for our methods (that need numbers)
 adata = clean_and_encode_labels(adata, label_key=label_key, batch_key= None, encoded_label_key= encoded_label_key, min_cells=0)
 
 
@@ -72,10 +72,12 @@ dummy_batch_key = "batch" # for the global label masking stratified over batches
 adata = global_label_masking(adata, masking_frac=args.globalmasking, label_key=label_key, batch_key=dummy_batch_key, random_state=args.seed) 
 masked_label_key = f"{label_key}_masked" # update label key to the masked version for benchmarking (so that methods that can leverage labels will be affected by the masking)
 
+# now also mask the encoded labels 
+adata.obs[masked_encoded_label_key] = adata.obs[encoded_label_key].copy()
+adata.obs.loc[adata.obs["mask_indices"] ==1, masked_encoded_label_key] = -1 # set the masked labels to -1
 
 
 # ----------------- similar to the prepare adata function in script_utils, but in a different order. we want to mask on the single batch, but then preprocess on the combined adata with simulated batch
-
 adata.obs["cell_id"] = adata.obs.index.astype(str) # add the cell identifier column that aligns pairs from each batch
 
 # apply transformations to create a new batch  
