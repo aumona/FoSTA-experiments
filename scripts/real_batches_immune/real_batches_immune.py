@@ -12,9 +12,9 @@ import matplotlib.pyplot as plt
 
 import sys, pathlib
 sys.path.insert(0, str(next(p for p in [pathlib.Path.cwd()] + list(pathlib.Path.cwd().parents) if (p/"src").is_dir())))
-from utils.benchmark_utils import visualization, run_models_from_adata, benchmark_from_adata
+from utils.benchmark_utils import set_seeds, visualization, run_models_from_adata, benchmark_from_adata
 from utils.simulation_utils import add_noise, dropout, global_label_masking, split_and_transform_batch, clean_and_encode_labels, preprocess_adata, ensure_label_intersection
-from utils.script_utils import main_argparser, set_seeds, prepare_adata, run_methods, evaluate_and_save_results, save_embeddings
+from utils.script_utils import main_argparser, prepare_adata, run_methods, evaluate_and_save_results, save_embeddings
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 from personal_paths import BASE_PATH, IMMUNE_BATCHES_DATA_PATH, RESULTS_PATH

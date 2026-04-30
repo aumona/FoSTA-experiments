@@ -1,5 +1,7 @@
 import os
 import tracemalloc
+import random
+import torch
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -32,7 +34,12 @@ import scib
 from scib_metrics.benchmark import Benchmarker, BioConservation, BatchCorrection
 import pickle
 
-
+def set_seeds(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+   
 
 def ablation_fosta( method_name = None,
                         params_dict = None,
@@ -239,6 +246,8 @@ def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours
     # returns adata with embedding in adata.obsm[model_name]
     # label_key_ours is used for our methods only (if different from label_key)
     
+    set_seeds(set_seeds) # reset seeds for reproducible results (so not affected by previous operations, each method starts fresh)
+
     start_time = time.time()
     tracemalloc.start()
     current_mem_start, _ = tracemalloc.get_traced_memory()
@@ -495,10 +504,15 @@ def visualization(embedding, y_source, y_target, seed=42, title= "", save_path =
     plt.show()
 
 
-def benchmark_from_adata(adata, methods, batch_key = "batch", label_key = "cell_type", pre_integrated_embedding_obsm_key = "Unintegrated", save_path= None):
+def benchmark_from_adata(adata, methods, batch_key = "batch", label_key = "cell_type", pre_integrated_embedding_obsm_key = "Unintegrated", save_path= None, seed=42):
     # Benchmarking with scIB_metrics (faster)
     # adds the missing metrics from scib (trajectory preservation and cell cycle conservation)
     # saves to save_path if provided, otherwise not saved
+    # seed: Random seed for reproducible metrics (controls Leiden, KMeans, KNN operations)
+    
+    set_seeds(set_seeds)
+    # reset seeds for reproducible results
+  
     
     # only keep the methods that are present in adata.obsm (to avoid crashes)
     methods = [m for m in methods if m in adata.obsm.keys()]
@@ -544,6 +558,8 @@ def benchmark_from_adata(adata, methods, batch_key = "batch", label_key = "cell_
             sc.pp.neighbors(adata, use_rep=method) 
             # recompute the connectivities on the integrated embedding
         
+        set_seeds(set_seeds)
+        # reset seeds for reproducible results
 
         scib_results = scib.me.metrics(
             adata,
