@@ -274,7 +274,6 @@ def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours
             
         # ------------------ run LIGER --------------------------------
         elif model_name.lower() == "liger": 
-        
             bdata = adata.copy()
             # Pyliger normalizes by library size with a size factor of 1
             # So here we give it the count data
@@ -305,8 +304,8 @@ def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours
 
             adata.obsm["LIGER"] = np.zeros((adata.shape[0], liger_data.adata_list[0].obsm["H_norm"].shape[1]))
             for i, b in enumerate(batch_cats):
-                adata.obsm["LIGER"][adata.obs.batch == b] = liger_data.adata_list[i].obsm["H_norm"]
-                
+                adata.obsm["LIGER"][adata.obs[batch_key] == b] = liger_data.adata_list[i].obsm["H_norm"]
+
         # ------------------ run harmony --------------------------------
         elif model_name.lower() == "harmony":
             # Run Harmony to correct for batch effects 
