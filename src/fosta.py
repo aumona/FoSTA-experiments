@@ -1,6 +1,6 @@
 import numpy as np
 from sklearn import preprocessing
-from sklearn.decomposition import PCA, TruncatedSVD
+from sklearn.decomposition import PCA
 from scipy import sparse
 from scipy.spatial.distance import cdist
 from scipy.sparse.linalg import LinearOperator, svds
@@ -130,7 +130,7 @@ class FoSTA:
     def _reduce_leaf_coords(self, Q_full, domain_name="A"):
         self._log(f"[Domain {domain_name}] Reducing leaf coordinates with sparse PCA...")
     
-        reducer = TruncatedSVD(
+        reducer = PCA(
             n_components=min(self.n_estimators, self.n_pca),
             random_state=self.random_state,
         )
