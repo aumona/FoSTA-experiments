@@ -2,66 +2,37 @@ import time
 import numpy as np
 from scipy import sparse
 from sklearn import preprocessing
-
-# Graph tools for DPT
-import graphtools
-
-# RF-GAP
-from .rfgap_old.forestkernel import ForestKernel
-
-# Embedders
-from src.phate import PageRankPHATE
+from sklearn.neighbors import NearestNeighbors
 from sklearn.manifold import SpectralEmbedding
 from umap import UMAP
 
-# Utils
+import graphtools
+from .rfgap_old.forestkernel import ForestKernel
+from .hiref.adaptive_HiRef import solve_surjection_hiref
+from src.phate import PageRankPHATE
 from utils.utils import kernel2Dist, print_mat_stats
 from utils.labels import LabelUtils
 
-# OT solver
-from .hiref.adaptive_HiRef import solve_surjection_hiref
-
-import sys
-
-
-class FoSTA(object):
-    '''FoSTA: Forest-guided Semantic Transport Alignment'''
-    def __init__(self,
-                 mu=0.5,  # cross-domain block strength (0.5 = equal weight, 0.0 = ignore cross-domain affinities, 1.0 = rely solely on cross-domain affinities)
-                 dpt=False,
-                 kernel_method='gap',
-                 model_type='rf',
-                 n_landmark=2000,
-
-                 euclidean_mode=False,  # MALI-style approach without forest-guided proximities (only for ablation, not recommended)
-                 n_pca=100,  # only for euclidean mode
-                 n_neighbors=5,  # only for euclidean mode
-                 decay=40,  # only for euclidean mode
-                 knn_dist='euclidean',  # only for euclidean mode
-
-                 t='auto',
-                 beta=0.9,  # old was 0.7 but we set to 0.9 for consistency with MALI experiments
-                 n_estimators=1000,
-                 prior_correct=True,
-                 semantic_norm='l2',  # normalization method for semantic vectors (supports 'l1' and 'l2')
-                 embedder='PHATE',
-                 n_components=2,
-                 verbose=0,
-                 random_state=None,
-                 n_jobs=-1):
+class FoSTA:
+    """FoSTA: Forest-guided Semantic Transport Alignment"""
+    
+    def __init__(self, mu=0.5, kernel_method='gap', force_nonzero_diag=False,
+                 normalize_diagonal=False, model_type='rf', euclidean_mode=False,
+                 n_pca=100, n_neighbors=5, decay=40, knn_dist='euclidean',
+                 t='auto', beta=0.9, n_estimators=500, prior_correct=True,
+                 semantic_norm='l2', embedder='PHATE', n_components=2,
+                 verbose=0, random_state=None, n_jobs=-1):
+        
         self.mu = mu
-        self.dpt = dpt
         self.kernel_method = kernel_method
+        self.normalize_diagonal = normalize_diagonal
+        self.force_nonzero_diag = force_nonzero_diag
         self.model_type = model_type
-        self.n_landmark = n_landmark  # number of landmarks for DPT
         self.euclidean_mode = euclidean_mode
-        self.n_pca = n_pca
-        self.n_neighbors = n_neighbors
-        self.decay = decay
-        self.knn_dist = knn_dist
+        self.n_pca, self.n_neighbors = n_pca, n_neighbors
+        self.decay, self.knn_dist = decay, knn_dist
         self.prior_correct = prior_correct
-        self.t = t
-        self.beta = beta
+        self.t, self.beta = t, beta
         self.semantic_norm = semantic_norm
         self.embedder = embedder
         self.n_components = n_components
@@ -70,407 +41,177 @@ class FoSTA(object):
         self.n_jobs = n_jobs
         self.n_estimators = n_estimators
 
-        self.kernel_params = {
-            'random_state': self.random_state,
-            'prediction_type': 'classification',  # force classification mode
-            'n_estimators': self.n_estimators,
-            'kernel_method': self.kernel_method,
-            'model_type': self.model_type,
-            'force_nonzero_diag': True,
-        }
-
-        self.T_sparse = None
-        self.W = None
-        self.embedding_ = None
-        self.classes_ = None
-        self.n = None
-        self.n_a = None
-        self.n_b = None
-
+        self.prox_a = self.prox_b = self.T_sparse = self.W = self.embedding_ = None
+        self.classes_ = self.n = self.n_a = self.n_b = None
         self.runtime_summary_ = None
 
-    # ------------------------------------------------------------
-    # Posterior builders
-    # ------------------------------------------------------------
-    def _get_semantic_vectors(
-        self,
-        W,                     # (N, K) Adjacency. K=N (Full, sparse) or K=M (Landmarks, dense)
-        y,                     # (N,) Labels
-        labels,                # List of unique canonical labels
-        clusters=None,         # (N,) Landmark IDs (optional, only for landmark path)
-        eps=1e-12,
-        prior_correct=True
-    ):
-        """
-        Builds C-dim semantic vectors (posteriors) via unified matrix diffusion.
-
-        Logic:
-        1. Construct Signal Basis Y_encoded (K x C):
-            - If Full: One-hot encoding of labeled points.
-            - If Landmarks: Probability distribution P(class | landmark).
-        2. Diffuse: Post = W @ Y_encoded
-        3. Correct: Divide by class priors to handle imbalance.
-        4. Transform: Apply Metric scaling (Cosine/Hellinger).
-        """
-        # --- Setup Data & Labels ---
+    def _get_semantic_vectors(self, W, y, labels, eps=1e-12, prior_correct=True):
+        """Builds C-dim semantic vectors (posteriors) via unified matrix diffusion."""
         y = np.asarray(y).ravel()
         mask_unl = LabelUtils.get_unlabeled_mask(y)
-
-        N, K = W.shape
-        C = len(labels)
-
-        # Map labels -> [0..C-1]
+        N, C = W.shape[0], len(labels)
         lab2idx = {lab: k for k, lab in enumerate(labels)}
 
-        # Filter strictly to labeled data
-        y_lab = y[~mask_unl]
-        if y_lab.size == 0:
-            return np.zeros((N, C), dtype=float)
+        if not np.any(~mask_unl): return np.zeros((N, C))
 
-        try:
-            y_idx = np.array([lab2idx[v] for v in y_lab], dtype=int)
-        except KeyError as e:
-            raise ValueError(f"Found label {e} in y that is not in `labels`.")
-
-        # --- Compute Priors (for correction) ---
-        # We compute this regardless of path to support prior_correct
+        y_idx = np.array([lab2idx[v] for v in y[~mask_unl]], dtype=int)
         counts_c = np.bincount(y_idx, minlength=C).astype(float)
-        n_lab = float(counts_c.sum())
+        inv_prior = 1.0 / np.maximum(counts_c / max(counts_c.sum(), 1.0), eps)
 
-        # p_c = count / total
-        class_prior = counts_c / max(n_lab, 1.0)
-        # 1/p_c (used to normalize "Total Affinity" to "Average Affinity")
-        inv_prior = 1.0 / np.maximum(class_prior, eps)
-
-        # --- Construct Signal Basis Y_encoded (K x C) ---
-        # This matrix represents the initial class signal on the graph nodes (points or landmarks)
-        Y_encoded = np.zeros((K, C), dtype=np.float64)
-
-        if clusters is None:
-            # Case A: Full Graph (Basis = Points, K=N)
-            # Create strict One-Hot encoding for labeled points
-            # Y[i, c] = 1.0 if point i has label c, else 0
-            labeled_indices = np.flatnonzero(~mask_unl)
-            Y_encoded[labeled_indices, y_idx] = 1.0
-
-        else:
-            # Case B: Landmarks (Basis = Landmarks, K=M)
-            # Aggregate counts: "Landmark k contains 5 Class A and 10 Class B"
-            clusters = np.asarray(clusters).ravel()
-            landmark_ids = clusters[~mask_unl]  # Map labeled points to their landmarks
-
-            # Fast unbuffered add
-            np.add.at(Y_encoded, (landmark_ids, y_idx), 1.0)
-
-            # Row-Normalize (Counts -> Probs P(c|m))
-            row_sums = Y_encoded.sum(axis=1, keepdims=True)
-            row_sums[row_sums == 0] = 1.0  # Prevent div/0 for empty landmarks
-            Y_encoded /= row_sums
-
-        # --- projection onto semantic space ---
-        # W is sparse (N, N) or dense (N, K), Y is dense (K, C) -> Result is Dense (N, C)
-        # This calculates the raw sum of affinities to class signals
+        Y_encoded = np.zeros((N, C))
+        Y_encoded[np.flatnonzero(~mask_unl), y_idx] = 1.0
         post = W.dot(Y_encoded)
 
-        # Remove self-similarity contribution (labeled points only)
-        # Efficient leave-self-out: subtract W[i,i] from the column corresponding to y_i
-        if clusters is None:
-            # diag of W as (N,)
-            d = W.diagonal()
-            # subtract only for labeled points
-            labeled_indices = np.flatnonzero(~mask_unl)
-            # y_idx is only labels for labeled points; map those onto full-length array
-            y_full_idx = np.empty(N, dtype=int)
-            y_full_idx[~mask_unl] = y_idx
-            post[labeled_indices, y_full_idx[~mask_unl]] -= d[labeled_indices]
+        # --- Diagnostics: Pre-normalization row sums ---
+        if self.verbose:
+            r_sums = post.sum(axis=1)
+            print(f"\n[DEBUG] Semantic Row Sums (pre-norm): min={r_sums.min():.4f}, max={r_sums.max():.4f}, mean={r_sums.mean():.4f}")
 
-        # --- Prior Correction ---
         if prior_correct:
-            # Broadcast multiplication: post[:, c] *= (1 / p_c)
-            # Converts "Total Affinity" -> "Density-Independent Affinity"
             post *= inv_prior[None, :]
-
-        # --- Metric Transformation ---
-        # Prepares vectors so standard Euclidean distance downstream matches desired metric
-        if self.semantic_norm == 'l2':  # to simulate Cosine distance, same as MALI, and better fits Hiref_fast assumptions
-            post = preprocessing.normalize(post, norm="l2", axis=1)
-
-        elif self.semantic_norm == 'l1':
-            post = preprocessing.normalize(post, norm="l1", axis=1)
-        else:
-            print(f"[WARN] Unknown normalization={self.semantic_norm}, skipping metric transform.")
-
+        
+        if self.semantic_norm in ['l1', 'l2']:
+            post = preprocessing.normalize(post, norm=self.semantic_norm, axis=1)
+            
         return post
 
-    # ------------------------------------------------------------
-    # DPT / Landmark diffusion machinery
-    # ------------------------------------------------------------
-    def _get_diffusion_operators(self, K, random_state=None, verbose=True, **graph_kwargs):
-        """
-        Returns P_NM (N x M), P_MM (M x M), clusters (N,)
-        """
-        n_landmark = self.n_landmark
-        G = graphtools.Graph(
-            K,
-            precomputed="affinity",
-            n_landmark=n_landmark if n_landmark is not None and n_landmark < K.shape[0] else None,
-            kernel_symm=None,
-            random_state=random_state,
-            verbose=verbose,
-            **graph_kwargs,
-        )
-        if hasattr(G, "landmark_op") and hasattr(G, "transitions"):
-            if verbose:
-                print("Using LandmarkGraph operators (N→M and M→M).")
-            P_MM = np.asarray(G.landmark_op)
-            P_NM = G.transitions.toarray()
-            clusters = np.asarray(G.clusters).ravel()
+    def _row_normalize(self, M):
+        row_sums = np.asarray(M.sum(axis=1)).flatten()
+        row_sums[row_sums == 0] = 1.0
+        return sparse.diags(1.0 / row_sums) @ M
 
-            # robust remap
-            M = P_NM.shape[1]
-            _, clusters_remap = np.unique(clusters, return_inverse=True)
-            clusters = clusters_remap.astype(int)
-            if clusters.max() + 1 > M:
-                clusters = np.minimum(clusters, M - 1)
-            if P_MM.shape[0] != M:
-                P_MM = P_MM[:M, :M]
-            return P_NM, P_MM, clusters
+    def _top_k_sparsify(self, K, k=5):
+        K = K.tocsr()
+        n_samples = K.shape[0]
+        new_data, new_indices = np.zeros(n_samples * k), np.zeros(n_samples * k, dtype=int)
+        new_indptr = np.arange(0, (n_samples + 1) * k, k)
 
-        if verbose:
-            print("Using TraditionalGraph: treating all N points as landmarks.")
-        P_MM = G.P.toarray()
-        P_NM = np.eye(P_MM.shape[0], dtype=P_MM.dtype)
-        clusters = np.arange(P_MM.shape[0])
-        return P_NM, P_MM, clusters
+        for i in range(n_samples):
+            start, end = K.indptr[i], K.indptr[i+1]
+            d, idx = K.data[start:end], K.indices[start:end]
+            n_row = len(d)
+            if n_row > k:
+                p = np.argpartition(d, -k)[-k:]
+                new_data[i*k : i*k+k], new_indices[i*k : i*k+k] = d[p], idx[p]
+            else:
+                new_data[i*k : i*k+n_row], new_indices[i*k : i*k+n_row] = d, idx
 
-    def _compute_dpt(self, P):
-        """
-        DPT-like aggregated transition matrix: (I - (P - 1 phi^T))^{-1} - I
-        """
-        n = P.shape[0]
-        I = np.eye(n)
-        ones = np.ones(n, dtype=float)
-        wL, lv = np.linalg.eig(P.T)
-        j = np.argmin(np.abs(wL - 1.0))
-        phi0 = lv[:, j].real
-        if phi0.sum() < 0:
-            phi0 = -phi0
-        phi0 = np.maximum(phi0, 0)
-        s = phi0.sum()
-        if s <= 0:
-            raise ValueError("Failed to extract a valid stationary distribution.")
-        phi0 = phi0 / s
-        P_deflated = P - np.outer(ones, phi0)
-        Mmat = np.linalg.solve(I - P_deflated, I) - I
-        Mmat = preprocessing.MinMaxScaler().fit_transform(Mmat.transpose()).transpose()
-        return Mmat
+        return sparse.csr_matrix((new_data, new_indices, new_indptr), shape=K.shape).tocsr()
 
-    # ------------------------------------------------------------
-    # Balanced Affinity Construction
-    # ------------------------------------------------------------
+    def _fill_orphan_matches(self, T, post_a, post_b):
+        orph_a = np.where(np.asarray(T.sum(axis=1)).ravel() == 0)[0]
+        orph_b = np.where(np.asarray(T.sum(axis=0)).ravel() == 0)[0]
+
+        if not (len(orph_a) or len(orph_b)): return T
+
+        new_r, new_c = [], []
+        if len(orph_a):
+            idx = NearestNeighbors(n_neighbors=1).fit(post_b).kneighbors(post_a[orph_a], return_distance=False)
+            new_r.extend(orph_a); new_c.extend(idx.ravel())
+        if len(orph_b):
+            idx = NearestNeighbors(n_neighbors=1).fit(post_a).kneighbors(post_b[orph_b], return_distance=False)
+            new_r.extend(idx.ravel()); new_c.extend(orph_b)
+
+        T_patch = sparse.csr_matrix((np.ones(len(new_r)), (new_r, new_c)), shape=T.shape)
+        T_combined = (T + T_patch).tocsr()
+        T_combined.data = np.ones_like(T_combined.data)
+        return T_combined
+
     def _build_balanced_affinity(self, prox_a, prox_b, T):
-        """
-        Constructs a joint affinity matrix just like in MALI, with max-normalized T as input (OT coupling matrix)
-        """
-        W_ab = prox_a.dot(T)  # (n_a x n_b)
-        W_ba = prox_b.dot(T.transpose())  # (n_b x n_a)
-        W_sym = sparse.bmat(
-            [
-                [(1 - self.mu) * prox_a, self.mu * W_ab],
-                [self.mu * W_ba, (1 - self.mu) * prox_b]
-            ],
-            format="csr"
-        )
+        """Constructs joint affinity matrix with row-normalized blocks and diagnostics."""
+        T_ab, T_ba = self._row_normalize(T), self._row_normalize(T.T.tocsr())
+        
+        # Sparsify and re-normalize intra-domain kernels
+        prox_a_sparse = self._row_normalize(self._top_k_sparsify(prox_a, k=30))
+        prox_b_sparse = self._row_normalize(self._top_k_sparsify(prox_b, k=30))
 
+        W_ab, W_ba = prox_a_sparse @ T_ab, prox_b_sparse @ T_ba
+        
         if self.verbose:
             print("\nJOINT AFFINITY BLOCK STATISTICS")
             print("------------------------------")
-            print_mat_stats("Within-domain A (W1)", prox_a)
-            print_mat_stats("Within-domain B (W2)", prox_b)
-            print_mat_stats("Cross-domain A→B (W12)", W_ab)
-            print_mat_stats("Cross-domain B→A (W21)", W_ba)
+            print_mat_stats("Within-domain A", prox_a_sparse)
+            print_mat_stats("Within-domain B", prox_b_sparse)
+            print_mat_stats("Cross-domain A→B", W_ab)
+            print_mat_stats("Cross-domain B→A", W_ba)
 
-        return W_sym
+        return sparse.bmat([
+            [(1-self.mu)*prox_a_sparse, self.mu*W_ab],
+            [self.mu*W_ba, (1-self.mu)*prox_b_sparse]
+        ], format="csr")
 
-    def _print_runtime_summary(self):
-        if not self.verbose or self.runtime_summary_ is None:
-            return
-
-        times = self.runtime_summary_
-        total = times["total"]
-        print("\nRUNTIME SUMMARY")
-        print("---------------")
-        print(f"Total: {total:.3f}s")
-        for key in ["geometry", "semantics", "transport", "joint_affinity", "embedding"]:
-            val = times[key]
-            pct = 100.0 * val / total if total > 0 else 0.0
-            print(f"{key:15s} {val:8.3f}s   ({pct:5.1f}%)")
-
-    # ------------------------------------------------------------
-    # Main API
-    # ------------------------------------------------------------
-    def fit(self, x_a, x_b, y_a, y_b):
-        self.n_a = x_a.shape[0]
-        self.n_b = x_b.shape[0]
-        self.n = self.n_a + self.n_b
-
-        y_a = np.asarray(y_a).ravel()
-        y_b = np.asarray(y_b).ravel()
-        labels = LabelUtils.validate_shared_labels(y_a, y_b, strict=True)
-        self.classes_ = labels
-
-        t_geometry = time.perf_counter()
+    def _get_geometry(self, x, y):
         if not self.euclidean_mode:
-            print("Fitting RFGAP on Domain A...") if self.verbose > 0 else None
-            self.kernel_a = ForestKernel(**self.kernel_params)
-            mask_unlabeled_a = LabelUtils.get_unlabeled_mask(y_a)
-            idx_unlabeled_a = np.flatnonzero(mask_unlabeled_a)
-            self.kernel_a.fit(x_a, y_a, idx_unlabeled=idx_unlabeled_a)
-            prox_a = self.kernel_a.get_kernel(normalize_diagonal=True)
+            fk = ForestKernel(n_estimators=self.n_estimators, kernel_method=self.kernel_method, 
+                              model_type=self.model_type, force_nonzero_diag=self.force_nonzero_diag,
+                              random_state=self.random_state, prediction_type='classification')
+            mask = LabelUtils.get_unlabeled_mask(y)
+            fk.fit(x, y, idx_unlabeled=np.flatnonzero(mask))
+            K = fk.get_kernel(normalize_diagonal=self.normalize_diagonal)
+            K.data = np.maximum(0, K.data)
+            return K
+        
+        n_pca = min(self.n_pca, x.shape[1]) if self.n_pca and self.n_pca >= 100 else None
+        return graphtools.Graph(x, n_pca=n_pca, knn=self.n_neighbors, decay=self.decay, 
+                                distance=self.knn_dist, thresh=1e-4, n_jobs=self.n_jobs, 
+                                random_state=self.random_state, verbose=False).K
 
-            print("Fitting RFGAP on Domain B...") if self.verbose > 0 else None
-            self.kernel_b = ForestKernel(**self.kernel_params)
-            mask_unlabeled_b = LabelUtils.get_unlabeled_mask(y_b)
-            idx_unlabeled_b = np.flatnonzero(mask_unlabeled_b)
-            self.kernel_b.fit(x_b, y_b, idx_unlabeled=idx_unlabeled_b)
-            prox_b = self.kernel_b.get_kernel(normalize_diagonal=True)
+    def fit(self, x_a, x_b, y_a, y_b):
+        self.n_a, self.n_b = x_a.shape[0], x_b.shape[0]
+        self.classes_ = LabelUtils.validate_shared_labels(y_a, y_b, strict=True)
 
-        else:
-            n_pca_a = min(self.n_pca, x_a.shape[1]) if self.n_pca is not None else None
-            if n_pca_a is not None and n_pca_a < 100:
-                n_pca_a = None
-            prox_a = graphtools.Graph(
-                x_a,
-                n_pca=n_pca_a,
-                knn=self.n_neighbors,
-                decay=self.decay,
-                distance=self.knn_dist,
-                thresh=1e-4,
-                n_jobs=self.n_jobs,
-                random_state=self.random_state,
-                verbose=False
-            ).K
+        # 1. Geometry
+        start = time.perf_counter()
+        self.prox_a, self.prox_b = self._get_geometry(x_a, y_a), self._get_geometry(x_b, y_b)
+        t_geom = time.perf_counter() - start
 
-            n_pca_b = min(self.n_pca, x_b.shape[1]) if self.n_pca is not None else None
-            if n_pca_b is not None and n_pca_b < 100:
-                n_pca_b = None
-            prox_b = graphtools.Graph(
-                x_b,
-                n_pca=n_pca_b,
-                knn=self.n_neighbors,
-                decay=self.decay,
-                distance=self.knn_dist,
-                thresh=1e-4,
-                n_jobs=self.n_jobs,
-                random_state=self.random_state,
-                verbose=False
-            ).K
-        t_geometry = time.perf_counter() - t_geometry
+        # 2. Semantics
+        start = time.perf_counter()
+        post_a = self._get_semantic_vectors(self.prox_a, y_a, self.classes_, prior_correct=self.prior_correct)
+        post_b = self._get_semantic_vectors(self.prox_b, y_b, self.classes_, prior_correct=self.prior_correct)
+        t_sem = time.perf_counter() - start
 
-        print("Building C-dim vectors...") if self.verbose > 0 else None
-        t_semantics = time.perf_counter()
-        if not self.dpt:
-            post_a = self._get_semantic_vectors(
-                prox_a, y_a, labels, clusters=None, prior_correct=self.prior_correct
-            )
-            post_b = self._get_semantic_vectors(
-                prox_b, y_b, labels, clusters=None, prior_correct=self.prior_correct
-            )
-        else:
-            P_NM_a, P_MM_a, clusters_a = self._get_diffusion_operators(
-                prox_a, random_state=self.random_state, verbose=True
-            )
-            P_NM_b, P_MM_b, clusters_b = self._get_diffusion_operators(
-                prox_b, random_state=self.random_state, verbose=True
-            )
-            M_a = self._compute_dpt(P_MM_a)
-            M_b = self._compute_dpt(P_MM_b)
-            trans_a = P_NM_a.dot(M_a)
-            trans_b = P_NM_b.dot(M_b)
-            post_a = self._get_semantic_vectors(
-                trans_a, y_a, labels, clusters=clusters_a, prior_correct=self.prior_correct
-            )
-            post_b = self._get_semantic_vectors(
-                trans_b, y_b, labels, clusters=clusters_b, prior_correct=self.prior_correct
-            )
-        t_semantics = time.perf_counter() - t_semantics
-
-        print("Computing Optimal Transport...") if self.verbose > 0 else None
-        t_transport = time.perf_counter()
-        self.T_sparse = solve_surjection_hiref(
-            post_a, post_b, verbose=self.verbose, random_state=self.random_state
-        )
-        t_transport = time.perf_counter() - t_transport
-
-        # ---------- DIAGNOSTICS ----------
-        T = self.T_sparse.tocsr()
+        # 3. Transport & Alignment
+        start = time.perf_counter()
+        T = solve_surjection_hiref(post_a, post_b, verbose=self.verbose, random_state=self.random_state)
+        self.T_sparse = self._fill_orphan_matches(T, post_a, post_b)
         if self.verbose:
-            print_mat_stats("Coupling Matrix", T)
-            print("=================================\n")
-            print("Building joint affinity matrix...")
+            print_mat_stats("\nCoupling Matrix T", self.T_sparse)
+        t_trans = time.perf_counter() - start
 
-        t_joint = time.perf_counter()
-        self.W = self._build_balanced_affinity(prox_a, prox_b, self.T_sparse)
-        t_joint = time.perf_counter() - t_joint
+        # 4. Joint Affinity
+        start = time.perf_counter()
+        self.W = self._build_balanced_affinity(self.prox_a, self.prox_b, self.T_sparse)
+        t_joint = time.perf_counter() - start
 
-        self.runtime_summary_ = {
-            "geometry": float(t_geometry),
-            "semantics": float(t_semantics),
-            "transport": float(t_transport),
-            "joint_affinity": float(t_joint),
-            "embedding": 0.0,
-            "total": float(t_geometry + t_semantics + t_transport + t_joint),
-        }
-
-        print("Model fit complete.") if self.verbose > 0 else None
+        self.runtime_summary_ = {"geometry": t_geom, "semantics": t_sem, "transport": t_trans, 
+                                 "joint_affinity": t_joint, "embedding": 0.0, 
+                                 "total": t_geom + t_sem + t_trans + t_joint}
         return self
 
     def fit_transform(self, x_a, x_b, y_a, y_b):
-        t_total = time.perf_counter()
         self.fit(x_a, x_b, y_a, y_b)
-        print("Computing joint embedding...") if self.verbose > 0 else None
+        start = time.perf_counter()
 
-        t_embed = time.perf_counter()
         if self.embedder == 'PHATE':
-            phate_op = PageRankPHATE(
-                n_components=self.n_components,
-                t=self.t,
-                knn_dist='precomputed_affinity',
-                kernel_symm='+',
-                random_state=self.random_state,
-                verbose=self.verbose,
-                n_jobs=self.n_jobs,
-                beta=self.beta,
-            )
-            self.embedding_ = phate_op.fit_transform(self.W)
-
+            self.embedding_ = PageRankPHATE(n_components=self.n_components, t=self.t, knn_dist='precomputed_affinity',
+                                            kernel_symm='+', random_state=self.random_state, verbose=self.verbose,
+                                            n_jobs=self.n_jobs, beta=self.beta).fit_transform(self.W)
         elif self.embedder == 'spectral':
-            embedder = SpectralEmbedding(
-                n_components=self.n_components,
-                affinity='precomputed',
-                random_state=self.random_state,
-                n_jobs=self.n_jobs,
-            )
-            self.embedding_ = embedder.fit_transform(self.W)
-
+            self.embedding_ = SpectralEmbedding(n_components=self.n_components, affinity='precomputed',
+                                                random_state=self.random_state, n_jobs=self.n_jobs).fit_transform(self.W)
         elif self.embedder == 'UMAP':
-            DistM = kernel2Dist(self.W.toarray())
-            self.embedding_ = UMAP(
-                n_components=self.n_components,
-                metric='precomputed',
-                random_state=self.random_state
-            ).fit_transform(DistM)
+            self.embedding_ = UMAP(n_components=self.n_components, metric='precomputed', 
+                                   random_state=self.random_state).fit_transform(kernel2Dist(self.W.toarray()))
 
-        else:
-            raise ValueError(f"Unknown embedder={self.embedder}")
-        t_embed = time.perf_counter() - t_embed
-
-        total = time.perf_counter() - t_total
-        self.runtime_summary_["embedding"] = float(t_embed)
-        self.runtime_summary_["total"] = float(total)
-        self._print_runtime_summary()
-
+        self.runtime_summary_["embedding"] = time.perf_counter() - start
+        self.runtime_summary_["total"] += self.runtime_summary_["embedding"]
+        if self.verbose: self._print_runtime_summary()
+        
         return self.embedding_
 
-    def get_embeddings(self):
-        return self.embedding_
+    def _print_runtime_summary(self):
+        print(f"\nRUNTIME SUMMARY\nTotal: {self.runtime_summary_['total']:.3f}s")
+        for k, v in self.runtime_summary_.items():
+            if k == 'total': continue
+            print(f"{k:15s} {v:8.3f}s ({100*v/self.runtime_summary_['total']:5.1f}%)")

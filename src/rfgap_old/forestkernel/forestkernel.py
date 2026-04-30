@@ -206,13 +206,6 @@ def ForestKernel(
             idx_unlabeled = self.fit_forest_context_["idx_unlabeled"]
             has_unlabeled = self.fit_forest_context_["has_unlabeled"]
 
-            if has_unlabeled and self.kernel_method == "gap" and not self.force_nonzero_diag:
-                raise ValueError(
-                    "Transductive GAP currently requires force_nonzero_diag=True. "
-                    "The zero-diagonal transductive GAP variant is not supported "
-                    "because it relies on signed private correction coordinates."
-                )
-
             # ---------------------------------------------------------
             # STEP 1: initialize cache from leaf structure on ALL points
             # ---------------------------------------------------------

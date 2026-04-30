@@ -371,10 +371,6 @@ def build_W_matrix(cache, kernel_method, force_nonzero_diag=False):
             raise ValueError("cache.inbag_counts is required for kernel_method='gap'.")
         if cache.inv_inbag_leaf_mass is None:
             raise ValueError("cache.inv_inbag_leaf_mass is required for kernel_method='gap'.")
-        if cache.is_transductive and not force_nonzero_diag:
-            raise ValueError(
-                "Transductive GAP with force_nonzero_diag=False is not supported."
-            )
 
         has_unlabeled = cache.is_transductive
 
@@ -387,66 +383,67 @@ def build_W_matrix(cache, kernel_method, force_nonzero_diag=False):
 
         weights = c_j_t * cache.inv_inbag_leaf_mass[flat_cols]
 
-        # ----- Private diagonal correction -----
-        if force_nonzero_diag:
+        # ----- Diagonal correction -----
+        # We need extra columns if forcing non-zero diag OR if we are transductive 
+        # and need to cancel the unlabeled diagonal.
+        if force_nonzero_diag or has_unlabeled:
             total_cols += N
+            
+            if force_nonzero_diag:
+                # [Original Logic] Labeled and Unlabeled both get positive adjustments
+                row_sums = np.bincount(flat_rows, weights=weights, minlength=N).astype(np.float32)
+                inbag_counts_per_row = (cache.inbag_counts > 0).sum(axis=1).astype(np.float32)
+                inbag_counts_per_row[inbag_counts_per_row == 0] = 1.0
+                labeled_target_diag = row_sums / inbag_counts_per_row
 
-            # Labeled target diagonal
-            row_sums = np.bincount(flat_rows, weights=weights, minlength=N).astype(np.float32)
-            inbag_counts_per_row = (cache.inbag_counts > 0).sum(axis=1).astype(np.float32)
-            inbag_counts_per_row[inbag_counts_per_row == 0] = 1.0
-            labeled_target_diag = row_sums / inbag_counts_per_row
+                if has_unlabeled:
+                    unl = cache.idx_unlabeled.astype(np.int64, copy=False)
+                    lab = np.flatnonzero(~cache.row_is_unlabeled)
 
-            if has_unlabeled:
+                    desired_unl_diag_all = np.bincount(
+                        flat_rows,
+                        weights=cache.empirical_mult_inbag_by_tree[cache.flat_tree_ids] * cache.inv_inbag_leaf_mass[flat_cols],
+                        minlength=N
+                    ).astype(np.float32) / np.float32(T)
+                    
+                    # Calculate ordinary diagonal to find the delta
+                    q_mask = cache.oob_mask.flatten() == 1
+                    S_i_counts = cache.oob_mask.sum(axis=1).astype(np.float32); S_i_counts[S_i_counts == 0] = 1.0
+                    ordinary_unl_diag = np.bincount(
+                        cache.flat_rows[q_mask],
+                        weights=(1.0 / S_i_counts[cache.flat_rows[q_mask]]) * cache.empirical_mult_all_by_tree[cache.flat_tree_ids[q_mask]] * cache.inv_inbag_leaf_mass[cache.flat_cols[q_mask]],
+                        minlength=N
+                    ).astype(np.float32)[unl]
+
+                    diag_rows = np.concatenate([lab, unl])
+                    diag_vals = np.concatenate([labeled_target_diag[lab], desired_unl_diag_all[unl] - ordinary_unl_diag])
+                else:
+                    diag_rows = np.arange(N, dtype=np.int64)
+                    diag_vals = labeled_target_diag
+
+            else:
+                # [New Logic] force_nonzero_diag=False but transductive.
+                # Labeled points: naturally 0 diagonal, no private coordinate needed.
+                # Unlabeled points: need NEGATIVE adjustment to reach 0.
                 unl = cache.idx_unlabeled.astype(np.int64, copy=False)
-
-                # Desired unlabeled diagonal:
-                #   (1/T) * sum_t empirical_mult_inbag_by_tree[t] / M_i(t)
-                desired_unl_diag_all = np.bincount(
-                    flat_rows,
-                    weights=cache.empirical_mult_inbag_by_tree[cache.flat_tree_ids] * cache.inv_inbag_leaf_mass[flat_cols],
-                    minlength=N
-                ).astype(np.float32) / np.float32(T)
-                desired_unl_diag = desired_unl_diag_all[unl]
-
-                # Ordinary unlabeled diagonal contributed by the non-private leaf part:
-                #   (1 / |S_i|) * sum_{t in S_i} empirical_mult_all_by_tree[t] / M_i(t)
-                if cache.oob_mask is None:
-                    raise ValueError("cache.oob_mask is required for training-time kernel_method='gap'.")
-
+                
+                # Calculate the "natural" transductive diagonal for unlabeled points
                 q_mask = cache.oob_mask.flatten() == 1
-                q_rows = cache.flat_rows[q_mask]
-                q_cols = cache.flat_cols[q_mask]
-                q_tree_ids = cache.flat_tree_ids[q_mask]
-
-                S_i_counts = cache.oob_mask.sum(axis=1).astype(np.float32)
-                S_i_counts[S_i_counts == 0] = 1.0
-                q_vals = (1.0 / S_i_counts[q_rows]).astype(np.float32)
-
-                ordinary_unl_diag = np.bincount(
-                    q_rows,
-                    weights=q_vals * cache.empirical_mult_all_by_tree[q_tree_ids] * cache.inv_inbag_leaf_mass[q_cols],
+                S_i_counts = cache.oob_mask.sum(axis=1).astype(np.float32); S_i_counts[S_i_counts == 0] = 1.0
+                
+                unl_natural_diag = np.bincount(
+                    cache.flat_rows[q_mask],
+                    weights=(1.0 / S_i_counts[cache.flat_rows[q_mask]]) * cache.empirical_mult_all_by_tree[cache.flat_tree_ids[q_mask]] * cache.inv_inbag_leaf_mass[cache.flat_cols[q_mask]],
                     minlength=N
                 ).astype(np.float32)[unl]
 
-                # Labeled rows get their full target diagonal
-                lab = np.flatnonzero(~cache.row_is_unlabeled)
+                diag_rows = unl
+                diag_vals = -unl_natural_diag # This cancels the diagonal to exactly 0
 
-                diag_rows = np.concatenate([lab, unl])
-                diag_cols = diag_rows + cache.diag_offset
-                diag_vals = np.concatenate([
-                    labeled_target_diag[lab],
-                    desired_unl_diag - ordinary_unl_diag,
-                ]).astype(np.float32)
-
-            else:
-                diag_rows = np.arange(N, dtype=np.int64)
-                diag_cols = diag_rows + cache.diag_offset
-                diag_vals = labeled_target_diag.astype(np.float32)
-
+            diag_cols = diag_rows + cache.diag_offset
             flat_rows = np.concatenate([flat_rows, diag_rows])
             flat_cols = np.concatenate([flat_cols, diag_cols])
-            weights = np.concatenate([weights, diag_vals])
+            weights = np.concatenate([weights, diag_vals.astype(np.float32)])
 
     else:
         raise ValueError(f"Unknown kernel_method='{kernel_method}'.")
@@ -616,11 +613,6 @@ def build_Q_matrix(
     #     OOS queries do not activate them.
     # ---------------------------------------------------------
     elif kernel_method == "gap":
-        if cache.is_transductive and not force_nonzero_diag:
-            raise ValueError(
-                "Transductive GAP with force_nonzero_diag=False is not supported."
-            )
-    
         # ----- Ordinary query-side term -----
         if is_training:
             if cache.oob_mask is None:
@@ -634,17 +626,24 @@ def build_Q_matrix(
             S_i_counts[S_i_counts == 0] = 1.0
             vals = (1.0 / S_i_counts[flat_rows]).astype(np.float32)
     
-            # ----- Final assembly -----
-            if force_nonzero_diag:
+            # ----- Private diagonal assembly -----
+            if force_nonzero_diag or cache.is_transductive:
                 total_cols += cache.n_samples
+                
+                if force_nonzero_diag:
+                    # Everyone activates their private column
+                    active_rows = np.arange(N, dtype=np.int64)
+                else:
+                    # Only unlabeled points activate the column (to cancel their diagonal)
+                    active_rows = cache.idx_unlabeled.astype(np.int64, copy=False)
     
-                diag_rows = np.arange(N, dtype=np.int64)
-                diag_cols = diag_rows + cache.diag_offset
-                diag_vals = np.ones(N, dtype=np.float32)
+                diag_cols = active_rows + cache.diag_offset
+                diag_vals = np.ones(len(active_rows), dtype=np.float32)
     
-                flat_rows = np.concatenate([flat_rows, diag_rows])
+                flat_rows = np.concatenate([flat_rows, active_rows])
                 flat_cols = np.concatenate([flat_cols, diag_cols])
                 vals = np.concatenate([vals, diag_vals])
+    
     
         else:
             # OOS: average over all trees
