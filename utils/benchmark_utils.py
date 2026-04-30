@@ -510,7 +510,7 @@ def benchmark_from_adata(adata, methods, batch_key = "batch", label_key = "cell_
     # saves to save_path if provided, otherwise not saved
     # seed: Random seed for reproducible metrics (controls Leiden, KMeans, KNN operations)
     
-    set_seeds(set_seeds)
+    set_seeds(seed)
     # reset seeds for reproducible results
   
     
@@ -558,7 +558,7 @@ def benchmark_from_adata(adata, methods, batch_key = "batch", label_key = "cell_
             sc.pp.neighbors(adata, use_rep=method) 
             # recompute the connectivities on the integrated embedding
         
-        set_seeds(set_seeds)
+        set_seeds(seed)
         # reset seeds for reproducible results
 
         scib_results = scib.me.metrics(
