@@ -246,7 +246,7 @@ def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours
     # returns adata with embedding in adata.obsm[model_name]
     # label_key_ours is used for our methods only (if different from label_key)
     
-    set_seeds(seeds) # reset seeds for reproducible results (so not affected by previous operations, each method starts fresh)
+    set_seeds(seed) # reset seeds for reproducible results (so not affected by previous operations, each method starts fresh)
 
     start_time = time.time()
     tracemalloc.start()
