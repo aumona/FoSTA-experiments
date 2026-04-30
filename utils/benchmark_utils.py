@@ -324,9 +324,14 @@ def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours
 
         # ------------------ run scANVI ------------------------------------------------
         elif model_name.lower() == "scanvi":
-            torch.use_deterministic_algorithms(True)
-            torch.backends.cudnn.benchmark = False
-            torch.backends.cudnn.deterministic = True
+            # torch.use_deterministic_algorithms(True)
+            # torch.backends.cudnn.benchmark = False
+            # torch.backends.cudnn.deterministic = True 
+            # # did not work:  
+            #Deterministic behavior was enabled with either `torch.use_deterministic_algorithms(True)` or `at::Context::setDeterministicAlgorithms(true)`, 
+            #but this operation is not deterministic because it uses CuBLAS and you have CUDA >= 10.2. 
+            #To enable deterministic behavior in this case, you must set an environment variable before running your PyTorch application: CUBLAS_WORKSPACE_CONFIG=:4096:8 or CUBLAS_WORKSPACE_CONFIG=:16:8. For more information, go to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility  '''
+            
             scvi.settings.seed = seed
             # if not('vae' in locals() and vae is not None): # if vae is not defined (from previously running scvi)
             # retrain scvi to avoid reproducibility issues
