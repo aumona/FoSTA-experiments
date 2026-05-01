@@ -1,6 +1,7 @@
 # data
 data/
 data_uci/
+data_sc/
 
 # nohup
 nohup.out
@@ -20,6 +21,7 @@ ideas/
 
 #results
 results_uci/
+results_sc/
 
 # figures
 figures/
