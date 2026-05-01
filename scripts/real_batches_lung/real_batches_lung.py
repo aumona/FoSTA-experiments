@@ -34,7 +34,7 @@ batches = [args.batch1, args.batch2]
 
 # set save location 
 save_path_parent = f"{RESULTS_PATH}/{args.savename}"
-save_path = f"{save_path_parent}/{batches[0]}_{batches[1]}" 
+save_path = f"{save_path_parent}/{batches[0]}_{batches[1]}/seed_{args.seed}" 
 
 # LOAD DATA 
 adata_full = sc.read(data_path)
