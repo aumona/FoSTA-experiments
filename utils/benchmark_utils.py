@@ -16,6 +16,7 @@ import scanpy as sc
 from src.mali import MALI
 from src.rfmali import RFMALI
 from src.fosta import FoSTA
+from src.fosta_old import FoSTA as FoSTA_old # to keep the old version of FoSTA for ablation
 from src.kemalin import KEMAlin
 from src.kemarbf import KEMArbf
 from src.pamona_joint import JPamona
@@ -96,8 +97,20 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
         print("\nStarting alignment...")
         embedding = model.fit_transform(x_source, x_target, y_source, y_target)
         print("Alignment complete.")
-    
-    elif model_name == "RFMALI_WIP" or model_name == "FoSTA":
+    elif model_name == "FoSTA_old":
+        model = FoSTA_old(
+            embedder=embedder,
+            n_components=n_components,
+            random_state=seed,
+            t=t,
+            n_jobs=-1,
+            verbose=1,
+            **fosta_params
+        )
+        print("\nStarting alignment...")
+        embedding = model.fit_transform(x_source, x_target, y_source, y_target)
+        print("Alignment complete.")
+    elif model_name == "RFMALI_WIP" or "FoSTA" in model_name:
         model = FoSTA(
             embedder=embedder,
             n_components=n_components,
