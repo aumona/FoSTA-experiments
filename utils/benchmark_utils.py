@@ -97,6 +97,7 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
         print("\nStarting alignment...")
         embedding = model.fit_transform(x_source, x_target, y_source, y_target)
         print("Alignment complete.")
+         
     elif model_name == "FoSTA_old":
         model = FoSTA_old(
             embedder=embedder,
@@ -110,6 +111,7 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
         print("\nStarting alignment...")
         embedding = model.fit_transform(x_source, x_target, y_source, y_target)
         print("Alignment complete.")
+    
     elif model_name == "RFMALI_WIP" or "FoSTA" in model_name:
         model = FoSTA(
             embedder=embedder,
@@ -266,7 +268,7 @@ def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours
     current_mem_start, _ = tracemalloc.get_traced_memory()
     tracemalloc.reset_peak()
     
-    if model_name.lower() in ["rfmali", "rfmali_wip", "mali", "pamona", "kemarbf", "kemalin", "fosta"]:
+    if model_name.lower() in ["rfmali", "rfmali_wip", "mali", "pamona", "kemarbf", "kemalin", "fosta", "fosta_old", "jpamona"]:
         label_key_to_use = label_key_ours if label_key_ours is not None else label_key
         adata = run_our_models_from_adata(adata, model_name= model_name, batch_key = batch_key, label_key = label_key_to_use, embedding_basis=embedding_basis, n_components = n_components, seed= seed, **kwargs)
     
