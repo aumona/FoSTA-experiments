@@ -257,9 +257,9 @@ class FoSTA:
         decay=40,
         knn_dist="euclidean",
         t="auto",
-        beta=0.9,
-        t_sem_a='auto',
-        t_sem_b='auto',  # None/0: no diffusion, "auto": VNE, or positive integer
+        beta=0.7,
+        t_sem_a=None,
+        t_sem_b=None,  # None/0: no diffusion, "auto": VNE, or positive integer
         t_sem_max=30,  # maximum t range to consider if t_sem="auto"
         average_semantic_diffusion=True,  # if True, average the semantic vectors across all diffusion scales up to t_sem instead of just taking the final one
         prior_correct=True,
