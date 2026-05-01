@@ -61,7 +61,7 @@ def ablation_fosta( method_name = None,
         print("\nStarting alignment...")
         embedding = model.fit_transform(x_source, x_target, y_source, y_target)
         print("Alignment complete.")
-    elif method_name.startswith("Old_FoSTA"):
+    elif method_name == "FoSTA_old":
         model = FoSTA_old(**params_dict,
                     embedder=embedder,
                     n_components=n_components,
@@ -107,6 +107,18 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
     
     elif model_name == "RFMALI_WIP" or model_name == "FoSTA":
         model = FoSTA(
+            embedder=embedder,
+            n_components=n_components,
+            random_state=seed,
+            n_jobs=-1,
+            verbose=1,
+            **fosta_params
+        )
+        print("\nStarting alignment...")
+        embedding = model.fit_transform(x_source, x_target, y_source, y_target)
+        print("Alignment complete.")
+    elif model_name == 'FoSTA_old':
+        model = FoSTA_old(
             embedder=embedder,
             n_components=n_components,
             random_state=seed,

@@ -28,12 +28,13 @@ methods_params_dict = {"Old FoSTA kerf t=2": {"method_type": "FoSTA_old",
                                             "t": "auto"},
 
 
-                        "Scanorama":{},
-                        "LIGER":{},
-                        "Harmony":{},
-                        "scVI":{},
-                        "scANVI":{},
-                        "Pamona":{},
-                        "KEMArbf": {},
-                        "KEMAlin": {}
+                        # "Scanorama":{},
+                        # "LIGER":{},
+                        # "Harmony":{},
+                        # "scVI":{},
+                        # "scANVI":{},
+                        # "Pamona":{},
+                        # "KEMArbf": {},
+                        # "KEMAlin": {}
+
                     }
