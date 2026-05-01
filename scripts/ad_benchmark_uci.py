@@ -30,8 +30,7 @@ from src.Pamona.eval import (
     calc_domainAveraged_FOSCTTM,
 )
 
-from src.fosta import FoSTA
-from src.fosta_old import FoSTA as FoSTA_old
+from src.fosta import FoSTA as FoSTA
 from src.mali import MALI
 from src.pamona import Pamona
 from src.kemalin import KEMAlin
@@ -337,117 +336,7 @@ def build_model(method: str, seed: int):
             verbose=VERBOSE,
         )
     
-    if m == "fosta_orig":
-        return FoSTA(
-            embedder=EMBEDDER,
-            mu=MU,
-            n_components=N_COMPONENTS,
-            kernel_method='original',
-            t_sem_a=None,
-            t_sem_b=None,
-            model_type=MODEL_TYPE,
-            n_estimators=N_ESTIMATORS,
-            t=T,
-            ot_solver='hiref',
-            beta=BETA,
-            random_state=seed,
-            n_jobs=N_JOBS,
-            verbose=VERBOSE,
-        )
-    
-    if m == "fosta_orig_tsem=auto_avg":
-        return FoSTA(
-            embedder=EMBEDDER,
-            mu=MU,
-            n_components=N_COMPONENTS,
-            kernel_method='original',
-            t_sem_a='auto',
-            t_sem_b='auto',
-            average_semantic_diffusion=True,
-            model_type=MODEL_TYPE,
-            n_estimators=N_ESTIMATORS,
-            t=T,
-            ot_solver='hiref',
-            beta=BETA,
-            random_state=seed,
-            n_jobs=N_JOBS,
-            verbose=VERBOSE,
-        )
-    
-    if m == "old fosta_gap":
-        return FoSTA_old(
-            embedder=EMBEDDER,
-            mu=MU,
-            n_components=N_COMPONENTS,
-            kernel_method='gap',
-            t_sem_a=None,
-            t_sem_b=None,
-            model_type=MODEL_TYPE,
-            n_estimators=N_ESTIMATORS,
-            t=T,
-            ot_solver='hiref',
-            beta=BETA,
-            random_state=seed,
-            n_jobs=N_JOBS,
-            verbose=VERBOSE,
-        )
-    
-    if m == "old fosta_gap tsem=auto_avg":
-        return FoSTA_old(
-            embedder=EMBEDDER,
-            mu=MU,
-            n_components=N_COMPONENTS,
-            kernel_method='gap',
-            t_sem_a='auto',
-            t_sem_b='auto',
-            average_semantic_diffusion=True,
-            model_type=MODEL_TYPE,
-            n_estimators=N_ESTIMATORS,
-            t=T,
-            ot_solver='hiref',
-            beta=BETA,
-            random_state=seed,
-            n_jobs=N_JOBS,
-            verbose=VERBOSE,
-        )
-    
-    if m == "old fosta_kerf":
-        return FoSTA_old(
-            embedder=EMBEDDER,
-            mu=MU,
-            n_components=N_COMPONENTS,
-            kernel_method='gap',
-            t_sem_a=None,
-            t_sem_b=None,
-            model_type=MODEL_TYPE,
-            n_estimators=N_ESTIMATORS,
-            t=T,
-            ot_solver='hiref',
-            beta=BETA,
-            random_state=seed,
-            n_jobs=N_JOBS,
-            verbose=VERBOSE,    
-        )
-    
-    if m == "old fosta_kerf tsem=auto_avg":
-        return FoSTA_old(
-            embedder=EMBEDDER,
-            mu=MU,
-            n_components=N_COMPONENTS,
-            kernel_method='gap',
-            t_sem_a='auto',
-            t_sem_b='auto',
-            average_semantic_diffusion=True,
-            model_type=MODEL_TYPE,
-            n_estimators=N_ESTIMATORS,
-            t=T,
-            ot_solver='hiref',
-            beta=BETA,
-            random_state=seed,
-            n_jobs=N_JOBS,
-            verbose=VERBOSE,    
-        )
-
+   
     if m == "mali":
         return MALI(
             embedder=EMBEDDER,
