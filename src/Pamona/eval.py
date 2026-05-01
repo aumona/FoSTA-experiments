@@ -2,6 +2,8 @@ import numpy as np
 from sklearn.neighbors import KNeighborsClassifier
 import torch
 import random
+from scipy import sparse
+from sklearn.metrics.pairwise import euclidean_distances
 
 def calc_frac_idx(x1_mat,x2_mat):
     """
@@ -155,3 +157,52 @@ def test_alignment_score(data1_shared, data2_shared, data1_specific=None, data2_
         return score / 2
 
 
+def test_alignment_score_sparse(data1_shared, data2_shared, data1_specific=None, data2_specific=None):
+    def get_bar(query, full_data, k, start_idx, end_idx):
+        # euclidean_distances specifically supports sparse CSR/CSC
+        dist = euclidean_distances(query, full_data, squared=True)
+        # Find k+1 nearest (including self)
+        nn = np.argpartition(dist, k + 1, axis=1)[:, 1:k + 1]
+        # Count neighbors within the specified index range
+        return np.sum((nn >= start_idx) & (nn < end_idx))
+
+    # Balance datasets
+    if data1_shared.shape[0] < data2_shared.shape[0]:
+        data1, data2 = data1_shared, data2_shared[random.sample(range(data2_shared.shape[0]), data1_shared.shape[0])]
+    else:
+        data2, data1 = data1_shared, data2_shared[random.sample(range(data2_shared.shape[0]), data1_shared.shape[0])]
+
+    n1, n2 = data1.shape[0], data2.shape[0]
+    k = max(10, int((n1 + n2) * 0.01))
+    
+    # Generic vstack helper
+    vstack = sparse.vstack if sparse.issparse(data1) else np.vstack
+    data = vstack((data1, data2))
+
+    # Calculate shared bars
+    bar_x1 = get_bar(data1, data, k, 0, n1) / n1
+    bar_x2 = get_bar(data2, data, k, n1, n1 + n2) / n2
+    
+    score = 1 - (((bar_x1 + bar_x2) / 2) - k/2) / (k - k/2)
+
+    # Specific data handling
+    specs = [d for d in [data1_specific, data2_specific] if d is not None]
+    if not specs:
+        return score
+
+    data_spec = vstack(specs)
+    full_data = vstack((data, data_spec))
+    
+    n_spec1 = data1_specific.shape[0] if data1_specific is not None else 0
+    n_spec2 = data2_specific.shape[0] if data2_specific is not None else 0
+    offset = n1 + n2
+
+    if data1_specific is not None and data2_specific is not None:
+        b1 = get_bar(data1_specific, full_data, k, offset, offset + n_spec1)
+        b2 = get_bar(data2_specific, full_data, k, offset + n_spec1, offset + n_spec1 + n_spec2)
+        bar_spec = (b1 + b2) / (n_spec1 + n_spec2)
+    else:
+        bar_spec = get_bar(data_spec, full_data, k, offset, offset + data_spec.shape[0]) / data_spec.shape[0]
+
+    score_spec = (bar_spec - k/2) / (k - k/2)
+    return (score + score_spec) / 2

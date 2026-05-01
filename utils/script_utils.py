@@ -156,18 +156,33 @@ def paired_evaluate_and_save_results(adata, save_path_subfolder, save_path_paren
     memory_dict = adata.uns.get("memory_dict", {})
     
     methods_to_benchmark = list(adata.obsm.keys())
+    try:
+        methods_to_benchmark.remove("X")
+    except ValueError:
+        pass
+    try:
+        methods_to_benchmark.remove("X_pca")
+    except ValueError:
+        pass
+    try:
+        methods_to_benchmark.remove("Unintegrated")
+    except ValueError:
+        pass
 
-    if "global_masking_fraction" not in adata.uns.keys():
+
+    # if "global_masking_fraction" not in adata.uns.keys():
+    if args.globalmasking==0:
         adata.uns["global_masking_fraction"] = 0
         
-    if float(adata.uns["global_masking_fraction"])>0:
+    # if float(adata.uns["global_masking_fraction"])>0:
+    if args.globalmasking>0:
         benchmark_adata = adata[adata.obs['mask_indices'] == 1].copy()
     else:
         benchmark_adata = adata.copy() # if we masked nothing, evaluate on everything
-
+    
+    rows_list = []
     for method in methods_to_benchmark:
         res, sil_dom, foscttm, alignment_score = run_metrics_from_adata(benchmark_adata, method, batch_key = batch_key, label_key = encoded_label_key, masked_label_key = masked_encoded_label_key)
-        rows_list = []
         result_row = {"seed": args.seed, 
                       "n_components": args.components, 
                     "model": method, 
@@ -196,9 +211,10 @@ def paired_evaluate_and_save_results(adata, save_path_subfolder, save_path_paren
     
     all_results_df.to_csv(f"{save_path_parent}/{save_name}_results.csv", index=False)
                             
-                    
+
 def save_embeddings(adata, save_path, label_key, batch_key):
-    for method in adata.obsm.keys():
+    list_methods = [method for method in list(adata.obsm.keys()) if method not in ["X", "X_pca", "Unintegrated"]]
+    for method in list_methods:
         sc.pl.embedding(adata, basis=method, color=[batch_key, label_key], title=method)
         plt.tight_layout()
         plt.savefig(f"{save_path}/{method}.png")

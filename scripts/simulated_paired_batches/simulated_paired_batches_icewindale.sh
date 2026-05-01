@@ -11,10 +11,10 @@ log_dir=/NOBACKUP/lizottem/fosta/logs/simulated_paired_batches/$timestamp
 mkdir -p "$log_dir"
 
 
-# noise_stds=(0 0.2 0.4 0.6 0.8 1.0)
-# dropout_probs=(0 0.2 0.4 0.6 0.8 0.95) 
-noise_stds=(0.5)
-dropout_probs=(0.5) 
+noise_stds=(0 0.2 0.4 0.6 0.8 1.0)
+dropout_probs=(0 0.2 0.4 0.6 0.8 0.95) 
+# noise_stds=(0.5)
+# dropout_probs=(0.5) 
 # noise_stds=(0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0)
 # dropout_probs=(0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9) 
 # n_components=(2) # 3 10 20)
