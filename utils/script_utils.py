@@ -46,6 +46,8 @@ def prepare_adata(adata, save_path, label_key, batch_key, args, masked_encoded_l
     if args.globalmasking>0:
         # mask some labels (adds a new column "cell_type_masked" with some values "Unknown")
         adata = global_label_masking(adata, masking_frac=args.globalmasking, label_key=label_key, batch_key=batch_key, random_state=args.seed) 
+    else:
+        adata.obs[f"{label_key}_masked"] = adata.obs[label_key] # if no masking, just copy the original labels to the masked version
     
     original_label_key = label_key
     masked_label_key = f"{label_key}_masked" # update label key to the masked version for benchmarking (so that methods that can leverage labels will be affected by the masking)
