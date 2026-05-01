@@ -29,6 +29,7 @@ class FoSTA:
         mu=0.5,
         old_version=False,
         kernel_method="gap",
+        max_normalize=False,
         model_type="rf",
         n_estimators=500,
         n_pca=100,
@@ -59,6 +60,7 @@ class FoSTA:
         
 
         self.old_version = old_version
+        self.max_normalize = max_normalize
 
 
         # Shared global parameters
@@ -454,10 +456,11 @@ class FoSTA:
     def _build_balanced_affinity(self, prox_a, prox_b, T):
         
         if self.old_version:
-            if self.verbose:
-                print("\n[FoSTA] Old FoSTA Version: Max-normalizing rows of intra-domain kernels before joint construction.")
-            prox_a = preprocessing.normalize(prox_a, norm="max", axis=1)
-            prox_b = preprocessing.normalize(prox_b, norm="max", axis=1)
+            if self.max_normalize:
+                if self.verbose:
+                    print("\n[FoSTA] Old FoSTA Version: Max-normalizing rows of intra-domain kernels before joint construction.")
+                prox_a = preprocessing.normalize(prox_a, norm="max", axis=1)
+                prox_b = preprocessing.normalize(prox_b, norm="max", axis=1)
   
 
         if sparse.issparse(T):
