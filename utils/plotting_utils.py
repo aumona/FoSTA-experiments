@@ -6,7 +6,7 @@ from sklearn.metrics import accuracy_score, silhouette_score
 import seaborn as sns
 
 from metrics import label_transfer_accuracy
-
+from matplotlib.legend_handler import HandlerTuple
 
 def visualization(y_source, y_target, embedding, T_true=None, seed=42, keep_idx=None, mask_missing_target_full=None):
     # directly copied from the experiment.ipynb 
@@ -455,4 +455,91 @@ def plot_bio_vs_batch_correction(results_df, title = "Bio conservation vs Batch 
         # 'bbox_inches="tight"' ensures the external legend is not cut off when saving
         plt.savefig(f"{save_path}/bio_vs_batch_correction.pdf", format='pdf', bbox_inches="tight")
         plt.savefig(f"{save_path}/bio_vs_batch_correction.png", format='png', bbox_inches="tight")
+    plt.show()
+
+
+
+
+
+def plot_bio_vs_batch_correction_markers(results_df, title="Bio conservation vs Batch correction", save_path=None):
+    # 1. Calculate Mean and Standard Deviation
+    mean_df = results_df.groupby(['method'])[["Bio conservation", "Batch correction"]].mean()
+    std_df = results_df.groupby(['method'])[["Bio conservation", "Batch correction"]].std()
+    std_df = std_df.fillna(0)
+
+    # 2. Calculate Ranks
+    mean_df['Bio Rank'] = mean_df['Bio conservation'].rank(ascending=False).astype(int)
+    mean_df['Batch Rank'] = mean_df['Batch correction'].rank(ascending=False).astype(int)
+    
+    # 3. Average Rank and Sort
+    mean_df['Avg Rank'] = (mean_df['Bio Rank'] + mean_df['Batch Rank']) / 2
+    mean_df = mean_df.sort_values('Avg Rank')
+
+    plt.figure(figsize=(6, 6)) 
+    unique_methods = results_df['method'].unique()
+    
+    # Using \mathit for thin symbols, supported by almost all Matplotlib versions
+    symbols = [
+        r"$\mathit{\alpha}$", r"$\mathit{\beta}$", r"$\mathit{\gamma}$", 
+        r"$\mathit{\delta}$", r"$\mathit{\epsilon}$", r"$\mathit{\zeta}$", 
+        r"$\mathit{\eta}$", r"$\mathit{\theta}$", r"$\mathit{\kappa}$", 
+        r"$\mathit{\lambda}$", r"$\mathit{\mu}$", r"$\mathit{\nu}$", 
+        r"$\mathit{\xi}$", r"$\mathit{\pi}$", r"$\mathit{\rho}$", 
+        r"$\mathit{\sigma}$", r"$\mathit{\tau}$", r"$\mathit{\phi}$", 
+        r"$\mathit{\chi}$", r"$\mathit{\psi}$", r"$\mathit{\omega}$",
+        r"$\clubsuit$", r"$\spadesuit$", r"$\heartsuit$", r"$\diamondsuit$"
+    ]
+    
+    palette_list = sns.color_palette("tab20", n_colors=len(unique_methods))
+    color_map = dict(zip(unique_methods, palette_list))
+    symbol_map = dict(zip(unique_methods, symbols[:len(unique_methods)]))
+    
+    legend_handles = []
+    legend_labels = []
+
+    for method in mean_df.index:
+        x = mean_df.loc[method, "Batch correction"]
+        y = mean_df.loc[method, "Bio conservation"]
+        x_err = std_df.loc[method, "Batch correction"]
+        y_err = std_df.loc[method, "Bio conservation"]
+        
+        bio_rank = mean_df.loc[method, 'Bio Rank']
+        batch_rank = mean_df.loc[method, 'Batch Rank']
+        label = f"{method} (Bio #{bio_rank}, Batch #{batch_rank})"
+
+        # 1. Error Bars
+        plt.errorbar(x, y, xerr=x_err, yerr=y_err, fmt='none', 
+                     ecolor=color_map[method], elinewidth=1.5, capsize=5, alpha=0.3)
+
+        # 2. Circle (Background)
+        c = plt.scatter(x, y, s=180, color=color_map[method], marker='o', zorder=3)
+        
+        # 3. Symbol (Foreground)
+        s = plt.scatter(x, y, s=50, color="white", marker=symbol_map[method], zorder=4)
+
+        legend_handles.append((c, s))
+        legend_labels.append(label)
+
+    # --- UPDATED LEGEND LOGIC ---
+    # ndivide=None tells the legend to plot both items at the same center point
+    # handlelength=1.5 ensures there is enough room for the circular icon to be centered
+    plt.legend(
+        handles=legend_handles,
+        labels=legend_labels,
+        handler_map={tuple: HandlerTuple(ndivide=None, pad=-2)},
+        bbox_to_anchor=(1.05, 1), loc='upper left', 
+        title="Method (Ordered by Avg Rank)",
+        frameon=True, 
+        fontsize='small',
+        handlelength=2, 
+        handletextpad=0.5
+    )
+    
+    plt.title(title)
+    plt.xlabel("Batch correction")
+    plt.ylabel("Bio conservation")
+    plt.grid(True, linestyle='--', alpha=0.5)
+
+    if save_path is not None:
+        plt.savefig(f"{save_path}/bio_vs_batch_correction.png", bbox_inches="tight")
     plt.show()
