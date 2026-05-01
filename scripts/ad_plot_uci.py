@@ -34,11 +34,11 @@ split_order = [
 
 method_order = [
 
-    "FoSTA_gap",
-    "FoSTA_gap_tsem=auto_avg",
+    # "FoSTA_gap",
+    # "FoSTA_gap_tsem=auto_avg",
     
-    "FoSTA_orig",
-    "FoSTA_orig_tsem=auto_avg",
+    # "FoSTA_orig",
+    # "FoSTA_orig_tsem=auto_avg",
 
 
     "old FoSTA_gap",
@@ -48,7 +48,7 @@ method_order = [
 
     "MALI",
     "MALI_nodpt",
-    # "Pamona",
+    "Pamona",
     "KEMAlin",
     "KEMArbf",
 ]

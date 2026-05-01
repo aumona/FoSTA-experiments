@@ -66,14 +66,14 @@ DATASETS = [
 METHODS = [
     
 
-    "FoSTA_gap",
-    "FoSTA_gap_tsem=auto_avg",
+    # "FoSTA_gap",
+    # "FoSTA_gap_tsem=auto_avg",
 
 
 
 
-    "FoSTA_orig",
-    "FoSTA_orig_tsem=auto_avg",
+    # "FoSTA_orig",
+    # "FoSTA_orig_tsem=auto_avg",
 
 
 
@@ -88,7 +88,7 @@ METHODS = [
     "MALI_nodpt",
 
 
-    # "Pamona",
+    "Pamona",
 
     "KEMAlin",
     "KEMArbf",
