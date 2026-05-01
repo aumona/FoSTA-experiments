@@ -31,6 +31,7 @@ from src.Pamona.eval import (
 )
 
 from src.fosta import FoSTA
+from src.fosta_old import FoSTA as FoSTA_old
 from src.mali import MALI
 from src.pamona import Pamona
 from src.kemalin import KEMAlin
@@ -45,11 +46,11 @@ DATASETS_PATH = Path("data_uci")
 RESULTS_DIR = Path("results_uci")
 
 DATASETS = [
-    # "balance_scale",
-    # "breast_cancer",
-    # "crx",
-    # "diabetes",
-    # "ecoli_5",
+    "balance_scale",
+    "breast_cancer",
+    "crx",
+    "diabetes",
+    "ecoli_5",
     "flare1",
     "glass",
     "heart_disease",
@@ -65,25 +66,20 @@ DATASETS = [
 METHODS = [
     
 
-    # "FoSTA_gap_l2",
-    # "FoSTA_gap_tsem=auto_l2",
-    # "FoSTA_gap_tsem=auto_avg_l2",
-
-
     "FoSTA_gap",
-    "FoSTA_gap_tsem=auto",
     "FoSTA_gap_tsem=auto_avg",
 
 
 
-    # "FoSTA_kerf_l2",
-    # "FoSTA_kerf_tsem=auto_l2",
-    # "FoSTA_kerf_tsem=auto_avg_l2",
-    
 
-    "FoSTA_kerf",
-    "FoSTA_kerf_tsem=auto",
-    "FoSTA_kerf_tsem=auto_avg",
+    "FoSTA_orig",
+    "FoSTA_orig_tsem=auto_avg",
+
+
+
+
+    "old FoSTA_gap",
+    "old FoSTA_kerf",
 
 
     "MALI",
@@ -121,7 +117,7 @@ GAMMA = 0.5
 MODEL_TYPE = "rf"
 N_ESTIMATORS = 500
 T = 'auto'
-BETA = 0.9
+BETA = 0.7
 N_JOBS = -1
 VERBOSE = 1
 
@@ -320,24 +316,6 @@ def build_model(method: str, seed: int):
             verbose=VERBOSE,
         )
     
-    if m == "fosta_gap_tsem=auto":
-        return FoSTA(
-            embedder=EMBEDDER,
-            mu=MU,
-            n_components=N_COMPONENTS,
-            kernel_method='gap',
-            t_sem_a='auto',
-            t_sem_b='auto',
-            model_type=MODEL_TYPE,
-            n_estimators=N_ESTIMATORS,
-            t=T,
-            ot_solver='hiref',
-            beta=BETA,
-            random_state=seed,
-            n_jobs=N_JOBS,
-            verbose=VERBOSE,
-        )
-    
     if m == "fosta_gap_tsem=auto_avg":
         return FoSTA(
             embedder=EMBEDDER,
@@ -357,14 +335,12 @@ def build_model(method: str, seed: int):
             verbose=VERBOSE,
         )
     
- 
-    
-    if m == "fosta_kerf":
+    if m == "fosta_orig":
         return FoSTA(
             embedder=EMBEDDER,
             mu=MU,
             n_components=N_COMPONENTS,
-            kernel_method='kerf',
+            kernel_method='original',
             t_sem_a=None,
             t_sem_b=None,
             model_type=MODEL_TYPE,
@@ -377,14 +353,15 @@ def build_model(method: str, seed: int):
             verbose=VERBOSE,
         )
     
-    if m == "fosta_kerf_tsem=auto":
+    if m == "fosta_orig_tsem=auto_avg":
         return FoSTA(
             embedder=EMBEDDER,
             mu=MU,
             n_components=N_COMPONENTS,
-            kernel_method='kerf',
+            kernel_method='original',
             t_sem_a='auto',
             t_sem_b='auto',
+            average_semantic_diffusion=True,
             model_type=MODEL_TYPE,
             n_estimators=N_ESTIMATORS,
             t=T,
@@ -395,19 +372,30 @@ def build_model(method: str, seed: int):
             verbose=VERBOSE,
         )
     
-    if m == "fosta_kerf_tsem=auto_avg":
-        return FoSTA(
+    if m == "old fosta_gap":
+        return FoSTA_old(
+            embedder=EMBEDDER,
+            mu=MU,
+            n_components=N_COMPONENTS,
+            kernel_method='gap',
+            model_type=MODEL_TYPE,
+            n_estimators=N_ESTIMATORS,
+            t=T,
+            beta=BETA,
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
+        )
+    
+    if m == "old fosta_kerf":
+        return FoSTA_old(
             embedder=EMBEDDER,
             mu=MU,
             n_components=N_COMPONENTS,
             kernel_method='kerf',
-            t_sem_a='auto',
-            t_sem_b='auto',
-            average_semantic_diffusion=True,
             model_type=MODEL_TYPE,
             n_estimators=N_ESTIMATORS,
             t=T,
-            ot_solver='hiref',
             beta=BETA,
             random_state=seed,
             n_jobs=N_JOBS,

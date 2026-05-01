@@ -15,8 +15,10 @@ import scanpy as sc
 # Alignment models
 from src.mali import MALI
 from src.rfmali import RFMALI
+
+from src.fosta_old import FoSTA as FoSTA_old
 from src.fosta import FoSTA
-from src.fosta_old import FoSTA as FoSTA_old # to keep the old version of FoSTA for ablation
+
 from src.kemalin import KEMAlin
 from src.kemarbf import KEMArbf
 from src.pamona_joint import JPamona
@@ -60,13 +62,21 @@ def ablation_fosta( method_name = None,
         print("\nStarting alignment...")
         embedding = model.fit_transform(x_source, x_target, y_source, y_target)
         print("Alignment complete.")
-    else:
+    elif method_name.startswith("Old_FoSTA"):
+        model = FoSTA_old(**params_dict,
+                    embedder=embedder,
+                    n_components=n_components,
+                    random_state=seed
+                    )
+        print("\nStarting alignment...")
+        embedding = model.fit_transform(x_source, x_target, y_source, y_target)
+        print("Alignment complete.")
+    else: # default to new FoSTA
         model = FoSTA(**params_dict,
                     embedder=embedder,
                     n_components=n_components,
                     random_state=seed
                     )
-    
         print("\nStarting alignment...")
         embedding = model.fit_transform(x_source, x_target, y_source, y_target)
         print("Alignment complete.")
@@ -77,8 +87,7 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
                    embedder = "PHATE", 
                    seed=42, 
                    gamma = 0.5, 
-                   mu = 0.5, 
-                   t="auto", 
+                   mu = 0.5,
                    n_components = 2,
                    **fosta_params):
     # this function works for MALI, RF-MALI, KEMA, Pamona
@@ -91,19 +100,17 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
             n_components=n_components,
             random_state=seed,
             n_jobs=-1,
-            t = t,
             verbose=1
         )
         print("\nStarting alignment...")
         embedding = model.fit_transform(x_source, x_target, y_source, y_target)
         print("Alignment complete.")
-         
-    elif model_name == "FoSTA_old":
+    
+    elif model_name.startswith("Old_FoSTA"):
         model = FoSTA_old(
             embedder=embedder,
             n_components=n_components,
             random_state=seed,
-            t=t,
             n_jobs=-1,
             verbose=1,
             **fosta_params
@@ -111,13 +118,11 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
         print("\nStarting alignment...")
         embedding = model.fit_transform(x_source, x_target, y_source, y_target)
         print("Alignment complete.")
-    
-    elif model_name == "RFMALI_WIP" or "FoSTA" in model_name:
+    elif model_name.startswith("FoSTA"):
         model = FoSTA(
             embedder=embedder,
             n_components=n_components,
             random_state=seed,
-            t=t,
             n_jobs=-1,
             verbose=1,
             **fosta_params
@@ -129,7 +134,6 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
         model = MALI(embedder=embedder,
                     n_components=n_components,
                     verbose=1,
-                    t=t,
                     random_state=seed)
         print("\nStarting alignment...")
         embedding = model.fit_transform(x_source, x_target, y_source, y_target)

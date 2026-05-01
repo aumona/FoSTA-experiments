@@ -25,6 +25,11 @@ data_path = LUNG_BATCHES_DATA_PATH
 label_key = "cell_type"
 batch_key = "batch"
 
+# # Run this once to fix the warnings
+# adata_full = sc.read(data_path)
+# adata_full.write(data_path.replace(".h5ad", "_updated.h5ad"))
+# sys.exit()
+
 parser = main_argparser(default_savename="real_batches_lung")
 parser.add_argument('--batch1', default = "4")
 parser.add_argument('--batch2', default = "5")

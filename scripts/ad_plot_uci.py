@@ -9,7 +9,10 @@ from pathlib import Path
 # =========================================================
 # results_csv = "results_uci/results_20260401_190636.csv"   # change if needed
 # results_csv = "results_uci/results_20260402_013729.csv"   # change if needed
-results_csv = "results_uci/results_20260428_045940.csv"   # change if needed
+# results_csv = "results_uci/results_20260428_045940.csv"   # change if needed
+
+results_csv = "results_uci/results_20260501_005621.csv"   # change if needed
+
 
 
 
@@ -35,16 +38,14 @@ split_order = [
 method_order = [
 
     "FoSTA_gap",
-    "FoSTA_gap_tsem=auto",
-
-
     "FoSTA_gap_tsem=auto_avg",
     
-    "FoSTA_kerf",
-    "FoSTA_kerf_tsem=auto",
+    "FoSTA_orig",
+    "FoSTA_orig_tsem=auto_avg",
 
 
-    "FoSTA_kerf_tsem=auto_avg",
+    "old FoSTA_gap",
+    "old FoSTA_kerf",
 
     "MALI",
     "MALI_nodpt",
@@ -65,9 +66,12 @@ method_display_map = {
     "FoSTA_gap_tsem=auto_avg": "FoSTA gap t_sem=auto avg",
 
 
-    "FoSTA_kerf": "FoSTA kerf",
-    "FoSTA_kerf_tsem=auto": "FoSTA kerf t_sem=auto",
-    "FoSTA_kerf_tsem=auto_avg": "FoSTA kerf t_sem=auto avg",
+    "FoSTA_orig": "FoSTA orig",
+    "FoSTA_orig_tsem=auto": "FoSTA orig t_sem=auto",
+    "FoSTA_orig_tsem=auto_avg": "FoSTA orig t_sem=auto avg",
+
+    "old FoSTA_gap": "FoSTA gap old",
+    "old FoSTA_kerf": "FoSTA kerf old",
 
     "MALI": "MALI",
     "MALI_nodpt": "MALI no dpt",
@@ -125,22 +129,38 @@ method_style = {
 
 
 
-    "FoSTA_kerf": {
+    "FoSTA_orig": {
         "facecolor": "#A0F518",
         "edgecolor": "black",
         "hatch": "",
         "linewidth": 1.0,
     },
-    "FoSTA_kerf_tsem=auto": {
+    "FoSTA_orig_tsem=auto": {
         "facecolor": "#A0F518",
         "edgecolor": "black",
         "hatch": "//",
         "linewidth": 1.0,
     },
-    "FoSTA_kerf_tsem=auto_avg": {
+    "FoSTA_orig_tsem=auto_avg": {
         "facecolor": "#A0F518",
         "edgecolor": "black",
         "hatch": "oo",
+        "linewidth": 1.0,
+    },
+
+
+
+
+    "old FoSTA_gap": {
+        "facecolor": "#4C78A8",
+        "edgecolor": "black",
+        "hatch": "xx",
+        "linewidth": 1.0,
+    },
+    "old FoSTA_kerf": {
+        "facecolor": "#A0F518",
+        "edgecolor": "black",
+        "hatch": "xx",
         "linewidth": 1.0,
     },
 
