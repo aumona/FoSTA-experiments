@@ -79,7 +79,9 @@ METHODS = [
 
 
     "old FoSTA_gap",
+    "old FoSTA_gap tsem=auto_avg",
     "old FoSTA_kerf",
+    "old FoSTA_kerf tsem=auto_avg",
 
 
     "MALI",
@@ -378,9 +380,31 @@ def build_model(method: str, seed: int):
             mu=MU,
             n_components=N_COMPONENTS,
             kernel_method='gap',
+            t_sem_a=None,
+            t_sem_b=None,
             model_type=MODEL_TYPE,
             n_estimators=N_ESTIMATORS,
             t=T,
+            ot_solver='hiref',
+            beta=BETA,
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
+        )
+    
+    if m == "old fosta_gap tsem=auto_avg":
+        return FoSTA_old(
+            embedder=EMBEDDER,
+            mu=MU,
+            n_components=N_COMPONENTS,
+            kernel_method='gap',
+            t_sem_a='auto',
+            t_sem_b='auto',
+            average_semantic_diffusion=True,
+            model_type=MODEL_TYPE,
+            n_estimators=N_ESTIMATORS,
+            t=T,
+            ot_solver='hiref',
             beta=BETA,
             random_state=seed,
             n_jobs=N_JOBS,
@@ -392,16 +416,37 @@ def build_model(method: str, seed: int):
             embedder=EMBEDDER,
             mu=MU,
             n_components=N_COMPONENTS,
-            kernel_method='kerf',
+            kernel_method='gap',
+            t_sem_a=None,
+            t_sem_b=None,
             model_type=MODEL_TYPE,
             n_estimators=N_ESTIMATORS,
             t=T,
+            ot_solver='hiref',
             beta=BETA,
             random_state=seed,
             n_jobs=N_JOBS,
-            verbose=VERBOSE,
+            verbose=VERBOSE,    
         )
     
+    if m == "old fosta_kerf tsem=auto_avg":
+        return FoSTA_old(
+            embedder=EMBEDDER,
+            mu=MU,
+            n_components=N_COMPONENTS,
+            kernel_method='gap',
+            t_sem_a='auto',
+            t_sem_b='auto',
+            average_semantic_diffusion=True,
+            model_type=MODEL_TYPE,
+            n_estimators=N_ESTIMATORS,
+            t=T,
+            ot_solver='hiref',
+            beta=BETA,
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,    
+        )
 
     if m == "mali":
         return MALI(

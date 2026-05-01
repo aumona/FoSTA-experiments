@@ -11,10 +11,7 @@ from pathlib import Path
 # results_csv = "results_uci/results_20260402_013729.csv"   # change if needed
 # results_csv = "results_uci/results_20260428_045940.csv"   # change if needed
 
-results_csv = "results_uci/results_20260501_005621.csv"   # change if needed
-
-
-
+results_csv = "results_uci/results_20260501_124527.csv"   # change if needed
 
 out_png = "results_uci/multimodal_ablation_fosta.png"
 
@@ -45,7 +42,9 @@ method_order = [
 
 
     "old FoSTA_gap",
+    "old FoSTA_gap tsem=auto_avg",
     "old FoSTA_kerf",
+    "old FoSTA_kerf tsem=auto_avg",
 
     "MALI",
     "MALI_nodpt",
@@ -71,7 +70,9 @@ method_display_map = {
     "FoSTA_orig_tsem=auto_avg": "FoSTA orig t_sem=auto avg",
 
     "old FoSTA_gap": "FoSTA gap old",
+    "old FoSTA_gap tsem=auto_avg": "FoSTA gap old t_sem=auto avg",
     "old FoSTA_kerf": "FoSTA kerf old",
+    "old FoSTA_kerf tsem=auto_avg": "FoSTA kerf old t_sem=auto avg",
 
     "MALI": "MALI",
     "MALI_nodpt": "MALI no dpt",
@@ -157,10 +158,22 @@ method_style = {
         "hatch": "xx",
         "linewidth": 1.0,
     },
+    "old FoSTA_gap tsem=auto_avg": {
+        "facecolor": "#4C78A8",
+        "edgecolor": "black",
+        "hatch": "xxx",
+        "linewidth": 1.0,
+    },
     "old FoSTA_kerf": {
         "facecolor": "#A0F518",
         "edgecolor": "black",
         "hatch": "xx",
+        "linewidth": 1.0,
+    },
+    "old FoSTA_kerf tsem=auto_avg": {
+        "facecolor": "#A0F518",
+        "edgecolor": "black",
+        "hatch": "xxx",
         "linewidth": 1.0,
     },
 
