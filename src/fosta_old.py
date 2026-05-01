@@ -18,14 +18,27 @@ class FoSTA:
     FoSTA: Forest-guided Semantic Transport Alignment.
     """
     
-    def __init__(self, mu=0.5, kernel_method='gap',
+    def __init__(self,
+                 mu=0.5,
+                 kernel_method='gap',
                  force_nonzero_diag=False,
                  normalize_diagonal=False,
-                 model_type='rf', euclidean_mode=False,
-                 n_pca=100, n_neighbors=5, decay=40, knn_dist='euclidean',
-                 t='auto', beta=0.9, n_estimators=500, prior_correct=True,
-                 semantic_norm='l2', embedder='PHATE', n_components=2,
-                 verbose=0, random_state=None, n_jobs=-1):
+                 model_type='rf',
+                 euclidean_mode=False,
+                 n_pca=100,
+                 n_neighbors=5,
+                 decay=40,
+                 knn_dist='euclidean',
+                 t='auto',
+                 beta=0.7,
+                 n_estimators=500,
+                 prior_correct=True,
+                 semantic_norm='l2',
+                 embedder='PHATE',
+                 n_components=2,
+                 verbose=0,
+                 random_state=None,
+                 n_jobs=-1):
         
         self.mu = mu
         self.kernel_method = kernel_method
