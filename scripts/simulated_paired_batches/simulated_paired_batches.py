@@ -38,7 +38,8 @@ save_name = f"simulated_paired_batches" #dataset}".format(dataset = dataset_name
 
 # set save location 
 save_path_parent = f"{RESULTS_PATH}/{args.savename}"
-save_path = f"{save_path_parent}/{batch}/seed_{args.seed}" 
+save_path = f"{save_path_parent}/{batch}/{n_components}_components/seed_{args.seed}/noise_{noise_std}_dropout_{dropout_prob}"
+
 
 # LOAD DATA
 adata_full = sc.read(LUNG_BATCHES_DATA_PATH)
@@ -90,9 +91,6 @@ adata2.obsm[embedding_basis] = dropout(adata2.obsm[embedding_basis], dropout_pro
 
 # concatenate the two adatas to get one adata with simulated batches columns in obs
 adata = adata1.concatenate(adata2, batch_key=batch_key, batch_categories=["batch1", "batch2"])
-
-
-save_path_subfolder = f"{save_path}/noise_{noise_std}_dropout_{dropout_prob}/{n_components}_components"
 
 # -----------------
 if not os.path.exists(save_path):
