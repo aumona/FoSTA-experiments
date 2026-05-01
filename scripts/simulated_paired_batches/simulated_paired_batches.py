@@ -38,7 +38,8 @@ save_name = f"simulated_paired_batches" #dataset}".format(dataset = dataset_name
 
 # set save location 
 save_path_parent = f"{RESULTS_PATH}/{args.savename}"
-save_path = f"{save_path_parent}/{batch}" 
+save_path = f"{save_path_parent}/{batch}/{n_components}_components/seed_{args.seed}/noise_{noise_std}_dropout_{dropout_prob}"
+
 
 # LOAD DATA
 adata_full = sc.read(LUNG_BATCHES_DATA_PATH)
@@ -52,9 +53,9 @@ adata.obsm["X"] = adata.X # hack so we can access the original data in obsm["X"]
 
 label_key = "cell_type"
 batch_key = "simulated_batch"
-encoded_label_key = "cell_type_cleaned_encoded" # never instantiated
+encoded_label_key = "cell_type_cleaned_encoded" 
 masked_encoded_label_key = f"{encoded_label_key}_masked"
-# masked_encoded_label_key = f"{label_key}_cleaned_encoded_masked"
+masked_encoded_label_key = f"{label_key}_cleaned_encoded_masked"
 # embedding_basis = "X_pca"
 
 # adata = clean_and_encode_labels(adata, label_key=label_key, new_label_key=encoded_label_key, min_cells=0)   
@@ -64,7 +65,7 @@ masked_encoded_label_key = f"{encoded_label_key}_masked"
 # adata.obs[masked_encoded_label_key] = labels_masked
 
 
-# creates a new column masked_encoded_label_key with cleaned and encoded labels for our methods (that need numbers)
+# creates a new column encoded_label_key with cleaned and encoded labels for our methods (that need numbers)
 adata = clean_and_encode_labels(adata, label_key=label_key, batch_key= None, encoded_label_key= encoded_label_key, min_cells=0)
 
 
@@ -72,10 +73,12 @@ dummy_batch_key = "batch" # for the global label masking stratified over batches
 adata = global_label_masking(adata, masking_frac=args.globalmasking, label_key=label_key, batch_key=dummy_batch_key, random_state=args.seed) 
 masked_label_key = f"{label_key}_masked" # update label key to the masked version for benchmarking (so that methods that can leverage labels will be affected by the masking)
 
+# now also mask the encoded labels 
+adata.obs[masked_encoded_label_key] = adata.obs[encoded_label_key].copy()
+adata.obs.loc[adata.obs["mask_indices"] ==1, masked_encoded_label_key] = -1 # set the masked labels to -1
 
 
 # ----------------- similar to the prepare adata function in script_utils, but in a different order. we want to mask on the single batch, but then preprocess on the combined adata with simulated batch
-
 adata.obs["cell_id"] = adata.obs.index.astype(str) # add the cell identifier column that aligns pairs from each batch
 
 # apply transformations to create a new batch  
@@ -89,9 +92,6 @@ adata2.obsm[embedding_basis] = dropout(adata2.obsm[embedding_basis], dropout_pro
 # concatenate the two adatas to get one adata with simulated batches columns in obs
 adata = adata1.concatenate(adata2, batch_key=batch_key, batch_categories=["batch1", "batch2"])
 
-
-save_path_subfolder = f"{save_path}/noise_{noise_std}_dropout_{dropout_prob}/{n_components}_components"
-
 # -----------------
 if not os.path.exists(save_path):
     os.makedirs(save_path)
@@ -102,7 +102,7 @@ with open(f"{save_path}/config.json", "w") as f:
 adata = preprocess_adata(adata, batch_key=batch_key, n_top_genes=args.nhvg, n_pcs=args.npca)
 
 adata = run_methods(adata, save_path, label_key=masked_label_key, encoded_label_key=masked_encoded_label_key, batch_key=batch_key, methods_params_dict=methods_params_dict, args=args)
-paired_evaluate_and_save_results(adata, save_path_subfolder=save_path, save_path_parent=save_path_parent, encoded_label_key= label_key, masked_encoded_label_key=masked_encoded_label_key, batch_key=batch_key, args=args, save_name = "simulated_batches")
+paired_evaluate_and_save_results(adata, save_path_subfolder=save_path, save_path_parent=save_path_parent, encoded_label_key= encoded_label_key, masked_encoded_label_key=masked_encoded_label_key, batch_key=batch_key, args=args, save_name = "simulated_batches")
 save_embeddings(adata, save_path, label_key, batch_key)
 
 

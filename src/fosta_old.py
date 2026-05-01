@@ -661,6 +661,7 @@ class FoSTA:
                             [self.mu * W_ba, (1 - self.mu) * prox_b]], format="csr")
 
     def fit(self, x_a, x_b, y_a, y_b):
+        """Fits FoSTA alignment across two domains."""
         self.n_a, self.n_b = x_a.shape[0], x_b.shape[0]
         self.n = self.n_a + self.n_b
         labels = LabelUtils.validate_shared_labels(y_a, y_b, strict=True)
@@ -695,6 +696,7 @@ class FoSTA:
         return self
 
     def fit_transform(self, x_a, x_b, y_a, y_b):
+        """Fits alignment and computes embedding."""
         self.fit(x_a, x_b, y_a, y_b)
         if self.embedder == "PHATE":
             embedder = PageRankPHATE(n_components=self.n_components, t=self.t, knn_dist="precomputed_affinity",

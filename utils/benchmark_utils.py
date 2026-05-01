@@ -18,7 +18,6 @@ from src.rfmali import RFMALI
 
 from src.fosta_old import FoSTA as FoSTA_old
 from src.fosta import FoSTA
-
 from src.kemalin import KEMAlin
 from src.kemarbf import KEMArbf
 from src.pamona_joint import JPamona
@@ -106,19 +105,7 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
         embedding = model.fit_transform(x_source, x_target, y_source, y_target)
         print("Alignment complete.")
     
-    elif model_name.startswith("Old_FoSTA"):
-        model = FoSTA_old(
-            embedder=embedder,
-            n_components=n_components,
-            random_state=seed,
-            n_jobs=-1,
-            verbose=1,
-            **fosta_params
-        )
-        print("\nStarting alignment...")
-        embedding = model.fit_transform(x_source, x_target, y_source, y_target)
-        print("Alignment complete.")
-    elif model_name.startswith("FoSTA"):
+    elif model_name == "RFMALI_WIP" or model_name == "FoSTA":
         model = FoSTA(
             embedder=embedder,
             n_components=n_components,
@@ -265,14 +252,14 @@ def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours
     # returns adata with embedding in adata.obsm[model_name]
     # label_key_ours is used for our methods only (if different from label_key)
     
-    set_seeds(set_seeds) # reset seeds for reproducible results (so not affected by previous operations, each method starts fresh)
+    set_seeds(seed) # reset seeds for reproducible results (so not affected by previous operations, each method starts fresh)
 
     start_time = time.time()
     tracemalloc.start()
     current_mem_start, _ = tracemalloc.get_traced_memory()
     tracemalloc.reset_peak()
     
-    if model_name.lower() in ["rfmali", "rfmali_wip", "mali", "pamona", "kemarbf", "kemalin", "fosta"]:
+    if model_name.lower() in ["rfmali", "rfmali_wip", "mali", "pamona", "kemarbf", "kemalin", "fosta", "fosta_old", "jpamona"]:
         label_key_to_use = label_key_ours if label_key_ours is not None else label_key
         adata = run_our_models_from_adata(adata, model_name= model_name, batch_key = batch_key, label_key = label_key_to_use, embedding_basis=embedding_basis, n_components = n_components, seed= seed, **kwargs)
     
@@ -293,7 +280,6 @@ def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours
             
         # ------------------ run LIGER --------------------------------
         elif model_name.lower() == "liger": 
-        
             bdata = adata.copy()
             # Pyliger normalizes by library size with a size factor of 1
             # So here we give it the count data
@@ -324,8 +310,8 @@ def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours
 
             adata.obsm["LIGER"] = np.zeros((adata.shape[0], liger_data.adata_list[0].obsm["H_norm"].shape[1]))
             for i, b in enumerate(batch_cats):
-                adata.obsm["LIGER"][adata.obs.batch == b] = liger_data.adata_list[i].obsm["H_norm"]
-                
+                adata.obsm["LIGER"][adata.obs[batch_key] == b] = liger_data.adata_list[i].obsm["H_norm"]
+
         # ------------------ run harmony --------------------------------
         elif model_name.lower() == "harmony":
             # Run Harmony to correct for batch effects 
@@ -343,12 +329,20 @@ def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours
 
         # ------------------ run scANVI ------------------------------------------------
         elif model_name.lower() == "scanvi":
+            # torch.use_deterministic_algorithms(True)
+            # torch.backends.cudnn.benchmark = False
+            # torch.backends.cudnn.deterministic = True 
+            # # did not work:  
+            #Deterministic behavior was enabled with either `torch.use_deterministic_algorithms(True)` or `at::Context::setDeterministicAlgorithms(true)`, 
+            #but this operation is not deterministic because it uses CuBLAS and you have CUDA >= 10.2. 
+            #To enable deterministic behavior in this case, you must set an environment variable before running your PyTorch application: CUBLAS_WORKSPACE_CONFIG=:4096:8 or CUBLAS_WORKSPACE_CONFIG=:16:8. For more information, go to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility  '''
             
             scvi.settings.seed = seed
-            if not('vae' in locals() and vae is not None): # if vae is not defined (from previously running scvi)
-                SCVI.setup_anndata(adata, layer="counts", batch_key=batch_key)
-                vae = SCVI(adata, gene_likelihood="nb", n_layers=2, n_latent=n_components)
-                vae.train()
+            # if not('vae' in locals() and vae is not None): # if vae is not defined (from previously running scvi)
+            # retrain scvi to avoid reproducibility issues
+            SCVI.setup_anndata(adata, layer="counts", batch_key=batch_key)
+            vae = SCVI(adata, gene_likelihood="nb", n_layers=2, n_latent=n_components)
+            vae.train()
             
             lvae = SCANVI.from_scvi_model(
                 vae,

@@ -20,21 +20,24 @@ for ((i=0; i<${n_batches}; i++)); do
   done
 done
 
-for i in "${!pairs[@]}"; do
-  # Select pair for this job
-  pair=${pairs[$i]}
-  batch1=$(echo $pair | awk '{print $1}')
-  batch2=$(echo $pair | awk '{print $2}')
+for seed in "${seeds[@]}"; do
+  for i in "${!pairs[@]}"; do
+    # Select pair for this job
+    pair=${pairs[$i]}
+    batch1=$(echo $pair | awk '{print $1}')
+    batch2=$(echo $pair | awk '{print $2}')
 
-  echo "Running pair: $batch1 vs $batch2"
+    echo "Running pair: $batch1 vs $batch2"
 
-  python3 scripts/real_batches_immune/real_batches_immune.py \
-    --batch1idx $batch1 \
-    --batch2idx $batch2 \
-    --components 2 \
-    --globalmasking 0\
-    --savename "real_batches_immune/${timestamp}" \
-      > "$log_dir/"$batch1"_"$batch2".out" \
-      2> "$log_dir/"$batch1"_"$batch2".err"
+    python3 scripts/real_batches_immune/real_batches_immune.py \
+      --batch1idx $batch1 \
+      --batch2idx $batch2 \
+      --components 2 \
+      --globalmasking 0\
+      --savename "real_batches_immune/${timestamp}" \
+      --seed "$seed" \
+        > "$log_dir/"$batch1"_"$batch2"_"$seed".out" \
+        2> "$log_dir/"$batch1"_"$batch2"_"$seed".err"
 
+  done
 done

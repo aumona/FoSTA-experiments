@@ -46,6 +46,8 @@ def prepare_adata(adata, save_path, label_key, batch_key, args, masked_encoded_l
     if args.globalmasking>0:
         # mask some labels (adds a new column "cell_type_masked" with some values "Unknown")
         adata = global_label_masking(adata, masking_frac=args.globalmasking, label_key=label_key, batch_key=batch_key, random_state=args.seed) 
+    else:
+        adata.obs[f"{label_key}_masked"] = adata.obs[label_key] # if no masking, just copy the original labels to the masked version
     
     original_label_key = label_key
     masked_label_key = f"{label_key}_masked" # update label key to the masked version for benchmarking (so that methods that can leverage labels will be affected by the masking)
@@ -127,7 +129,8 @@ def evaluate_and_save_results(adata, save_path_subfolder, save_path_parent, orig
 
     results_df.insert(0, "method", results_df.index)
     results_df.insert(0, "n_components", args.components)
-
+    results_df.insert(0, "seed", args.seed)
+    
     results_df["time"] = results_df["method"].map(times_dict)
     results_df["memory"] = results_df["method"].map(memory_dict)
        
@@ -165,7 +168,8 @@ def paired_evaluate_and_save_results(adata, save_path_subfolder, save_path_paren
     for method in methods_to_benchmark:
         res, sil_dom, foscttm, alignment_score = run_metrics_from_adata(benchmark_adata, method, batch_key = batch_key, label_key = encoded_label_key, masked_label_key = masked_encoded_label_key)
         rows_list = []
-        result_row = {"n_components": args.components, 
+        result_row = {"seed": args.seed, 
+                      "n_components": args.components, 
                     "model": method, 
                     "FOSCTTM": foscttm, 
                     "Silhouette_domain": sil_dom,

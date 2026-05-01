@@ -41,7 +41,7 @@ batch_key = "batch"
 
 # set save location
 save_path_parent = f"{RESULTS_PATH}/{args.savename}"
-save_path = f"{save_path_parent}/{batches_idxs[0]}_{batches_idxs[1]}" 
+save_path = f"{save_path_parent}/{batches_idxs[0]}_{batches_idxs[1]}/seed_{args.seed}" 
 
 
 # LOAD DATA 
