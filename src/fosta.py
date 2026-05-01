@@ -7,7 +7,7 @@ from scipy.sparse.linalg import LinearOperator, svds
 import ot
 
 import graphtools
-from .rfgap_old.forestkernel import ForestKernel
+from .rfgap.forestkernel import ForestKernel
 
 from src.phate import PageRankPHATE
 from phate import vne
