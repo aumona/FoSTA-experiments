@@ -7,7 +7,7 @@ from scipy.sparse.linalg import LinearOperator, svds
 import ot
 
 import graphtools
-from forestkernel import ForestKernel
+from .rfgap_old.forestkernel import ForestKernel
 
 from src.phate import PageRankPHATE
 from phate import vne
@@ -27,6 +27,7 @@ class FoSTA:
     def __init__(
         self,
         mu=0.5,
+        old_version=False,
         kernel_method="gap",
         model_type="rf",
         n_estimators=500,
@@ -55,6 +56,11 @@ class FoSTA:
         random_state=None,
         n_jobs=-1,
     ):
+        
+
+        self.old_version = old_version
+
+
         # Shared global parameters
         self.random_state = random_state
         self.verbose = verbose
@@ -62,8 +68,8 @@ class FoSTA:
 
         # ForestKernel parameters
         self.kernel_method = kernel_method
-        if self.kernel_method not in {"original", "kerf", "gap"}:
-            raise ValueError("FoSTA currently supports only kernel_method='original', 'kerf' or 'gap'.")
+        if self.kernel_method not in {"kerf", "gap"}:
+            raise ValueError("FoSTA currently supports only kernel_method='kerf' or 'gap'.")
         self.model_type = model_type
         self.n_estimators = n_estimators
         self.kernel_params = {
@@ -102,6 +108,7 @@ class FoSTA:
 
         # State storage
         self.kernel_a = self.kernel_b = None
+        self.prox_a = self.prox_b = None
         self.leaf_pca_a_ = self.leaf_pca_b_ = None
         self.Q_full_a_ = self.Q_full_b_ = None
         self.W_lab_a_ = self.W_lab_b_ = None  # Using W_lab
@@ -127,61 +134,96 @@ class FoSTA:
         return sparse.coo_matrix((np.concatenate(data_parts), (np.concatenate(row_parts), np.concatenate(col_parts))),
                                  shape=(n_total, Q_lab.shape[1])).tocsr()
 
-    def _reduce_leaf_coords(self, Q_full, domain_name="A"):
-        self._log(f"[Domain {domain_name}] Reducing leaf coordinates with sparse PCA...")
     
-        reducer = PCA(
-            n_components=min(self.n_estimators, self.n_pca),
-            random_state=self.random_state,
+    
+    def _svd_p_full(self, Q_full, W_lab, n_components=100, random_state=None):
+        n, m = Q_full.shape[0], W_lab.shape[0]
+    
+        def matvec(v):
+            return Q_full @ (W_lab.T @ v)
+    
+        def rmatvec(u):
+            return W_lab @ (Q_full.T @ u)
+    
+        P_op = LinearOperator(
+            shape=(n, m),
+            matvec=matvec,
+            rmatvec=rmatvec,
+            dtype=np.float64,
         )
     
-        return reducer.fit_transform(Q_full)
+        k = min(n_components, n - 1, m - 1)
+    
+        U, S, Vt = svds(P_op, k=k, random_state=random_state)
+        order = np.argsort(S)[::-1]
+    
+        U = U[:, order]
+        S = S[order]
+        Vt = Vt[order]
+    
+        # PCA-like coordinates of rows of P
+        coords = U * S
+    
+        return coords, S, Vt
 
     def _build_graph_from_coords(self, coords):
         G = graphtools.Graph(coords, n_pca=None, knn=self.n_neighbors, decay=self.decay, distance=self.knn_dist,
                              thresh=1e-4, n_jobs=self.n_jobs, random_state=self.random_state, verbose=bool(self.verbose))
         return G.K
 
+
     def _compute_domain_geometry(self, x, y, domain_name="A"):
         y = np.asarray(y).ravel()
         unl_mask = LabelUtils.get_unlabeled_mask(y)
-        idx_lab, idx_unl = np.flatnonzero(~unl_mask), np.flatnonzero(unl_mask)
-
+        idx_lab = np.flatnonzero(~unl_mask)
+        idx_unl = np.flatnonzero(unl_mask)
+    
         self._log(f"\n[Domain {domain_name}] Fitting forest on labeled points...")
         kernel = ForestKernel(**self.kernel_params)
+    
+        # ------------------------------------------------------------
+        # Always fit labeled-only model for semantic pipeline
+        # ------------------------------------------------------------
         kernel.fit(x[idx_lab], y[idx_lab])
-
-        # --- EXTRACTING W_lab instead of Q_lab ---
-        self._log(f"[Domain {domain_name}] Extracting reference and query maps (W_lab, Q_lab), and assembling full unlabeled+labeled map Q_full...")
+    
         Q_lab = kernel.get_train_query_map().tocsr()
         Q_unl = kernel.get_query_map(x[idx_unl]).tocsr() if len(idx_unl) > 0 else None
-        
         W_lab = kernel.get_reference_map().tocsr()
-        
-        if self.kernel_method == "original":
-            # Fit was done with KeRF, but use binary query-side leaf incidence.
-            Q_lab.data[:] = 1.0
-            if Q_unl is not None:
-                Q_unl.data[:] = 1.0
-        
-            # Use squared KeRF reference weights to recover leaf-mass normalization.
-            W_lab = W_lab.multiply(W_lab)
-        
-        elif self.kernel_method == "kerf":
-            # Use KeRF query/reference maps directly.
-            pass
-        
-        elif self.kernel_method == "gap":
-            # Use GAP query/reference maps directly.
-            pass
-        
-        Q_full = self._assemble_sparse_query_map(Q_lab, Q_unl, idx_lab, idx_unl, x.shape[0])
-
-
-
-        coords_full = self._reduce_leaf_coords(Q_full, domain_name=domain_name)
-        prox = self._build_graph_from_coords(coords_full)
-
+    
+        Q_full = self._assemble_sparse_query_map(
+            Q_lab, Q_unl, idx_lab, idx_unl, x.shape[0]
+        )
+    
+        # ------------------------------------------------------------
+        # Geometry branch
+        # ------------------------------------------------------------
+        if self.old_version:
+            # ===== OLD FoSTA =====
+            self._log(f"[Domain {domain_name}] Using OLD FoSTA kernel (full NxN)...")
+    
+            kernel_full = ForestKernel(**self.kernel_params)
+            kernel_full.fit(x, y, idx_unlabeled=idx_unl)
+    
+            K_full = kernel_full.get_kernel(normalize_diagonal=False)
+            K_full.data = np.maximum(K_full.data, 0)
+    
+            prox = K_full
+    
+            coords_full = None  # no PCA coords
+    
+        else:
+            # ===== NEW METHOD =====
+            self._log(f"[Domain {domain_name}] Matrix-free PCA on P = Q_full W_lab^T...")
+    
+            coords_full, _, _ = self._svd_p_full(
+                Q_full,
+                W_lab,
+                n_components=self.n_pca,
+                random_state=self.random_state,
+            )
+    
+            prox = self._build_graph_from_coords(coords_full)
+    
         return coords_full, Q_full, W_lab, kernel, idx_lab, idx_unl, prox
     
 
@@ -410,6 +452,14 @@ class FoSTA:
         return self._compute_dense_ot(post_a, post_b)
 
     def _build_balanced_affinity(self, prox_a, prox_b, T):
+        
+        if self.old_version:
+            if self.verbose:
+                print("\n[FoSTA] Old FoSTA Version: Max-normalizing rows of intra-domain kernels before joint construction.")
+            prox_a = preprocessing.normalize(prox_a, norm="max", axis=1)
+            prox_b = preprocessing.normalize(prox_b, norm="max", axis=1)
+  
+
         if sparse.issparse(T):
             W_ab = prox_a.dot(T)
             W_ba = prox_b.dot(T.transpose())
@@ -429,16 +479,17 @@ class FoSTA:
                             [self.mu * W_ba, (1 - self.mu) * prox_b]], format="csr")
 
     def fit(self, x_a, x_b, y_a, y_b):
+        """Fits FoSTA alignment across two domains."""
         self.n_a, self.n_b = x_a.shape[0], x_b.shape[0]
         self.n = self.n_a + self.n_b
         labels = LabelUtils.validate_shared_labels(y_a, y_b, strict=True)
         self.classes_ = labels
 
         (self.leaf_pca_a_, self.Q_full_a_, self.W_lab_a_, self.kernel_a, 
-         self.idx_lab_a_, self.idx_unl_a_, prox_a) = self._compute_domain_geometry(x_a, y_a, "A")
+         self.idx_lab_a_, self.idx_unl_a_, self.prox_a) = self._compute_domain_geometry(x_a, y_a, "A")
         
         (self.leaf_pca_b_, self.Q_full_b_, self.W_lab_b_, self.kernel_b, 
-         self.idx_lab_b_, self.idx_unl_b_, prox_b) = self._compute_domain_geometry(x_b, y_b, "B")
+         self.idx_lab_b_, self.idx_unl_b_, self.prox_b) = self._compute_domain_geometry(x_b, y_b, "B")
 
         post_a = self._get_semantic_vectors(
             self.Q_full_a_,
@@ -459,10 +510,11 @@ class FoSTA:
         )
 
         self.T_sparse = self._compute_coupling(post_a, post_b)
-        self.W = self._build_balanced_affinity(prox_a, prox_b, self.T_sparse)
+        self.W = self._build_balanced_affinity(self.prox_a, self.prox_b, self.T_sparse)
         return self
 
     def fit_transform(self, x_a, x_b, y_a, y_b):
+        """Fits alignment and computes embedding."""
         self.fit(x_a, x_b, y_a, y_b)
         if self.embedder == "PHATE":
             embedder = PageRankPHATE(n_components=self.n_components, t=self.t, knn_dist="precomputed_affinity",
