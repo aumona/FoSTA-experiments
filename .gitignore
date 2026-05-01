@@ -25,6 +25,7 @@ results_uci/
 figures/
 
 # MacOS
+._*
 .DS_Store
 
 # Byte-compiled / optimized / DLL files

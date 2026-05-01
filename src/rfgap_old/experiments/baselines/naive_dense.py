@@ -1,0 +1,121 @@
+# ported from https://github.com/neurodata/hyppo/blob/main/hyppo/independence/_utils.py
+
+
+import numpy as np
+
+
+def original_proximity_dense_from_leaves(leaf_matrix):
+    """
+    Compute the naive dense original proximity matrix from a leaf matrix.
+
+    The original proximity between samples i and j is
+
+        p(i, j) = (1 / T) * sum_t 1{ leaf_t(i) == leaf_t(j) }
+
+    Parameters
+    ----------
+    leaf_matrix : ndarray of shape (n_samples, n_trees)
+        Leaf indices returned by apply().
+
+    Returns
+    -------
+    ndarray of shape (n_samples, n_samples)
+        Dense original proximity matrix.
+    """
+    leaf_matrix = np.asarray(leaf_matrix)
+    _, n_trees = leaf_matrix.shape
+
+    prox = np.zeros((leaf_matrix.shape[0], leaf_matrix.shape[0]), dtype=np.float32)
+
+    for t in range(n_trees):
+        prox += np.equal.outer(leaf_matrix[:, t], leaf_matrix[:, t])
+
+    prox /= np.float32(n_trees)
+    return prox
+
+
+def original_proximity_block_dense_from_leaves(leaf_matrix_ref, leaf_matrix_query):
+    """
+    Compute the naive dense original proximity block between query samples
+    and reference samples from two leaf matrices.
+
+    Parameters
+    ----------
+    leaf_matrix_ref : ndarray of shape (n_ref, n_trees)
+        Leaf indices for the reference samples.
+
+    leaf_matrix_query : ndarray of shape (n_query, n_trees)
+        Leaf indices for the query samples.
+
+    Returns
+    -------
+    ndarray of shape (n_query, n_ref)
+        Dense original proximity block.
+    """
+    leaf_matrix_ref = np.asarray(leaf_matrix_ref)
+    leaf_matrix_query = np.asarray(leaf_matrix_query)
+
+    n_ref, n_trees_ref = leaf_matrix_ref.shape
+    n_query, n_trees_query = leaf_matrix_query.shape
+
+    if n_trees_ref != n_trees_query:
+        raise ValueError("Reference and query leaf matrices must have the same number of trees.")
+
+    prox = np.zeros((n_query, n_ref), dtype=np.float32)
+
+    for t in range(n_trees_ref):
+        prox += np.equal.outer(leaf_matrix_query[:, t], leaf_matrix_ref[:, t])
+
+    prox /= np.float32(n_trees_ref)
+    return prox
+
+
+def original_proximity_dense_from_forest(forest, X):
+    """
+    Compute the naive dense original proximity matrix directly from a fitted forest
+    using its apply() method.
+
+    Parameters
+    ----------
+    forest : fitted tree ensemble
+        Any fitted object exposing an apply(X) method returning a leaf matrix.
+
+    X : array-like of shape (n_samples, n_features)
+        Input samples.
+
+    Returns
+    -------
+    ndarray of shape (n_samples, n_samples)
+        Dense original proximity matrix.
+    """
+    leaf_matrix = forest.apply(X)
+    return original_proximity_dense_from_leaves(leaf_matrix)
+
+
+def original_proximity_block_dense_from_forest(forest, X_ref, X_query):
+    """
+    Compute the naive dense original proximity block between query samples
+    and reference samples directly from a fitted forest using apply().
+
+    Parameters
+    ----------
+    forest : fitted tree ensemble
+        Any fitted object exposing an apply(X) method returning a leaf matrix.
+
+    X_ref : array-like of shape (n_ref, n_features)
+        Reference samples.
+
+    X_query : array-like of shape (n_query, n_features)
+        Query samples.
+
+    Returns
+    -------
+    ndarray of shape (n_query, n_ref)
+        Dense original proximity block.
+    """
+    leaf_matrix_ref = forest.apply(X_ref)
+    leaf_matrix_query = forest.apply(X_query)
+    return original_proximity_block_dense_from_leaves(
+        leaf_matrix_ref=leaf_matrix_ref,
+        leaf_matrix_query=leaf_matrix_query,
+    )
