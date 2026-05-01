@@ -130,6 +130,11 @@ def evaluate_and_save_results(adata, save_path_subfolder, save_path_parent, orig
     results_df.insert(0, "method", results_df.index)
     results_df.insert(0, "n_components", args.components)
     results_df.insert(0, "seed", args.seed)
+
+    if "noise" in args:
+        results_df.insert(0, "noise", args.noise)
+    if "dropout" in args:
+        results_df.insert(0, "dropout", args.dropout)
     
     results_df["time"] = results_df["method"].map(times_dict)
     results_df["memory"] = results_df["method"].map(memory_dict)
