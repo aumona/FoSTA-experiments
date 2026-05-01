@@ -793,8 +793,8 @@ def run_metrics(embedding, y_source, y_target, y_target_true, mask_missing_targe
 
 
         # alignment score from pamona 
-        from src.Pamona.eval import test_alignment_score
-        alignment_score = test_alignment_score(x1_mat, x2_mat)
+        from src.Pamona.eval import test_alignment_score_sparse
+        alignment_score = test_alignment_score_sparse(x1_mat, x2_mat)
         
         
     except Exception as e:
