@@ -53,7 +53,7 @@ adata.obsm["X"] = adata.X # hack so we can access the original data in obsm["X"]
 
 label_key = "cell_type"
 batch_key = "simulated_batch"
-encoded_label_key = "cell_type_cleaned_encoded" # never instantiated
+encoded_label_key = "cell_type_cleaned_encoded" 
 masked_encoded_label_key = f"{encoded_label_key}_masked"
 masked_encoded_label_key = f"{label_key}_cleaned_encoded_masked"
 # embedding_basis = "X_pca"
@@ -102,7 +102,7 @@ with open(f"{save_path}/config.json", "w") as f:
 adata = preprocess_adata(adata, batch_key=batch_key, n_top_genes=args.nhvg, n_pcs=args.npca)
 
 adata = run_methods(adata, save_path, label_key=masked_label_key, encoded_label_key=masked_encoded_label_key, batch_key=batch_key, methods_params_dict=methods_params_dict, args=args)
-paired_evaluate_and_save_results(adata, save_path_subfolder=save_path, save_path_parent=save_path_parent, encoded_label_key= label_key, masked_encoded_label_key=masked_encoded_label_key, batch_key=batch_key, args=args, save_name = "simulated_batches")
+paired_evaluate_and_save_results(adata, save_path_subfolder=save_path, save_path_parent=save_path_parent, encoded_label_key= encoded_label_key, masked_encoded_label_key=masked_encoded_label_key, batch_key=batch_key, args=args, save_name = "simulated_batches")
 save_embeddings(adata, save_path, label_key, batch_key)
 
 
