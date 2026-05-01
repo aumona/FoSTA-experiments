@@ -18,7 +18,6 @@ from src.rfmali import RFMALI
 
 from src.fosta_old import FoSTA as FoSTA_old
 from src.fosta import FoSTA
-
 from src.kemalin import KEMAlin
 from src.kemarbf import KEMArbf
 from src.pamona_joint import JPamona
@@ -105,20 +104,8 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
         print("\nStarting alignment...")
         embedding = model.fit_transform(x_source, x_target, y_source, y_target)
         print("Alignment complete.")
-    
-    elif model_name.startswith("Old_FoSTA"):
-        model = FoSTA_old(
-            embedder=embedder,
-            n_components=n_components,
-            random_state=seed,
-            n_jobs=-1,
-            verbose=1,
-            **fosta_params
-        )
-        print("\nStarting alignment...")
-        embedding = model.fit_transform(x_source, x_target, y_source, y_target)
-        print("Alignment complete.")
-    elif model_name.startswith("FoSTA"):
+         
+    elif model_name == "RFMALI_WIP" or "FoSTA" in model_name:
         model = FoSTA(
             embedder=embedder,
             n_components=n_components,
