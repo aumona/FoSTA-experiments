@@ -1,5 +1,5 @@
 import numpy as np
-
+from scipy.sparse import issparse
 
 def prepare_reference_split(X, y, idx_unlabeled=None):
     """
@@ -30,9 +30,14 @@ def prepare_reference_split(X, y, idx_unlabeled=None):
         - idx_unlabeled
         - has_unlabeled
     """
-    X = np.asarray(X)
+    
+    if issparse(X):
+        n = X.shape[0]
+    else:
+        X = np.asarray(X)
+        n = X.shape[0]
+
     y = np.asarray(y)
-    n = X.shape[0]
 
     if y.shape[0] != n:
         raise ValueError("X and y must have the same number of rows.")
