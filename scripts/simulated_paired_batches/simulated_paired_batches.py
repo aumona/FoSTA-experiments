@@ -91,7 +91,7 @@ adata2.obsm[embedding_basis] = dropout(adata2.obsm[embedding_basis], dropout_pro
 
 # concatenate the two adatas to get one adata with simulated batches columns in obs
 adata = adata1.concatenate(adata2, batch_key=batch_key, batch_categories=["batch1", "batch2"])
-
+adata.uns['global_masking_fraction'] = args.globalmasking # add it again because it's lost after concatenation
 # -----------------
 if not os.path.exists(save_path):
     os.makedirs(save_path)
