@@ -27,7 +27,7 @@ class FoSTA:
     def __init__(
         self,
         mu=0.5,
-        kernel_method="kerf",
+        kernel_method="gap",
         model_type="rf",
         n_estimators=500,
         n_pca=100,
@@ -39,8 +39,9 @@ class FoSTA:
         t_sem_a='auto',
         t_sem_b='auto',  # None/0: no diffusion, "auto": VNE, or positive integer
         t_sem_max=30,  # maximum t range to consider if t_sem="auto"
-        average_semantic_diffusion=False,  # if True, average the semantic vectors across all diffusion scales up to t_sem instead of just taking the final one
-        l2_normalize=False,
+        average_semantic_diffusion=True,  # if True, average the semantic vectors across all diffusion scales up to t_sem instead of just taking the final one
+        prior_correct=True,
+        l2_normalize=True,
         embedder="PHATE",
         n_components=2,
         ot_solver="hiref",
@@ -61,18 +62,17 @@ class FoSTA:
 
         # ForestKernel parameters
         self.kernel_method = kernel_method
-        if self.kernel_method not in {"kerf", "gap"}:
-            raise ValueError("FoSTA currently supports only kernel_method='kerf' or 'gap'.")
+        if self.kernel_method not in {"original", "kerf", "gap"}:
+            raise ValueError("FoSTA currently supports only kernel_method='original', 'kerf' or 'gap'.")
         self.model_type = model_type
         self.n_estimators = n_estimators
         self.kernel_params = {
             "random_state": random_state,
             "prediction_type": "classification",
             "n_estimators": self.n_estimators,
-            "kernel_method": self.kernel_method,
+            "kernel_method": "kerf" if self.kernel_method == "original" else self.kernel_method,
             "model_type": self.model_type,
-            "bootstrap": True,
-            "class_weight": "balanced_subsample"
+            "bootstrap": True
         }
 
         self.n_pca = n_pca
@@ -84,6 +84,7 @@ class FoSTA:
         self.t_sem_b = t_sem_b
         self.t_sem_max = t_sem_max
         self.average_semantic_diffusion = average_semantic_diffusion
+        self.prior_correct = prior_correct
 
         self.ot_solver = ot_solver
         self.hierarchy_depth = hierarchy_depth
@@ -131,7 +132,6 @@ class FoSTA:
     
         reducer = PCA(
             n_components=min(self.n_estimators, self.n_pca),
-            svd_solver="arpack",
             random_state=self.random_state,
         )
     
@@ -158,14 +158,18 @@ class FoSTA:
         
         W_lab = kernel.get_reference_map().tocsr()
         
-        if self.kernel_method == "kerf":
-            # Use binary query-side leaf incidence.
+        if self.kernel_method == "original":
+            # Fit was done with KeRF, but use binary query-side leaf incidence.
             Q_lab.data[:] = 1.0
             if Q_unl is not None:
                 Q_unl.data[:] = 1.0
         
-            # Use squared KeRF reference weights.
+            # Use squared KeRF reference weights to recover leaf-mass normalization.
             W_lab = W_lab.multiply(W_lab)
+        
+        elif self.kernel_method == "kerf":
+            # Use KeRF query/reference maps directly.
+            pass
         
         elif self.kernel_method == "gap":
             # Use GAP query/reference maps directly.
@@ -305,11 +309,21 @@ class FoSTA:
 
         row_sums = post.sum(axis=1)
         self._log(
-            "Semantic row sums: "
+            "Semantic row sums before prior correction and l2 normalization: "
             f"min={row_sums.min():.6f}, "
             f"mean={row_sums.mean():.6f}, "
             f"max={row_sums.max():.6f}"
         )
+
+        if self.prior_correct:
+            counts = np.bincount(y_lab_idx, minlength=n_classes).astype(float)
+            prior = counts / max(counts.sum(), 1.0)
+            post *= (1.0 / np.maximum(prior, 1e-12))[None, :]
+            post_sums = post.sum(axis=1, keepdims=True)
+            post_sums[post_sums <= 1e-12] = 1.0
+            post /= post_sums
+
+
 
         if self.l2_normalize:
             post = preprocessing.normalize(post, norm="l2", axis=1)
