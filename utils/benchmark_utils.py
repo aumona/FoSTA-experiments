@@ -16,7 +16,6 @@ import scanpy as sc
 from src.mali import MALI
 from src.rfmali import RFMALI
 
-from src.fosta_old import FoSTA as FoSTA_old
 from src.fosta import FoSTA
 from src.kemalin import KEMAlin
 from src.kemarbf import KEMArbf
@@ -61,16 +60,7 @@ def ablation_fosta( method_name = None,
         print("\nStarting alignment...")
         embedding = model.fit_transform(x_source, x_target, y_source, y_target)
         print("Alignment complete.")
-    elif method_name == "FoSTA_old":
-        model = FoSTA_old(**params_dict,
-                    embedder=embedder,
-                    n_components=n_components,
-                    random_state=seed
-                    )
-        print("\nStarting alignment...")
-        embedding = model.fit_transform(x_source, x_target, y_source, y_target)
-        print("Alignment complete.")
-    else: # default to new FoSTA
+    else: # default to FoSTA
         model = FoSTA(**params_dict,
                     embedder=embedder,
                     n_components=n_components,
@@ -107,18 +97,6 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
     
     elif model_name == "RFMALI_WIP" or model_name == "FoSTA":
         model = FoSTA(
-            embedder=embedder,
-            n_components=n_components,
-            random_state=seed,
-            n_jobs=-1,
-            verbose=1,
-            **fosta_params
-        )
-        print("\nStarting alignment...")
-        embedding = model.fit_transform(x_source, x_target, y_source, y_target)
-        print("Alignment complete.")
-    elif model_name == 'FoSTA_old':
-        model = FoSTA_old(
             embedder=embedder,
             n_components=n_components,
             random_state=seed,
@@ -271,7 +249,7 @@ def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours
     current_mem_start, _ = tracemalloc.get_traced_memory()
     tracemalloc.reset_peak()
     
-    if model_name.lower() in ["rfmali", "rfmali_wip", "mali", "pamona", "kemarbf", "kemalin", "fosta", "fosta_old", "jpamona"]:
+    if model_name.lower() in ["rfmali", "rfmali_wip", "mali", "pamona", "kemarbf", "kemalin", "fosta", "jpamona"]:
         label_key_to_use = label_key_ours if label_key_ours is not None else label_key
         adata = run_our_models_from_adata(adata, model_name= model_name, batch_key = batch_key, label_key = label_key_to_use, embedding_basis=embedding_basis, n_components = n_components, seed= seed, **kwargs)
     
