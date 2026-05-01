@@ -9,6 +9,7 @@ import pickle
 import json
 import os
 import matplotlib.pyplot as plt
+from datetime import datetime
 
 import sys, pathlib
 sys.path.insert(0, str(next(p for p in [pathlib.Path.cwd()] + list(pathlib.Path.cwd().parents) if (p/"src").is_dir())))
@@ -38,8 +39,13 @@ args = parser.parse_args()
 batches = [args.batch1, args.batch2]
 
 # set save location 
+# set save location 
+now = datetime.now().strftime("%Y%m%d_%H%M")
 save_path_parent = f"{RESULTS_PATH}/{args.savename}"
-save_path = f"{save_path_parent}/{batches[0]}_{batches[1]}/seed_{args.seed}" 
+# Move {now} to be the first subfolder after the experiment name
+save_path = f"{save_path_parent}/{now}/{batches[0]}_{batches[1]}/seed_{args.seed}"
+
+os.makedirs(save_path, exist_ok=True)
 
 # LOAD DATA 
 adata_full = sc.read(data_path)
