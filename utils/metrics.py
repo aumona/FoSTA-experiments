@@ -2,6 +2,7 @@ import numpy as np
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
+from sklearn.metrics.pairwise import euclidean_distances, pairwise_distances
 
 def as_int_labels(y):
     """Convert labels to int array with -1 for missing (supports NaN)."""
@@ -180,6 +181,43 @@ def calc_frac_idx(x1_mat, x2_mat, true_pairs=None):
 
     return fracs,x
 
+
+
+
+def calc_frac_idx_faster(x1_mat, x2_mat, true_pairs=None):
+    """
+    Fast version supporting both NumPy arrays and SciPy CSR matrices.
+    """
+    # 1. Compute pairwise distances
+    # sklearn's pairwise_distances handles CSR vs Dense automatically
+    dist_mat = pairwise_distances(x1_mat, x2_mat, metric='euclidean')
+    
+    nsamp = x1_mat.shape[0]
+    n_targets = x2_mat.shape[0]
+    
+    # 2. Get the indices for the true matches
+    if true_pairs is not None:
+        # p[0] based on your original logic
+        true_indices = np.array([p[0] for p in true_pairs])
+    else:
+        true_indices = np.arange(nsamp)
+    
+    # 3. Extract the distances of the true matches
+    # dist_mat[row_indices, col_indices]
+    true_dists = dist_mat[np.arange(nsamp), true_indices]
+    
+    # 4. Calculate rank
+    # Compare each row to its corresponding true_dist
+    # true_dists[:, None] reshapes to (nsamp, 1) to allow broadcasting
+    ranks = np.sum(dist_mat < true_dists[:, np.newaxis], axis=1)
+    
+    # 5. Calculate fractions
+    denom = max(1, n_targets - 1)
+    fracs = ranks.astype(float) / denom
+    x = np.arange(1, nsamp + 1)
+    
+    return fracs.tolist(), x.tolist()
+
 def calc_domainAveraged_FOSCTTM(x1_mat, x2_mat, true_pairs_1to2=None, true_pairs_2to1=None):
     """
     Metric from SCOT: "FOSCTTM"
@@ -189,8 +227,8 @@ def calc_domainAveraged_FOSCTTM(x1_mat, x2_mat, true_pairs_1to2=None, true_pairs
     
     if true_pairs_1to2 and true_pairs_2to1 are provided, they should be lists of tuples indicating the indices of true matches in the other domain
     """
-    fracs1,xs = calc_frac_idx(x1_mat, x2_mat, true_pairs = true_pairs_1to2)
-    fracs2,xs = calc_frac_idx(x2_mat, x1_mat, true_pairs=true_pairs_2to1)
+    fracs1,xs = calc_frac_idx_faster(x1_mat, x2_mat, true_pairs = true_pairs_1to2)
+    fracs2,xs = calc_frac_idx_faster(x2_mat, x1_mat, true_pairs=true_pairs_2to1)
     fracs = []
     for i in range(len(fracs1)):
         fracs.append((fracs1[i]+fracs2[i])/2)  
