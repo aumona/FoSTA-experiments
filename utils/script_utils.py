@@ -184,15 +184,17 @@ def paired_evaluate_and_save_results(adata, save_path_subfolder, save_path_paren
     for method in methods_to_benchmark:
         res, sil_dom, foscttm, alignment_score = run_metrics_from_adata(benchmark_adata, method, batch_key = batch_key, label_key = encoded_label_key, masked_label_key = masked_encoded_label_key)
         result_row = {"seed": args.seed, 
-                      "n_components": args.components, 
-                    "model": method, 
-                    "FOSCTTM": foscttm, 
-                    "Silhouette_domain": sil_dom,
-                    "Accuracy_missing": res['acc_missing'], 
-                    "Accuracy_visible": res['acc_visible'],
-                    "Alignment_score": alignment_score,
-                    "time": times_dict.get(method, None),
-                    "memory": memory_dict.get(method, None)}
+                        "n_components": args.components, 
+                        "noise": args.noise,
+                        "dropout": args.dropout,
+                        "model": method, 
+                        "FOSCTTM": foscttm, 
+                        "Silhouette_domain": sil_dom,
+                        "Accuracy_missing": res['acc_missing'], 
+                        "Accuracy_visible": res['acc_visible'],
+                        "Alignment_score": alignment_score,
+                        "time": times_dict.get(method, None),
+                        "memory": memory_dict.get(method, None)}
 
         rows_list.append(result_row)
 
