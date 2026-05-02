@@ -83,7 +83,7 @@ def ablation_fosta( method_name = None,
     return embedding
 
 def run_our_models(model_name=None, x_source = None, x_target = None, y_source= None, y_target = None, 
-                   embedder = "PHATE", 
+                #    embedder = "PHATE", 
                    seed=42, 
                    gamma = 0.5, 
                    mu = 0.5,
@@ -95,7 +95,7 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
     
     if model_name == "RFMALI":
         model = RFMALI(
-            embedder=embedder,
+            # embedder=embedder,
             n_components=n_components,
             random_state=seed,
             n_jobs=-1,
@@ -107,7 +107,7 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
          
     elif model_name == "RFMALI_WIP" or "FoSTA" in model_name:
         model = FoSTA(
-            embedder=embedder,
+            # embedder=embedder,
             n_components=n_components,
             random_state=seed,
             n_jobs=-1,
@@ -119,7 +119,7 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
         print("Alignment complete.")
     elif model_name == "FoSTA_ICML":
         model = FoSTA_ICML(
-            embedder=embedder,
+            # embedder=embedder,
             n_components=n_components,
             random_state=seed,
             n_jobs=-1,
@@ -130,7 +130,8 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
         embedding = model.fit_transform(x_source, x_target, y_source, y_target)
         print("Alignment complete.")
     elif model_name == 'MALI':
-        model = MALI(embedder=embedder,
+        model = MALI(
+            # embedder=embedder,
                     n_components=n_components,
                     verbose=1,
                     random_state=seed)
