@@ -213,11 +213,20 @@ def paired_evaluate_and_save_results(adata, save_path_subfolder, save_path_paren
                             
 
 def save_embeddings(adata, save_path, label_key, batch_key):
+    # 1. Ensure we use a non-interactive backend for headless runs
+    import matplotlib
+    matplotlib.use('Agg') 
+    
     list_methods = [method for method in list(adata.obsm.keys()) if method not in ["X", "X_pca", "Unintegrated"]]
     for method in list_methods:
-        sc.pl.embedding(adata, basis=method, color=[batch_key, label_key], title=method)
+        # 2. Set show=False to prevent scanpy from calling plt.show()
+        sc.pl.embedding(adata, basis=method, color=[batch_key, label_key], title=method, show=False)
+        
         plt.tight_layout()
         plt.savefig(f"{save_path}/{method}.png")
+        
+        # 3. Explicitly close the figure to free up memory and prevent popups
+        plt.close()
 
         #%%     
 
