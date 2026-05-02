@@ -28,27 +28,27 @@ methods_params_dict = {
 
 
                         
-                        "Old FoSTA gap t=2": {"method_type": "FoSTA",
-                                        "kernel_method": "gap",
-                                        "old_version": True,
-                                        "t": 2},
+                        # "Old FoSTA gap t=2": {"method_type": "FoSTA",
+                        #                 "kernel_method": "gap",
+                        #                 "old_version": True,
+                        #                 "t": 2},
                         
-                        "Old FoSTA gap t=2 (max-normalized rows)": {"method_type": "FoSTA",
-                                        "kernel_method": "gap",
-                                        "max_normalize": True,
-                                        "old_version": True,
-                                        "t": 2},
+                        # "Old FoSTA gap t=2 (max-normalized rows)": {"method_type": "FoSTA",
+                        #                 "kernel_method": "gap",
+                        #                 "max_normalize": True,
+                        #                 "old_version": True,
+                        #                 "t": 2},
 
 
-                       "Old FoSTA gap t=auto": {"method_type": "FoSTA",
-                                            "kernel_method": "gap",
-                                            "old_version": True,
-                                            "t": "auto"},
-                        "Old FoSTA gap t=auto (max-normalized rows)": {"method_type": "FoSTA",
-                                            "kernel_method": "gap",
-                                            "max_normalize": True,
-                                            "old_version": True,
-                                            "t": "auto"},
+                    #    "Old FoSTA gap t=auto": {"method_type": "FoSTA",
+                    #                         "kernel_method": "gap",
+                    #                         "old_version": True,
+                    #                         "t": "auto"},
+                    #     "Old FoSTA gap t=auto (max-normalized rows)": {"method_type": "FoSTA",
+                    #                         "kernel_method": "gap",
+                    #                         "max_normalize": True,
+                    #                         "old_version": True,
+                    #                         "t": "auto"},
 
                                             
 
@@ -88,13 +88,13 @@ methods_params_dict = {
                         
 
 
-                        # "Scanorama":{},
-                        # "LIGER":{},
-                        # "Harmony":{},
-                        # "scVI":{},
-                        # "scANVI":{},
-                        # "Pamona":{},
-                        # "KEMArbf": {},
-                        # "KEMAlin": {}
+                        "Scanorama":{},
+                        "LIGER":{},
+                        "Harmony":{},
+                        "scVI":{},
+                        "scANVI":{},
+                        "Pamona":{},
+                        "KEMArbf": {},
+                        "KEMAlin": {}
 
                     }
