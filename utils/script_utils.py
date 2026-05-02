@@ -139,15 +139,20 @@ def evaluate_and_save_results(adata, save_path_subfolder, save_path_parent, orig
     results_df.insert(0, "method", results_df.index)
     results_df.insert(0, "n_components", args.components)
     results_df.insert(0, "seed", args.seed)
-
+  
     if "noise" in args:
         results_df.insert(0, "noise", args.noise)
     if "dropout" in args:
         results_df.insert(0, "dropout", args.dropout)
     
+    if "batch1" in args and "batch2" in args:
+        results_df.insert(0, "batch1", args.batch1)
+        results_df.insert(0, "batch2", args.batch2)
+        
     results_df["time"] = results_df["method"].map(times_dict)
     results_df["memory"] = results_df["method"].map(memory_dict)
-       
+    results_df["folder"] = save_path_subfolder # where is this result coming from, useful for later analysis when we combine results from different runs in the parent folder
+
     print(results_df)
     # save in the subfolder for this specific run
     results_df.to_csv(f"{save_path_subfolder}/{save_name}_results.csv", index=False)
