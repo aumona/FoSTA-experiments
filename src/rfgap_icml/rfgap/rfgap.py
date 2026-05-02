@@ -727,7 +727,7 @@ def RFGAP(prediction_type=None, y=None, prox_method='rfgap', matrix_type='sparse
             data : array_like (numeric) of shape (n_samples, n_features)
             
             """
-            n = len(data)
+            n = data.shape[0]
             return [_generate_unsampled_indices(t.random_state, n, n) for t in self.estimators_]
 
 
@@ -746,7 +746,7 @@ def RFGAP(prediction_type=None, y=None, prox_method='rfgap', matrix_type='sparse
             oob_matrix : array_like (n_samples, n_estimators) 
             
             """
-            n = len(data)
+            n = data.shape[0]
             oob_matrix = np.zeros((n, self.n_estimators))
             oob_samples = self._get_oob_samples(data)
             for t in range(self.n_estimators): 
@@ -763,7 +763,7 @@ def RFGAP(prediction_type=None, y=None, prox_method='rfgap', matrix_type='sparse
             data : array_like (numeric) of shape (n_samples, n_features)
             
             """
-            n = len(data)
+            n = data.shape[0]
             return [_generate_sample_indices(t.random_state, n, n) for t in self.estimators_]
 
 
@@ -781,7 +781,7 @@ def RFGAP(prediction_type=None, y=None, prox_method='rfgap', matrix_type='sparse
             in_bag_matrix : array_like (n_samples, n_estimators) 
             
             """
-            n = len(data)
+            n = data.shape[0]
             in_bag_matrix = np.zeros((n, self.n_estimators))
             in_bag_samples = self._get_in_bag_samples(data)
             for t in range(self.n_estimators):
@@ -1286,7 +1286,7 @@ def RFGAP(prediction_type=None, y=None, prox_method='rfgap', matrix_type='sparse
             except:
                 y_arr = np.asarray(y)
                 
-            n_samples = len(y_arr)
+            n_samples = y_arr.shape[0]
     
             non_zero_diagonal = self.non_zero_diagonal
     
