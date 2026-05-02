@@ -82,7 +82,8 @@ def run_methods(adata, save_path, label_key, encoded_label_key, batch_key, metho
     else:
         print(f"Using the original space as input for the methods...")
         embedding_basis = "X"
-
+        adata.obsm["X"] = adata.X.copy() # hack so that we can access via adata.obsm[embedding_basis] 
+    
     for method_name, method_params in methods_params_dict.items():
         
         # if there is a parameter called "method_type" in method_params, then we assume "method_name" is the save name, and "method_type" is the actual method to run (ex. FoSTA with different t's will be called "FostA_t2" and "FoSTA_t10" but the method type is "FoSTA" for both)
