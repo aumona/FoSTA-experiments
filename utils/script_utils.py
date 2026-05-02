@@ -75,6 +75,14 @@ def run_methods(adata, save_path, label_key, encoded_label_key, batch_key, metho
         times_dict = {}
         memory_dict = {}
     
+
+    if args.npca>0:
+        print(f"Using PCA with {args.npca} components as input for the methods...")
+        embedding_basis = "X_pca"
+    else:
+        print(f"Using the original space as input for the methods...")
+        embedding_basis = "X"
+
     for method_name, method_params in methods_params_dict.items():
         
         # if there is a parameter called "method_type" in method_params, then we assume "method_name" is the save name, and "method_type" is the actual method to run (ex. FoSTA with different t's will be called "FostA_t2" and "FoSTA_t10" but the method type is "FoSTA" for both)
@@ -85,7 +93,7 @@ def run_methods(adata, save_path, label_key, encoded_label_key, batch_key, metho
         method_type = method_params.pop("method_type", None)
         
         print(f"Running method {method_name}...")
-        adata, time_taken, memory_taken = run_models_from_adata(adata, method_type, batch_key = batch_key, label_key_ours = encoded_label_key, label_key = label_key, embedding_basis="X_pca", seed=args.seed, n_components = args.components, **method_params)
+        adata, time_taken, memory_taken = run_models_from_adata(adata, method_type, batch_key = batch_key, label_key_ours = encoded_label_key, label_key = label_key, embedding_basis=embedding_basis, seed=args.seed, n_components = args.components, **method_params)
         adata.obsm[f"{method_name}"] = adata.obsm.pop(method_type) # move the embedding to the correct key in obsm. bc the above function saves it in the method_type key, but we want it to be saved in the method_name key (ex. "FoSTA_t2" instead of "FoSTA")
         
         times_dict[f"{method_name}"] = time_taken
