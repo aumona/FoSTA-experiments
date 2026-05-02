@@ -396,6 +396,9 @@ def build_W_matrix(cache, kernel_method, force_nonzero_diag=False):
                 inbag_counts_per_row[inbag_counts_per_row == 0] = 1.0
                 labeled_target_diag = row_sums / inbag_counts_per_row
 
+
+
+
                 if has_unlabeled:
                     unl = cache.idx_unlabeled.astype(np.int64, copy=False)
                     lab = np.flatnonzero(~cache.row_is_unlabeled)
@@ -420,6 +423,24 @@ def build_W_matrix(cache, kernel_method, force_nonzero_diag=False):
                 else:
                     diag_rows = np.arange(N, dtype=np.int64)
                     diag_vals = labeled_target_diag
+
+
+
+
+
+                # #### TO MATCH ICML EXACTLY #####
+                # if has_unlabeled:
+                #     lab = np.flatnonzero(~cache.row_is_unlabeled)
+                
+                #     # Match old RFGAP semi-supervised behavior:
+                #     # - labeled points receive the standard private diagonal correction
+                #     # - unlabeled points use their natural all-tree query diagonal
+                #     #   from ordinary leaf coordinates, so no private correction is added.
+                #     diag_rows = lab
+                #     diag_vals = labeled_target_diag[lab]
+                # else:
+                #     diag_rows = np.arange(N, dtype=np.int64)
+                #     diag_vals = labeled_target_diag
 
             else:
                 # [New Logic] force_nonzero_diag=False but transductive.
