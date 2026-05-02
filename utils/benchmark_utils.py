@@ -86,7 +86,7 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
                 #    embedder = "PHATE", 
                    seed=42, 
                    gamma = 0.5, 
-                   mu = 0.5,
+                   mu_kema = 0.5,
                    n_components = 2,
                    **fosta_params):
     # this function works for MALI, RF-MALI, KEMA, Pamona
@@ -144,7 +144,7 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
     elif model_name == 'KEMArbf':
         model = KEMArbf(
             n_components=n_components,
-            mu=mu,
+            mu=mu_kema,
             random_state=seed,
             unlabeled_value=-1
         )
@@ -154,7 +154,7 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
     elif model_name == 'KEMAlin':
         model = KEMAlin(
             n_components=n_components,
-            mu=mu,
+            mu=mu_kema,
             random_state=seed,
             unlabeled_value=-1
         )
