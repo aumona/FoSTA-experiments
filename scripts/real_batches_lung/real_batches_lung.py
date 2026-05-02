@@ -35,6 +35,9 @@ parser.add_argument('--batch1', default = "4")
 parser.add_argument('--batch2', default = "5")
 args = parser.parse_args()
 
+if args.test:
+    from methods_configs_test import methods_params_dict
+
 batches = [args.batch1, args.batch2]
 
 # set save location 
