@@ -104,8 +104,8 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
         print("\nStarting alignment...")
         embedding = model.fit_transform(x_source, x_target, y_source, y_target)
         print("Alignment complete.")
-    
-    elif model_name == "RFMALI_WIP" or model_name == "FoSTA":
+         
+    elif model_name == "RFMALI_WIP" or "FoSTA" in model_name:
         model = FoSTA(
             embedder=embedder,
             n_components=n_components,
@@ -555,7 +555,7 @@ def benchmark_from_adata(adata, methods, batch_key = "batch", label_key = "cell_
                                                    kbet_per_label=True, 
                                                    graph_connectivity=True, 
                                                    pcr_comparison=True),
-        bio_conservation_metrics = BioConservation(isolated_labels=True, 
+        bio_conservation_metrics = BioConservation(isolated_labels=False, 
                                                    nmi_ari_cluster_labels_leiden=True,
                                                    nmi_ari_cluster_labels_kmeans=True, 
                                                    silhouette_label=True, 
@@ -618,7 +618,6 @@ def benchmark_from_adata(adata, methods, batch_key = "batch", label_key = "cell_
         if trajectory_:
             df.loc[df.index == method, "trajectory_score"] = scib_results.loc["trajectory"].values[0]
             df.loc[df.index == "Metric Type", "trajectory_score"] = "Bio Conservation (label-free)"
- 
 
     # visualize
     bm.plot_results_table(min_max_scale=False, save_dir = save_path, show=False)
