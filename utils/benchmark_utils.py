@@ -104,19 +104,7 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
         print("\nStarting alignment...")
         embedding = model.fit_transform(x_source, x_target, y_source, y_target)
         print("Alignment complete.")
-         
-    elif model_name == "RFMALI_WIP" or "FoSTA" in model_name:
-        model = FoSTA(
-            # embedder=embedder,
-            n_components=n_components,
-            random_state=seed,
-            n_jobs=-1,
-            verbose=1,
-            **fosta_params
-        )
-        print("\nStarting alignment...")
-        embedding = model.fit_transform(x_source, x_target, y_source, y_target)
-        print("Alignment complete.")
+
     elif model_name == "FoSTA_ICML":
         model = FoSTA_ICML(
             # embedder=embedder,
@@ -129,6 +117,20 @@ def run_our_models(model_name=None, x_source = None, x_target = None, y_source= 
         print("\nStarting alignment...")
         embedding = model.fit_transform(x_source, x_target, y_source, y_target)
         print("Alignment complete.")
+        
+    elif model_name == "RFMALI_WIP" or "FoSTA" in model_name:
+        model = FoSTA(
+            # embedder=embedder,
+            n_components=n_components,
+            random_state=seed,
+            n_jobs=-1,
+            verbose=1,
+            **fosta_params
+        )
+        print("\nStarting alignment...")
+        embedding = model.fit_transform(x_source, x_target, y_source, y_target)
+        print("Alignment complete.")
+
     elif model_name == 'MALI':
         model = MALI(
             # embedder=embedder,
@@ -328,7 +330,7 @@ def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours
         # ------------------ run harmony --------------------------------
         elif model_name.lower() == "harmony":
             # Run Harmony to correct for batch effects 
-            harmony_out = harmonypy.run_harmony(adata.obsm["X_pca"], adata.obs, vars_use=[batch_key])
+            harmony_out = harmonypy.run_harmony(adata.obsm[embedding_basis], adata.obs, vars_use=[batch_key])
 
             adata.obsm["Harmony"] = harmony_out.Z_corr
 
