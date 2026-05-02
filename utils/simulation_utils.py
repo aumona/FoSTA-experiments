@@ -235,7 +235,10 @@ def preprocess_adata(adata, batch_key, n_top_genes=2000, n_pcs=30):
 
     # subset to the highly variable genes so that each method has the same input.
     adata = adata[:, adata.var.highly_variable].copy()
-    adata.obsm["Unintegrated"] = adata.obsm["X_pca"]
+    try:
+        adata.obsm["Unintegrated"] = adata.obsm["X_pca"]
+    except KeyError:
+        adata.obsm["Unintegrated"] = adata.X.copy()
     return adata
 
 
