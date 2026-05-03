@@ -20,7 +20,7 @@ class FoSTA:
 
     def __init__(
         self,
-        mu='auto',
+        mu=1,
         kernel_method="gap",
         force_nonzero_diag=True,
         force_symmetric=True,
