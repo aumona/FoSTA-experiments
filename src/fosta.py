@@ -11,6 +11,10 @@ from utils.labels import LabelUtils
 
 from .hiref.adaptive_HiRef import solve_surjection_hiref
 
+# for dense OT solver (MALI-style)
+from scipy.spatial.distance import cdist
+import ot
+
 
 class FoSTA:
     """
@@ -36,6 +40,12 @@ class FoSTA:
         verbose=1,
         random_state=None,
         n_jobs=-1,
+
+
+        ot_solver="hiref",
+        entR=0,
+        m=1,
+        distance="cosine",
     ):
         self.random_state = random_state
         self.verbose = verbose
@@ -67,6 +77,12 @@ class FoSTA:
         self.beta = beta
         self.embedder = embedder
         self.n_components = n_components
+
+        self.ot_solver = ot_solver
+        self.entR = entR
+        self.m = m
+        self.distance = distance
+        self.Distances12 = None
 
         # State storage
         self.kernel_a = self.kernel_b = None
@@ -149,13 +165,90 @@ class FoSTA:
 
         return post
 
-    def _compute_coupling(self, post_a, post_b):
-        return solve_surjection_hiref(
-            post_a,
-            post_b,
-            verbose=self.verbose,
-            random_state=self.random_state,
+    def _compute_dense_ot(self, post_a, post_b):
+        self._log("Computing dense OT...")
+    
+        X = np.asarray(post_a, dtype=float).copy()
+        Y = np.asarray(post_b, dtype=float).copy()
+    
+        X = np.nan_to_num(X, nan=0.0, posinf=1e6, neginf=-1e6)
+        Y = np.nan_to_num(Y, nan=0.0, posinf=1e6, neginf=-1e6)
+    
+        eps = 1e-12
+        if self.distance == "cosine":
+            if X.shape[1] == 0 or Y.shape[1] == 0:
+                raise ValueError("Semantic vectors have zero columns.")
+    
+            zero_x = np.linalg.norm(X, axis=1) < eps
+            zero_y = np.linalg.norm(Y, axis=1) < eps
+            X[zero_x, 0] = eps
+            Y[zero_y, 0] = eps
+    
+        self.Distances12 = cdist(X, Y, self.distance)
+        self.Distances12 = np.nan_to_num(
+            self.Distances12,
+            nan=1.0,
+            posinf=1.0,
+            neginf=1.0,
         )
+    
+        N1, N2 = X.shape[0], Y.shape[0]
+        m_eff = self.m
+    
+        if N1 == N2:
+            if m_eff == 1:
+                a = np.repeat(1.0, N1)
+                b = np.repeat(1.0, N2)
+                transport = "wot" if self.entR == 0 else "wotR"
+            else:
+                a = np.repeat(1.0 / N1, N1)
+                b = np.repeat(1.0 / N2, N2)
+                m_eff = np.floor(m_eff * N1) / N1
+                transport = "wotpartial" if self.entR == 0 else "wotpartialR"
+        else:
+            if m_eff == 1:
+                a = np.repeat(1.0, N1)
+                b = np.repeat(N1 / N2, N2)
+                transport = "wot" if self.entR == 0 else "wotR"
+                self._log("Dense OT: unbalanced full transport.")
+            else:
+                a = np.repeat(1.0 / N1, N1)
+                b = np.repeat(1.0 / N2, N2)
+                m_eff = np.floor(m_eff * N1) / N1
+                transport = "wotpartial" if self.entR == 0 else "wotpartialR"
+    
+        C = self.Distances12[:N1, :N2]
+    
+        if transport == "wot":
+            T = ot.emd(a, b, C)
+        elif transport == "wotR":
+            T = ot.bregman.sinkhorn_log(a, b, C, reg=self.entR)
+        elif transport == "wotpartial":
+            T = ot.partial.partial_wasserstein(a, b, C, m=m_eff, nb_dummies=100)
+            T[T < 1e-10] = 0
+        elif transport == "wotpartialR":
+            T = ot.partial.entropic_partial_wasserstein(a, b, C, reg=self.entR, m=m_eff)
+            T[T < 1e-10] = 0
+        else:
+            raise ValueError("Not implemented.")
+    
+        T[T < 1e-5] = 0
+        return sparse.csr_matrix(T)
+    
+    
+    def _compute_coupling(self, post_a, post_b):
+        if self.ot_solver == "hiref":
+            return solve_surjection_hiref(
+                post_a,
+                post_b,
+                verbose=self.verbose,
+                random_state=self.random_state,
+            )
+    
+        if self.ot_solver == "dense":
+            return self._compute_dense_ot(post_a, post_b)
+    
+        raise ValueError(f"Unknown ot_solver={self.ot_solver!r}. Use 'hiref' or 'dense'.")
 
     def _build_balanced_affinity(self, prox_a, prox_b, T):
         """
