@@ -42,9 +42,6 @@ class FoSTA:
         self.n_jobs = n_jobs
 
         self.kernel_method = kernel_method
-        if self.kernel_method not in {"kerf", "gap"}:
-            raise ValueError("FoSTA currently supports only kernel_method='kerf' or 'gap'.")
-
         self.model_type = model_type
         self.n_estimators = n_estimators
         self.force_nonzero_diag = force_nonzero_diag
