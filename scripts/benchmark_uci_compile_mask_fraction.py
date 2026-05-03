@@ -11,12 +11,18 @@ import matplotlib.pyplot as plt
 # CONFIG
 # =============================================================================
 
-RESULTS_CSV = Path("/NOBACKUP/aumona/projects/RF-MALI/results_uci/results_20260425_014919.csv")
+RESULTS_CSV = Path("/NOBACKUP/aumona/projects/RF-MALI/results_uci/results_20260502_204412.csv")
 OUT_DIR = Path("/NOBACKUP/aumona/projects/RF-MALI/results_uci/mask_fraction_plots")
 
 SELECTED_METHODS = [
-    "FoSTA_orig",
-    "FoSTA_oob",
+    "FoSTA_gap_t2",
+    "FoSTA_gap_auto",
+    "FoSTA_gap_mauto_t2",
+    "FoSTA_gap_mauto_auto",
+    "FoSTA_kerf_t2",
+    "FoSTA_kerf_auto",
+    "FoSTA_kerf_mauto_t2",
+    "FoSTA_kerf_mauto_auto",
     "MALI",
     "MALI_nodpt",
     "Pamona",
@@ -25,8 +31,14 @@ SELECTED_METHODS = [
 ]
 
 METHOD_DISPLAY_NAMES = {
-    "FoSTA_orig": "FoSTA (Original)",
-    "FoSTA_oob": "FoSTA (OOB)",
+    "FoSTA_gap_t2": "FoSTA (Gap, t2)",
+    "FoSTA_gap_auto": "FoSTA (Gap, auto)",
+    "FoSTA_gap_mauto_t2": "FoSTA (Gap, mauto, t2)",
+    "FoSTA_gap_mauto_auto": "FoSTA (Gap, mauto, auto)",
+    "FoSTA_kerf_t2": "FoSTA (Kerf, t2)",
+    "FoSTA_kerf_auto": "FoSTA (Kerf, auto)",
+    "FoSTA_kerf_mauto_t2": "FoSTA (Kerf, mauto, t2)",
+    "FoSTA_kerf_mauto_auto": "FoSTA (Kerf, mauto, auto)",
     "MALI": "MALI",
     "MALI_nodpt": "MALI w/o DPT",
     "Pamona": "Pamona",
@@ -34,20 +46,28 @@ METHOD_DISPLAY_NAMES = {
     "KEMArbf": r"KEMA$_{\mathrm{rbf}}$",
 }
 
-# Okabe-Ito / colorblind-friendly palette
+
 METHOD_COLORS = {
-    "FoSTA_orig": "#0072B2",   # blue
-    "FoSTA_oob": "#E69F00",    # orange
-    "MALI": "#009E73",         # green
-    "MALI_nodpt": "#D55E00",   # vermillion
-    "Pamona": "#CC79A7",       # purple
-    "KEMAlin": "#8C564B",      # brown
-    "KEMArbf": "#7F7F7F",      # gray
+    "FoSTA_gap_t2": "#0072B2",   # blue
+    "FoSTA_gap_auto": "#E69F00",    # orange
+    "FoSTA_gap_mauto_t2": "#56B4E9",   # light blue
+    "FoSTA_gap_mauto_auto": "#F0E442",   # yellow
+    "FoSTA_kerf_t2": "#009E73",         # green
+    "FoSTA_kerf_auto": "#D55E00",   # vermillion
+    "FoSTA_kerf_mauto_t2": "#CC79A7",       # purple
+    "FoSTA_kerf_mauto_auto": "#8C564B",      # brown
+    "MALI": "#7F7F7F",      # gray
 }
 
 METHOD_STYLES = {
-    "FoSTA_orig": dict(linestyle="-", linewidth=3.2, alpha=1.0),
-    "FoSTA_oob": dict(linestyle="-", linewidth=3.2, alpha=1.0),
+    "FoSTA_gap_t2": dict(linestyle="-", linewidth=3.2, alpha=1.0),
+    "FoSTA_gap_auto": dict(linestyle="-", linewidth=3.2, alpha=1.0),
+    "FoSTA_gap_mauto_t2": dict(linestyle="-", linewidth=3.2, alpha=1.0),
+    "FoSTA_gap_mauto_auto": dict(linestyle="-", linewidth=3.2, alpha=1.0),
+    "FoSTA_kerf_t2": dict(linestyle="-", linewidth=3.2, alpha=1.0),
+    "FoSTA_kerf_auto": dict(linestyle="-", linewidth=3.2, alpha=1.0),
+    "FoSTA_kerf_mauto_t2": dict(linestyle="-", linewidth=3.2, alpha=1.0),
+    "FoSTA_kerf_mauto_auto": dict(linestyle="-", linewidth=3.2, alpha=1.0),
     "MALI": dict(linestyle="--", linewidth=1.9, alpha=0.70),
     "MALI_nodpt": dict(linestyle="--", linewidth=1.9, alpha=0.70),
     "Pamona": dict(linestyle="--", linewidth=1.9, alpha=0.70),

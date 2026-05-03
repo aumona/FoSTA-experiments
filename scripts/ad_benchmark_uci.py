@@ -31,6 +31,7 @@ from src.Pamona.eval import (
 )
 
 from src.fosta import FoSTA as FoSTA
+from src.fosta_icml import FoSTA as FoSTA_ICML
 from src.mali import MALI
 from src.pamona import Pamona
 from src.kemalin import KEMAlin
@@ -64,15 +65,18 @@ DATASETS = [
 
 METHODS = [
 
+    "FoSTA_ICML_t2",
+    "FoSTA_ICML_auto",
+
     "FoSTA_gap_t2",
     "FoSTA_gap_auto",
     "FoSTA_gap_mauto_t2",
-    "FoSTA_gap_mauto_auto",
+    # "FoSTA_gap_mauto_auto",
 
     "FoSTA_kerf_t2",
     "FoSTA_kerf_auto",
     "FoSTA_kerf_mauto_t2",
-    "FoSTA_kerf_mauto_auto",
+    # "FoSTA_kerf_mauto_auto",
 
     "MALI",
     "MALI_nodpt",
@@ -85,21 +89,21 @@ METHODS = [
 ]
 
 SPLITS = [
-    "add_gaussian_noise_features",
-    "random",
-    "importance",
-    "alternate_importance",
-    "rotate",
+    # "add_gaussian_noise_features",
+    # "random",
+    # "importance",
+    # "alternate_importance",
+    # "rotate",
     "distort",
 ]
 
 SEEDS = list(range(5))
 
 TRANSFORM = "standardize"
-MASK_FRACTIONS = [0.1, 0.3, 0.5, 0.7, 0.9]  # fraction of target labels to mask (set to -1) for label transfer evaluation
-# MASK_FRACTIONS = [0.5]  # fraction of target labels to mask (set to -1) for label transfer evaluation
+# MASK_FRACTIONS = [0.1, 0.3, 0.5, 0.7, 0.9]  # fraction of target labels to mask (set to -1) for label transfer evaluation
+MASK_FRACTIONS = [0.5]  # fraction of target labels to mask (set to -1) for label transfer evaluation
 
-NOISE_SIGMA = 0.2  # reasonable amount of noise
+NOISE_SIGMA = 0.5  # reasonable amount of noise
 SIGNAL_TO_NOISE_RATIO = 0.1
 
 N_COMPONENTS = 2
@@ -288,6 +292,29 @@ def mask_target_labels(y_true, mask_fraction, seed):
 
 def build_model(method: str, seed: int):
     m = method.lower()
+
+    if m == "fosta_icml_t2":
+        return FoSTA_ICML(
+            embedder=EMBEDDER,
+            n_components=N_COMPONENTS,
+            n_estimators=N_ESTIMATORS,
+            t=2,
+            beta=BETA,
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
+        )
+    if m == "fosta_icml_auto":
+        return FoSTA_ICML(
+            embedder=EMBEDDER,
+            n_components=N_COMPONENTS,
+            n_estimators=N_ESTIMATORS,
+            t='auto',
+            beta=BETA,
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
+        )
 
     if m == "fosta_gap_t2":
         return FoSTA(
