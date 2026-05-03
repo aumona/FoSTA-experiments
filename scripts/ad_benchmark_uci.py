@@ -63,25 +63,16 @@ DATASETS = [
 ]
 
 METHODS = [
-    
 
-    # "FoSTA_gap",
-    # "FoSTA_gap_tsem=auto_avg",
+    "FoSTA_gap_t2",
+    "FoSTA_gap_auto",
+    "FoSTA_gap_mauto_t2",
+    "FoSTA_gap_mauto_auto",
 
-
-
-
-    # "FoSTA_orig",
-    # "FoSTA_orig_tsem=auto_avg",
-
-
-
-
-    "old FoSTA_gap",
-    "old FoSTA_gap tsem=auto_avg",
-    "old FoSTA_kerf",
-    "old FoSTA_kerf tsem=auto_avg",
-
+    "FoSTA_kerf_t2",
+    "FoSTA_kerf_auto",
+    "FoSTA_kerf_mauto_t2",
+    "FoSTA_kerf_mauto_auto",
 
     "MALI",
     "MALI_nodpt",
@@ -105,15 +96,14 @@ SPLITS = [
 SEEDS = list(range(5))
 
 TRANSFORM = "standardize"
-# MASK_FRACTIONS = [0.1, 0.3, 0.5, 0.7, 0.9]  # fraction of target labels to mask (set to -1) for label transfer evaluation
-MASK_FRACTIONS = [0.5]  # fraction of target labels to mask (set to -1) for label transfer evaluation
+MASK_FRACTIONS = [0.1, 0.3, 0.5, 0.7, 0.9]  # fraction of target labels to mask (set to -1) for label transfer evaluation
+# MASK_FRACTIONS = [0.5]  # fraction of target labels to mask (set to -1) for label transfer evaluation
 
 NOISE_SIGMA = 0.2  # reasonable amount of noise
 SIGNAL_TO_NOISE_RATIO = 0.1
 
 N_COMPONENTS = 2
 EMBEDDER = "PHATE"
-MU = 0.5
 GAMMA = 0.5
 MODEL_TYPE = "rf"
 N_ESTIMATORS = 500
@@ -299,43 +289,117 @@ def mask_target_labels(y_true, mask_fraction, seed):
 def build_model(method: str, seed: int):
     m = method.lower()
 
-    if m == "fosta_gap":
+    if m == "fosta_gap_t2":
         return FoSTA(
             embedder=EMBEDDER,
-            mu=MU,
             n_components=N_COMPONENTS,
             kernel_method='gap',
-            t_sem_a=None,
-            t_sem_b=None,
             model_type=MODEL_TYPE,
             n_estimators=N_ESTIMATORS,
-            t=T,
-            ot_solver='hiref',
+            t=2,
             beta=BETA,
             random_state=seed,
             n_jobs=N_JOBS,
             verbose=VERBOSE,
         )
     
-    if m == "fosta_gap_tsem=auto_avg":
+    if m == "fosta_gap_auto":
         return FoSTA(
             embedder=EMBEDDER,
-            mu=MU,
             n_components=N_COMPONENTS,
             kernel_method='gap',
-            t_sem_a='auto',
-            t_sem_b='auto',
-            average_semantic_diffusion=True,
             model_type=MODEL_TYPE,
             n_estimators=N_ESTIMATORS,
-            t=T,
-            ot_solver='hiref',
+            t='auto',
+            beta=BETA,
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
+        )
+    if m == "fosta_gap_mauto_t2":
+        return FoSTA(
+            embedder=EMBEDDER,
+            mu='auto',
+            n_components=N_COMPONENTS,
+            kernel_method='gap',
+            model_type=MODEL_TYPE,
+            n_estimators=N_ESTIMATORS,
+            t=2,
+            beta=BETA,
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
+        )
+    if m == "fosta_gap_mauto_auto":
+        return FoSTA(
+            embedder=EMBEDDER,
+            mu='auto',
+            n_components=N_COMPONENTS,
+            kernel_method='gap',
+            model_type=MODEL_TYPE,
+            n_estimators=N_ESTIMATORS,
+            t='auto',
+            beta=BETA,
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
+        )
+    if m == "fosta_kerf_t2":
+        return FoSTA(
+            embedder=EMBEDDER,
+            n_components=N_COMPONENTS,
+            kernel_method='kerf',
+            model_type=MODEL_TYPE,
+            n_estimators=N_ESTIMATORS,
+            t=2,
             beta=BETA,
             random_state=seed,
             n_jobs=N_JOBS,
             verbose=VERBOSE,
         )
     
+    if m == "fosta_kerf_auto":
+        return FoSTA(
+            embedder=EMBEDDER,
+            n_components=N_COMPONENTS,
+            kernel_method='kerf',
+            model_type=MODEL_TYPE,
+            n_estimators=N_ESTIMATORS,
+            t='auto',
+            beta=BETA,
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
+        )
+    
+    if m == "fosta_kerf_mauto_t2":
+        return FoSTA(
+            embedder=EMBEDDER,
+            mu='auto',
+            n_components=N_COMPONENTS,
+            kernel_method='kerf',
+            model_type=MODEL_TYPE,
+            n_estimators=N_ESTIMATORS,
+            t=2,
+            beta=BETA,
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
+        )
+    if m == "fosta_kerf_mauto_auto":
+        return FoSTA(
+            embedder=EMBEDDER,
+            mu='auto',
+            n_components=N_COMPONENTS,
+            kernel_method='kerf',
+            model_type=MODEL_TYPE,
+            n_estimators=N_ESTIMATORS,
+            t='auto',
+            beta=BETA,
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
+        )
    
     if m == "mali":
         return MALI(
@@ -370,13 +434,11 @@ def build_model(method: str, seed: int):
     if m == "kemalin":
         return KEMAlin(
             n_components=N_COMPONENTS,
-            mu=MU,
         )
 
     if m == "kemarbf":
         return KEMArbf(
             n_components=N_COMPONENTS,
-            mu=MU,
         )
 
     raise ValueError(f"Unknown method '{method}'.")
@@ -413,7 +475,6 @@ def run_experiment():
         "signal_to_noise_ratio": SIGNAL_TO_NOISE_RATIO,
         "n_components": N_COMPONENTS,
         "embedder": EMBEDDER,
-        "mu": MU,
         "gamma": GAMMA,
         "model_type": MODEL_TYPE,
         "n_estimators": N_ESTIMATORS,
