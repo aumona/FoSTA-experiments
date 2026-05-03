@@ -20,7 +20,7 @@ class FoSTA:
 
     def __init__(
         self,
-        mu=1,
+        mu='auto',
         kernel_method="gap",
         force_nonzero_diag=True,
         force_symmetric=True,
@@ -162,11 +162,23 @@ class FoSTA:
 
     def _build_balanced_affinity(self, prox_a, prox_b, T):
         """
-        Constructs a joint affinity matrix just like in old FoSTA.
+        Constructs a joint affinity matrix using raw surjective T,
+        followed by optional nonzero-edge mean cross-block scaling.
         """
-        W_ab = self.mu * (prox_a.dot(T) + T.dot(prox_b)) / 2
+        W_ab_raw = (prox_a.dot(T) + T.dot(prox_b)) / 2
+    
+        if self.mu == "auto":
+            intra_mean = 0.5 * (prox_a.data.mean() + prox_b.data.mean())
+            cross_mean = W_ab_raw.data.mean() if W_ab_raw.nnz > 0 else 1.0
+            mu_eff = intra_mean / max(cross_mean, 1e-12)
+        else:
+            mu_eff = float(self.mu)
+    
+        W_ab = mu_eff * W_ab_raw
         W_ba = W_ab.transpose()
-
+    
+        self._log(f"[FoSTA] effective mu={mu_eff:.4f}")
+    
         if self.verbose:
             print("\nJOINT AFFINITY BLOCK STATISTICS")
             print("------------------------------")
@@ -174,7 +186,7 @@ class FoSTA:
             print_mat_stats("Within-domain B (W2)", prox_b)
             print_mat_stats("Cross-domain A→B (W12)", W_ab)
             print_mat_stats("Cross-domain B→A (W21)", W_ba)
-
+    
         return sparse.bmat(
             [
                 [prox_a, W_ab],
