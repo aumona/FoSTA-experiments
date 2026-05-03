@@ -65,17 +65,17 @@ DATASETS = [
 
 METHODS = [
 
-    "FoSTA_ICML_t2",
-    "FoSTA_ICML_auto",
+    # "FoSTA_ICML_t2",
+    # "FoSTA_ICML_auto",
 
-    "FoSTA_gap_t2",
+    # "FoSTA_gap_t2",
     "FoSTA_gap_auto",
-    "FoSTA_gap_mauto_t2",
+    # "FoSTA_gap_mauto_t2",
     # "FoSTA_gap_mauto_auto",
 
-    "FoSTA_kerf_t2",
-    "FoSTA_kerf_auto",
-    "FoSTA_kerf_mauto_t2",
+    # "FoSTA_kerf_t2",
+    # "FoSTA_kerf_auto",
+    # "FoSTA_kerf_mauto_t2",
     # "FoSTA_kerf_mauto_auto",
 
     "MALI",
@@ -89,19 +89,19 @@ METHODS = [
 ]
 
 SPLITS = [
-    # "add_gaussian_noise_features",
-    # "random",
-    # "importance",
-    # "alternate_importance",
-    # "rotate",
+    "add_gaussian_noise_features",
+    "random",
+    "importance",
+    "alternate_importance",
+    "rotate",
     "distort",
 ]
 
 SEEDS = list(range(5))
 
 TRANSFORM = "standardize"
-# MASK_FRACTIONS = [0.1, 0.3, 0.5, 0.7, 0.9]  # fraction of target labels to mask (set to -1) for label transfer evaluation
-MASK_FRACTIONS = [0.5]  # fraction of target labels to mask (set to -1) for label transfer evaluation
+MASK_FRACTIONS = [0.1, 0.3, 0.5, 0.7, 0.9]  # fraction of target labels to mask (set to -1) for label transfer evaluation
+# MASK_FRACTIONS = [0.5]  # fraction of target labels to mask (set to -1) for label transfer evaluation
 
 NOISE_SIGMA = 0.5  # reasonable amount of noise
 SIGNAL_TO_NOISE_RATIO = 0.1

@@ -11,7 +11,7 @@ from pathlib import Path
 # results_csv = "results_uci/results_20260402_013729.csv"   # change if needed
 # results_csv = "results_uci/results_20260428_045940.csv"   # change if needed
 
-results_csv = "results_uci/results_20260503_122708.csv"   # change if needed
+results_csv = "results_uci/results_20260503_015528_general.csv"   # change if needed
 
 out_png = "results_uci/multimodal_ablation_fosta.png"
 
