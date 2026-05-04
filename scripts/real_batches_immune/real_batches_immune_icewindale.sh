@@ -6,11 +6,12 @@ source /opt/anaconda/anaconda3/etc/profile.d/conda.sh
 conda activate $ENV_FOSTA
 
 timestamp=${1:-$(date +%Y-%m-%d_%H-%M-%S)}
-log_dir=/home/lizottem/RF-MALI/logs/real_batches_immune/$timestamp
+log_dir=/NOBACKUP/lizottem/fosta/logs/real_batches_immune/$timestamp
 # create log directory
 mkdir -p "$log_dir"
 
 n_batches=10
+seeds=(11784 39041 56089 79121 4386721)
 
 # Build list of unique pairs
 pairs=()
