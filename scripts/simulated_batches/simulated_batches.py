@@ -29,6 +29,11 @@ parser.add_argument('-d', '--dropout', default = 0, type=float)
 parser.add_argument('-n', '--noise', default = 0, type=float)  
 args = parser.parse_args()
 
+
+if args.test:
+    from methods_configs_test import methods_params_dict
+
+    
 data_path = LUNG_BATCHES_DATA_PATH
 label_key = "cell_type"
 batch_key = "simulated_batch"
@@ -45,6 +50,8 @@ seed = args.seed
 # set save location 
 save_path_parent = f"{RESULTS_PATH}/{args.savename}"
 save_path = f"{save_path_parent}/{batch}" 
+save_path_subfolder = f"{save_path}/noise_{noise_std}_dropout_{dropout_prob}/{n_components}_components/seed_{seed}"
+
 
 # LOAD DATA 
 adata_full = sc.read(data_path)
@@ -67,9 +74,8 @@ adata = split_and_transform_batch_stratified(adata, noise_std=noise_std, dropout
 
 
 
-save_path_subfolder = f"{save_path}/noise_{noise_std}_dropout_{dropout_prob}/{n_components}_components"
 
 adata, original_label_key, masked_label_key, masked_encoded_label_key = prepare_adata(adata, save_path_subfolder, label_key, batch_key, args=args)
-adata = run_methods(adata, save_path, masked_label_key, encoded_label_key=masked_encoded_label_key, batch_key= batch_key, methods_params_dict=methods_params_dict, args=args)
-evaluate_and_save_results(adata, save_path_subfolder=save_path, save_path_parent=save_path_parent, original_label_key=original_label_key, batch_key=batch_key, args=args, save_name = "simulated_batches")
-save_embeddings(adata, save_path, label_key, batch_key)
+adata = run_methods(adata, save_path_subfolder, masked_label_key, encoded_label_key=masked_encoded_label_key, batch_key= batch_key, methods_params_dict=methods_params_dict, args=args)
+evaluate_and_save_results(adata, save_path_subfolder=save_path_subfolder, save_path_parent=save_path_parent, original_label_key=original_label_key, batch_key=batch_key, args=args, save_name = "simulated_batches")
+save_embeddings(adata, save_path_subfolder, label_key, batch_key)
