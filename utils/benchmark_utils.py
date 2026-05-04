@@ -564,8 +564,13 @@ def benchmark_from_adata(adata, methods, batch_key = "batch", label_key = "cell_
                                                    silhouette_label=True, 
                                                    clisi_knn=True)
     )
-
-    bm.benchmark()
+    
+   
+    try:
+        bm.benchmark()
+    except Exception as e:
+        sc.tl.pca(adata, n_comps=30, mask_var="highly_variable", svd_solver='arpack')  # svd_solver='arpack' is for reproducibility, more stable than randomized
+        bm.benchmark()
 
     if save_path is not None:
         # save bm object so it can be reused to plot more things later.
