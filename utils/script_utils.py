@@ -15,7 +15,7 @@ import torch
 import sys, pathlib
 sys.path.insert(0, str(next(p for p in [pathlib.Path.cwd()] + list(pathlib.Path.cwd().parents) if (p/"src").is_dir())))
 from utils.benchmark_utils import visualization, run_models_from_adata, benchmark_from_adata, run_metrics_from_adata
-from utils.simulation_utils import add_noise, dropout, global_label_masking, split_and_transform_batch, clean_and_encode_labels, preprocess_adata, ensure_label_intersection
+from utils.simulation_utils import add_noise, dropout, global_label_masking, remove_dataset_specific_cells, split_and_transform_batch, clean_and_encode_labels, preprocess_adata, ensure_label_intersection
 
 
 def main_argparser(default_savename="experiment", default_globalmasking=0):
@@ -27,6 +27,7 @@ def main_argparser(default_savename="experiment", default_globalmasking=0):
     parser.add_argument('--globalmasking', default = default_globalmasking, type=float) 
     parser.add_argument('--savename', default = default_savename, type=str) 
     parser.add_argument('--test', action='store_true') 
+    parser.add_argument('--remove_unshared', action='store_true') 
     # parser.add_argument('-t', default = "auto") 
 
     return parser
@@ -40,6 +41,10 @@ def prepare_adata(adata, save_path, label_key, batch_key, args, masked_encoded_l
     with open(f"{save_path}/config.json", "w") as f:
         json.dump(vars(args), f, indent=4)
 
+    
+    if args.remove_unshared: # remove cells of labels that are not shared between batches
+        adata, labels_missing_in_batch1, labels_missing_in_batch2 = remove_dataset_specific_cells(adata, batch_key, label_key)
+    
         
     adata = preprocess_adata(adata, batch_key=batch_key, n_top_genes=args.nhvg, n_pcs=args.npca)
 
