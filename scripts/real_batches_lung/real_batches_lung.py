@@ -31,8 +31,8 @@ batch_key = "batch"
 # sys.exit()
 
 parser = main_argparser(default_savename="real_batches_lung")
-parser.add_argument('--batch1', default = "4")
-parser.add_argument('--batch2', default = "5")
+parser.add_argument('--batch1', default = "A1")
+parser.add_argument('--batch2', default = "A4")
 args = parser.parse_args()
 
 if args.test:

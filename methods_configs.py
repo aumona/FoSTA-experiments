@@ -1,100 +1,129 @@
+# Dense / Hiref does not make a difference a1-a4
+# UMAP is bad compared to PHATE on a1-a4
+
+
+
 methods_params_dict = {
-    
-                    #     "Old FoSTA kerf t=2": {"method_type": "FoSTA",
-                    #                         "kernel_method": "kerf",
-                    #                         "old_version": True,
-                    #                         "t": 2},
-                    #    "Old FoSTA kerf t=auto": {"method_type": "FoSTA",
-                    #                         "kernel_method": "kerf",
-                    #                         "old_version": True,
-                    #                         "t": "auto"},
-
-
-                        "MALI": {"t:": 'auto'
-                        },
+                        # "MALI": {"t:": 'auto'
+                        # },
 
 
 
 
+                        # "ICML-FoSTA t2": {"method_type": "FoSTA_ICML",
+                        #                 "t": 2},
 
-                        "ICML FoSTA t=2": {"method_type": "FoSTA_ICML",
-                                        "t": 2},
-                        "ICML FoSTA t=auto": {"method_type": "FoSTA_ICML",
-                                        "t": "auto"},
+                        # "ICML-FoSTA umap": {"method_type": "FoSTA_ICML",
+                        #                 "embedder": "UMAP"},
+                        # "ICML-FoSTA auto": {"method_type": "FoSTA_ICML",
+                        #                 "t": "auto"},
+
+                        
 
 
 
-
+                        # "FoSTA t2": {"method_type": "FoSTA",
+                        #                 "t": 2
+                        #                 },
 
 
                         
-                        # "Old FoSTA gap t=2": {"method_type": "FoSTA",
-                        #                 "kernel_method": "gap",
-                        #                 "old_version": True,
-                        #                 "t": 2},
-                        
-                        # "Old FoSTA gap t=2 (max-normalized rows)": {"method_type": "FoSTA",
-                        #                 "kernel_method": "gap",
-                        #                 "max_normalize": True,
-                        #                 "old_version": True,
-                        #                 "t": 2},
+                        # "FoSTA auto": {"method_type": "FoSTA",
+                        #                 "t": "auto"},
 
 
-                    #    "Old FoSTA gap t=auto": {"method_type": "FoSTA",
-                    #                         "kernel_method": "gap",
-                    #                         "old_version": True,
-                    #                         "t": "auto"},
-                    #     "Old FoSTA gap t=auto (max-normalized rows)": {"method_type": "FoSTA",
-                    #                         "kernel_method": "gap",
-                    #                         "max_normalize": True,
-                    #                         "old_version": True,
-                    #                         "t": "auto"},
+
+
+
+                      #  "FoSTA-kerf t2": {"method_type": "FoSTA",
+                      #                       "kernel_method": "kerf",
+                      #                       "t": 2},
+
+
+
+
+                                            
+                        # "FoSTA-kerf auto": {"method_type": "FoSTA",
+                        #                     "kernel_method": "kerf",
+                        #                     "t": "auto"},
 
                                             
 
-                        # "New FoSTA kerf t=2": {"method_type": "FoSTA",
-                        #                     "kernel_method": "kerf",
-                        #                     "old_version": False,
-                        #                     "t": 2},
-                        # "New FoSTA kerf t=auto": {"method_type": "FoSTA",
-                        #                     "kernel_method": "kerf",
-                        #                     "old_version": False,
-                        #                     "t": "auto"},
 
 
 
-                        "New FoSTA gap t=2": {"method_type": "FoSTA",
-                                             "kernel_method": "gap",
-                                             "old_version": False,
-                                             "t": 2},
+
+                      # "FoSTA-umap": {"method_type": "FoSTA",
+                      #                "embedder": "UMAP"},
+
+                      # "FoSTA-et-t2": {"method_type": "FoSTA",
+                      #                "t": 2,
+                      #                "model_type": "et"},
+
+                      # "FoSTA-et-auto": {"method_type": "FoSTA",
+                      #                "t": "auto",
+                      #                "model_type": "et"},
+
+
+
+
+
+
+
+                      "FoSTA_t2": {"method_type": "FoSTA",
+                                     "t": "2",
+                                     "model_type": "rf"},
+                      
+
+                      "FoSTA_t2_balanced": {"method_type": "FoSTA",
+                                     "t": "2",
+                                     "model_type": "rf",
+                                     "class_weight": 'balanced_subsample'},
+                      
+
+                      "FoSTA_t2_et": {"method_type": "FoSTA",
+                                     "t": "2",
+                                     "kernel_method": "kerf",
+                                     "model_type": "et",
+                                     "bootstrap": False},
+                      
+                      "FoSTA_tauto": {"method_type": "FoSTA",
+                                     "t": "auto",
+                                     "model_type": "rf"},
+                
+                      
+                      
+                      "FoSTA_t2_kerf": {"method_type": "FoSTA",
+                                     "t": "2",
+                                     "model_type": "kerf"},
+                      
+                      "FoSTA_tauto_kerf": {"method_type": "FoSTA",
+                                     "t": "auto",
+                                     "model_type": "kerf"},
+                      
+                      
                                              
                                              
-                        "New FoSTA gap t=auto": {"method_type": "FoSTA",
-                                             "kernel_method": "gap",
-                                             "old_version": False,
-                                             "t": "auto"},
+                    
+
                         
 
-                        # "New FoSTA kerf t=2": {"method_type": "FoSTA",
-                        #                      "kernel_method": "kerf",
-                        #                      "old_version": False,
-                        #                      "t": 2},
-                                             
-                        # "New FoSTA kerf t=auto": {"method_type": "FoSTA",
-                        #                      "kernel_method": "kerf",
-                        #                      "old_version": False,
-                        #                      "t": "auto"},
+
+                        # "Scanorama":{},
+
+
+
+                        # "LIGER":{},
 
                         
+                        # "Harmony":{},
 
 
-                        "Scanorama":{},
-                        "LIGER":{},
-                        "Harmony":{},
-                        "scVI":{},
-                        "scANVI":{},
-                        "Pamona":{},
-                        "KEMArbf": {},
-                        "KEMAlin": {}
+
+                        # "scVI":{},
+                        # "scANVI":{},
+                        # "Pamona":{},
+                        # "KEMArbf": {},
+                        # "KEMAlin": {}
 
                     }

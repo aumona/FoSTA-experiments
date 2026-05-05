@@ -628,7 +628,7 @@ def benchmark_from_adata(adata, methods, batch_key = "batch", label_key = "cell_
             df.loc[df.index == "Metric Type", "trajectory_score"] = "Bio Conservation (label-free)"
 
     # visualize
-    bm.plot_results_table(min_max_scale=False, save_dir = save_path)
+    bm.plot_results_table(min_max_scale=False, save_dir = save_path, show=False)
 
     return df
 

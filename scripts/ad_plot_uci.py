@@ -11,7 +11,7 @@ from pathlib import Path
 # results_csv = "results_uci/results_20260402_013729.csv"   # change if needed
 # results_csv = "results_uci/results_20260428_045940.csv"   # change if needed
 
-results_csv = "results_uci/results_20260501_124527.csv"   # change if needed
+results_csv = "results_uci/results_20260503_015528_general.csv"   # change if needed
 
 out_png = "results_uci/multimodal_ablation_fosta.png"
 
@@ -40,11 +40,15 @@ method_order = [
     # "FoSTA_orig",
     # "FoSTA_orig_tsem=auto_avg",
 
+    "FoSTA_ICML_t2",
+    'FoSTA_ICML_auto',
+    "FoSTA_gap_t2",
+    "FoSTA_gap_auto",
+    "FoSTA_gap_mauto_t2",
 
-    "old FoSTA_gap",
-    "old FoSTA_gap tsem=auto_avg",
-    "old FoSTA_kerf",
-    "old FoSTA_kerf tsem=auto_avg",
+    "FoSTA_kerf_t2",
+    "FoSTA_kerf_auto",
+    "FoSTA_kerf_mauto_t2",
 
     "MALI",
     "MALI_nodpt",
@@ -60,19 +64,11 @@ method_display_map = {
     # "FoSTA_orig": "FoSTA original",
     # "FoSTA_orig_dense": "FoSTA original dense",
 
+    "FoSTA_ICML_t2": "FoSTA ICML t2",
+    "FoSTA_ICML_auto": "FoSTA ICML auto",
     "FoSTA_gap": "FoSTA gap",
-    "FoSTA_gap_tsem=auto": "FoSTA gap t_sem=auto",
-    "FoSTA_gap_tsem=auto_avg": "FoSTA gap t_sem=auto avg",
-
-
-    "FoSTA_orig": "FoSTA orig",
-    "FoSTA_orig_tsem=auto": "FoSTA orig t_sem=auto",
-    "FoSTA_orig_tsem=auto_avg": "FoSTA orig t_sem=auto avg",
-
-    "old FoSTA_gap": "FoSTA gap old",
-    "old FoSTA_gap tsem=auto_avg": "FoSTA gap old t_sem=auto avg",
-    "old FoSTA_kerf": "FoSTA kerf old",
-    "old FoSTA_kerf tsem=auto_avg": "FoSTA kerf old t_sem=auto avg",
+    "FoSTA_gap_t2": "FoSTA gap t2",
+    "FoSTA_gap_mauto_t2": "FoSTA gap mauto t2",
 
     "MALI": "MALI",
     "MALI_nodpt": "MALI no dpt",
@@ -109,73 +105,80 @@ method_style = {
     # },
 
 
-    "FoSTA_gap": {
+    "FoSTA_ICML_t2": {
         "facecolor": "#4C78A8",
         "edgecolor": "black",
         "hatch": "",
         "linewidth": 1.0,
     },
-    "FoSTA_gap_tsem=auto": {
+    "FoSTA_ICML_auto": {
+        "facecolor": "#4C78A8",
+        "edgecolor": "black",
+        "hatch": "\\",
+        "linewidth": 1.0,
+    },
+    "FoSTA_gap_t2": {
         "facecolor": "#4C78A8",
         "edgecolor": "black",
         "hatch": "//",
         "linewidth": 1.0,
     },
-    "FoSTA_gap_tsem=auto_avg": {
+    "FoSTA_gap_auto": {
         "facecolor": "#4C78A8",
         "edgecolor": "black",
         "hatch": "oo",
         "linewidth": 1.0,
     },
-
-
-
-    "FoSTA_orig": {
-        "facecolor": "#A0F518",
+    "FoSTA_gap_mauto_t2": {
+        "facecolor": "#4C78A8",
         "edgecolor": "black",
-        "hatch": "",
+        "hatch": "xx",
         "linewidth": 1.0,
     },
-    "FoSTA_orig_tsem=auto": {
-        "facecolor": "#A0F518",
+
+    "FoSTA_kerf_t2": {
+        "facecolor": "#54A24B",
         "edgecolor": "black",
         "hatch": "//",
         "linewidth": 1.0,
     },
-    "FoSTA_orig_tsem=auto_avg": {
-        "facecolor": "#A0F518",
+    "FoSTA_kerf_auto": {
+        "facecolor": "#54A24B",
         "edgecolor": "black",
         "hatch": "oo",
         "linewidth": 1.0,
     },
-
-
-
-
-    "old FoSTA_gap": {
-        "facecolor": "#4C78A8",
+    "FoSTA_kerf_mauto_t2": {
+        "facecolor": "#54A24B",
         "edgecolor": "black",
         "hatch": "xx",
         "linewidth": 1.0,
     },
-    "old FoSTA_gap tsem=auto_avg": {
-        "facecolor": "#4C78A8",
-        "edgecolor": "black",
-        "hatch": "xxx",
-        "linewidth": 1.0,
-    },
-    "old FoSTA_kerf": {
-        "facecolor": "#A0F518",
-        "edgecolor": "black",
-        "hatch": "xx",
-        "linewidth": 1.0,
-    },
-    "old FoSTA_kerf tsem=auto_avg": {
-        "facecolor": "#A0F518",
-        "edgecolor": "black",
-        "hatch": "xxx",
-        "linewidth": 1.0,
-    },
+
+
+
+    # "FoSTA_orig": {
+    #     "facecolor": "#A0F518",
+    #     "edgecolor": "black",
+    #     "hatch": "",
+    #     "linewidth": 1.0,
+    # },
+    # "FoSTA_orig_tsem=auto": {
+    #     "facecolor": "#A0F518",
+    #     "edgecolor": "black",
+    #     "hatch": "//",
+    #     "linewidth": 1.0,
+    # },
+    # "FoSTA_orig_tsem=auto_avg": {
+    #     "facecolor": "#A0F518",
+    #     "edgecolor": "black",
+    #     "hatch": "oo",
+    #     "linewidth": 1.0,
+    # },
+
+
+
+
 
 
 

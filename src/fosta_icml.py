@@ -301,11 +301,13 @@ class FoSTA(object):
             self.rfgap_a = RFGAP(**self.rfgap_params)
             self.rfgap_a.fit(x_a, y_a)
             prox_a = self.rfgap_a.get_proximities()
+            self.prox_a = prox_a
 
             print("Fitting RFGAP on Domain B...") if self.verbose > 0 else None
             self.rfgap_b = RFGAP(**self.rfgap_params)
             self.rfgap_b.fit(x_b, y_b)
             prox_b = self.rfgap_b.get_proximities()
+            self.prox_b = prox_b
 
         else:
             n_pca_a = min(self.n_pca, x_a.shape[1]) if self.n_pca is not None else None
@@ -342,6 +344,9 @@ class FoSTA(object):
             trans_b = P_NM_b.dot(M_b)
             post_a = self._get_semantic_vectors(trans_a, y_a, labels, clusters=clusters_a, prior_correct=self.prior_correct)
             post_b = self._get_semantic_vectors(trans_b, y_b, labels, clusters=clusters_b, prior_correct=self.prior_correct)
+        
+        self.post_a = post_a
+        self.post_b = post_b
 
         print("Computing Optimal Transport...") if self.verbose > 0 else None
         # self.T_sparse = solve_dummy_hiref(post_a, post_b, verbose=self.verbose, dummy_mode='uniform')
