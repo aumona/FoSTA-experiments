@@ -33,6 +33,7 @@ class FoSTA:
         model_type="rf",
         n_estimators=1000,
         class_weight=None,
+        bootstrap=True,
 
         t="auto",
         beta=0.7,
@@ -63,6 +64,7 @@ class FoSTA:
         self.model_type = model_type
         self.n_estimators = n_estimators
         self.class_weight = class_weight
+        self.bootstrap = True if kernel_method in ["gap", "oob"] else bootstrap
         self.force_nonzero_diag = force_nonzero_diag
         self.force_symmetric = force_symmetric
         self.normalize_diagonal = normalize_diagonal
@@ -76,7 +78,7 @@ class FoSTA:
             "kernel_method": self.kernel_method,
             "force_nonzero_diag": self.force_nonzero_diag,
             "model_type": self.model_type,
-            "bootstrap": True,
+            "bootstrap": self.bootstrap,
         }
 
         self.prior_correct = prior_correct
