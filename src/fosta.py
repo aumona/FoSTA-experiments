@@ -41,6 +41,11 @@ class FoSTA:
         random_state=None,
         n_jobs=-1,
 
+        # labeled shared samples        -> always coupled
+        # labeled domain-specific       -> not coupled
+        # unlabeled predicted shared    -> coupled
+        # unlabeled predicted nonshared -> not coupled
+        unlabeled_coupling="include",  # include, exclude, or predict_shared --> should we include unlabeled points in the coupling computation, and if so, should we predict which ones are shared based on the forest predictions?
 
         ot_solver="hiref",
         entR=0,
@@ -78,6 +83,8 @@ class FoSTA:
         self.embedder = embedder
         self.n_components = n_components
 
+        self.unlabeled_coupling = unlabeled_coupling
+
         self.ot_solver = ot_solver
         self.entR = entR
         self.m = m
@@ -112,7 +119,6 @@ class FoSTA:
         if hasattr(kernel.forest_, "oob_score_"):
             self._log(f"[Domain {domain_name}] OOB classification acc.: {kernel.forest_.oob_score_:.4f}")
 
-        # ===== OLD FoSTA =====
         self._log(f"[Domain {domain_name}] Computing FoSTA kernel (full NxN)...")
 
         prox = kernel.get_kernel(
@@ -163,7 +169,8 @@ class FoSTA:
         if self.l2_normalize:
             post = preprocessing.normalize(post, norm="l2", axis=1)
 
-        return np.asarray(post, dtype=np.float32)
+        return post
+    
 
     def _compute_dense_ot(self, post_a, post_b):
         self._log("Computing dense OT...")
@@ -239,8 +246,8 @@ class FoSTA:
     def _compute_coupling(self, post_a, post_b):
         if self.ot_solver == "hiref":
             return solve_surjection_hiref(
-                post_a,
-                post_b,
+                post_a.astype(np.float32),
+                post_b.astype(np.float32),
                 verbose=self.verbose,
                 random_state=self.random_state,
             )
@@ -314,8 +321,33 @@ class FoSTA:
         mask_unl_a = LabelUtils.get_unlabeled_mask(y_a_arr)
         mask_unl_b = LabelUtils.get_unlabeled_mask(y_b_arr)
     
-        idx_shared_a = np.flatnonzero((~mask_unl_a) & np.isin(y_a_arr, shared_labels))
-        idx_shared_b = np.flatnonzero((~mask_unl_b) & np.isin(y_b_arr, shared_labels))
+        if self.unlabeled_coupling == "exclude":
+            idx_shared_a = np.flatnonzero((~mask_unl_a) & np.isin(y_a_arr, shared_labels))
+            idx_shared_b = np.flatnonzero((~mask_unl_b) & np.isin(y_b_arr, shared_labels))
+        
+        elif self.unlabeled_coupling == "include":
+            idx_shared_a = np.flatnonzero(mask_unl_a | np.isin(y_a_arr, shared_labels))
+            idx_shared_b = np.flatnonzero(mask_unl_b | np.isin(y_b_arr, shared_labels))
+        
+        elif self.unlabeled_coupling == "predict_shared":
+            pred_a = self.kernel_a.forest_.predict(x_a)
+            pred_b = self.kernel_b.forest_.predict(x_b)
+        
+            idx_shared_a = np.flatnonzero(
+                ((~mask_unl_a) & np.isin(y_a_arr, shared_labels))
+                | (mask_unl_a & np.isin(pred_a, shared_labels))
+            )
+        
+            idx_shared_b = np.flatnonzero(
+                ((~mask_unl_b) & np.isin(y_b_arr, shared_labels))
+                | (mask_unl_b & np.isin(pred_b, shared_labels))
+            )
+        
+        else:
+            raise ValueError(
+                "unlabeled_coupling must be one of "
+                "{'exclude', 'include', 'predict_shared'}."
+            )
     
         if idx_shared_a.size == 0 or idx_shared_b.size == 0:
             raise ValueError(
@@ -326,8 +358,9 @@ class FoSTA:
         shared_mask = np.isin(all_labels, shared_labels)
     
         self._log(
-            f"[FoSTA] Coupling shared-label points only: "
-            f"A={idx_shared_a.size}/{self.n_a}, B={idx_shared_b.size}/{self.n_b}"
+            f"[FoSTA] Coupling selected points: "
+            f"A={idx_shared_a.size}/{self.n_a}, B={idx_shared_b.size}/{self.n_b}, "
+            f"mode={self.unlabeled_coupling}"
         )
     
         T_sub = self._compute_coupling(
