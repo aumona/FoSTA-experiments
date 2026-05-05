@@ -163,7 +163,7 @@ class FoSTA:
         if self.l2_normalize:
             post = preprocessing.normalize(post, norm="l2", axis=1)
 
-        return post
+        return np.asarray(post, dtype=np.float32)
 
     def _compute_dense_ot(self, post_a, post_b):
         self._log("Computing dense OT...")
@@ -255,19 +255,8 @@ class FoSTA:
         Constructs a joint affinity matrix using raw surjective T,
         followed by optional nonzero-edge mean cross-block scaling.
         """
-        W_ab_raw = (prox_a.dot(T) + T.dot(prox_b)) / 2
-    
-        if self.mu == "auto":
-            intra_mean = 0.5 * (prox_a.data.mean() + prox_b.data.mean())
-            cross_mean = W_ab_raw.data.mean() if W_ab_raw.nnz > 0 else 1.0
-            mu_eff = intra_mean / max(cross_mean, 1e-12)
-        else:
-            mu_eff = float(self.mu)
-    
-        W_ab = mu_eff * W_ab_raw
-        W_ba = W_ab.transpose()
-    
-        self._log(f"[FoSTA] effective mu={mu_eff:.4f}")
+        W_ab = prox_a.dot(T)
+        W_ba = prox_b.dot(T.transpose())
     
         if self.verbose:
             print("\nJOINT AFFINITY BLOCK STATISTICS")
@@ -279,8 +268,8 @@ class FoSTA:
     
         return sparse.bmat(
             [
-                [prox_a, W_ab],
-                [W_ba, prox_b],
+                [prox_a, self.mu * W_ab],
+                [self.mu * W_ba, prox_b],
             ],
             format="csr",
         )
@@ -289,30 +278,80 @@ class FoSTA:
         """Fits FoSTA alignment across two domains."""
         self.n_a, self.n_b = x_a.shape[0], x_b.shape[0]
         self.n = self.n_a + self.n_b
-
-        labels = LabelUtils.validate_shared_labels(y_a, y_b, strict=True)
-        self.classes_ = labels
-
+    
+        labels_a = LabelUtils.get_valid_classes(y_a)
+        labels_b = LabelUtils.get_valid_classes(y_b)
+    
+        shared_labels = np.intersect1d(labels_a, labels_b)
+        all_labels = np.union1d(labels_a, labels_b)
+    
+        if shared_labels.size == 0:
+            raise ValueError("FoSTA requires at least one shared labeled class across domains.")
+    
+        self.classes_ = all_labels
+        self.shared_classes_ = shared_labels
+    
         self.kernel_a, self.prox_a = self._compute_domain_geometry(x_a, y_a, "A")
         self.kernel_b, self.prox_b = self._compute_domain_geometry(x_b, y_b, "B")
-
+    
         self.post_a = self._get_semantic_vectors_from_prox(
             self.prox_a,
             y_a,
-            labels,
+            all_labels,
             domain_name="A",
         )
-
+    
         self.post_b = self._get_semantic_vectors_from_prox(
             self.prox_b,
             y_b,
-            labels,
+            all_labels,
             domain_name="B",
         )
-
-        self.T_sparse = self._compute_coupling(self.post_a, self.post_b)
-        self.W = self._build_balanced_affinity(self.prox_a, self.prox_b, self.T_sparse)
-
+    
+        y_a_arr = np.asarray(y_a).ravel()
+        y_b_arr = np.asarray(y_b).ravel()
+    
+        mask_unl_a = LabelUtils.get_unlabeled_mask(y_a_arr)
+        mask_unl_b = LabelUtils.get_unlabeled_mask(y_b_arr)
+    
+        idx_shared_a = np.flatnonzero((~mask_unl_a) & np.isin(y_a_arr, shared_labels))
+        idx_shared_b = np.flatnonzero((~mask_unl_b) & np.isin(y_b_arr, shared_labels))
+    
+        if idx_shared_a.size == 0 or idx_shared_b.size == 0:
+            raise ValueError(
+                "FoSTA requires at least one labeled sample from the shared label set "
+                "in each domain."
+            )
+    
+        shared_mask = np.isin(all_labels, shared_labels)
+    
+        self._log(
+            f"[FoSTA] Coupling shared-label points only: "
+            f"A={idx_shared_a.size}/{self.n_a}, B={idx_shared_b.size}/{self.n_b}"
+        )
+    
+        T_sub = self._compute_coupling(
+            self.post_a[idx_shared_a][:, shared_mask],
+            self.post_b[idx_shared_b][:, shared_mask],
+        ).tocsr()
+    
+        rows, cols = T_sub.nonzero()
+        vals = np.asarray(T_sub[rows, cols]).ravel()
+    
+        self.T_sparse = sparse.coo_matrix(
+            (
+                vals,
+                (idx_shared_a[rows], idx_shared_b[cols]),
+            ),
+            shape=(self.n_a, self.n_b),
+        ).tocsr()
+    
+        self.W = self._build_balanced_affinity(
+            self.prox_a,
+            self.prox_b,
+            self.T_sparse,
+        )
+    
         return self
 
     def fit_transform(self, x_a, x_b, y_a, y_b):
