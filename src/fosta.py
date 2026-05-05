@@ -25,12 +25,15 @@ class FoSTA:
     def __init__(
         self,
         mu=1,
+        
         kernel_method="gap",
         force_nonzero_diag=True,
         force_symmetric=True,
         normalize_diagonal=True,
         model_type="rf",
         n_estimators=1000,
+        class_weight=None,
+
         t="auto",
         beta=0.7,
         prior_correct=True,
@@ -59,6 +62,7 @@ class FoSTA:
         self.kernel_method = kernel_method
         self.model_type = model_type
         self.n_estimators = n_estimators
+        self.class_weight = class_weight
         self.force_nonzero_diag = force_nonzero_diag
         self.force_symmetric = force_symmetric
         self.normalize_diagonal = normalize_diagonal
@@ -68,6 +72,7 @@ class FoSTA:
             "prediction_type": "classification",
             "oob_score": True,
             "n_estimators": self.n_estimators,
+            "class_weight": self.class_weight,
             "kernel_method": self.kernel_method,
             "force_nonzero_diag": self.force_nonzero_diag,
             "model_type": self.model_type,
