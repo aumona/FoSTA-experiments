@@ -85,7 +85,7 @@ methods_params_dict = {
                                      "t": "2",
                                      "kernel_method": "kerf",
                                      "model_type": "et",
-                                     "bootstrap": False},
+                                     "bootstrap": True},
                       
                       "FoSTA_tauto": {"method_type": "FoSTA",
                                      "t": "auto",
@@ -95,11 +95,11 @@ methods_params_dict = {
                       
                       "FoSTA_t2_kerf": {"method_type": "FoSTA",
                                      "t": "2",
-                                     "model_type": "kerf"},
+                                     "kernel_method": "kerf"},
                       
                       "FoSTA_tauto_kerf": {"method_type": "FoSTA",
                                      "t": "auto",
-                                     "model_type": "kerf"},
+                                     "kernel_method": "kerf"},
                       
                       
                                              

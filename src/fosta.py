@@ -64,7 +64,7 @@ class FoSTA:
         self.model_type = model_type
         self.n_estimators = n_estimators
         self.class_weight = class_weight
-        self.bootstrap = True if kernel_method in ["gap", "oob"] else bootstrap
+        self.bootstrap = True if (kernel_method in ["gap", "oob"] or unlabeled_coupling == "predict_shared") else bootstrap
         self.force_nonzero_diag = force_nonzero_diag
         self.force_symmetric = force_symmetric
         self.normalize_diagonal = normalize_diagonal
