@@ -10,19 +10,21 @@ methods_params_dict = {
 
 
 
+                        # "ICML-FoSTA t2": {"method_type": "FoSTA_ICML",
+                        #                 "t": 2},
 
-                        "ICML-FoSTA t2": {"method_type": "FoSTA_ICML",
-                                        "t": 2},
+                        # "ICML-FoSTA umap": {"method_type": "FoSTA_ICML",
+                        #                 "embedder": "UMAP"},
                         # "ICML-FoSTA auto": {"method_type": "FoSTA_ICML",
                         #                 "t": "auto"},
 
                         
 
 
-                        
-                        "FoSTA t2": {"method_type": "FoSTA",
-                                        "t": 2
-                                        },
+
+                        # "FoSTA t2": {"method_type": "FoSTA",
+                        #                 "t": 2
+                        #                 },
 
 
                         
@@ -33,9 +35,9 @@ methods_params_dict = {
 
 
 
-                       "FoSTA-kerf t2": {"method_type": "FoSTA",
-                                            "kernel_method": "kerf",
-                                            "t": 2},
+                      #  "FoSTA-kerf t2": {"method_type": "FoSTA",
+                      #                       "kernel_method": "kerf",
+                      #                       "t": 2},
 
 
 
@@ -51,51 +53,55 @@ methods_params_dict = {
 
 
 
+                      # "FoSTA-umap": {"method_type": "FoSTA",
+                      #                "embedder": "UMAP"},
+
+                      # "FoSTA-et-t2": {"method_type": "FoSTA",
+                      #                "t": 2,
+                      #                "model_type": "et"},
+
+                      # "FoSTA-et-auto": {"method_type": "FoSTA",
+                      #                "t": "auto",
+                      #                "model_type": "et"},
+
+
+
+
+
+
+
+                      "FoSTA_t2": {"method_type": "FoSTA",
+                                     "t": "2",
+                                     "model_type": "rf"},
                       
-                      # "New FoSTA t2": {"method_type": "FoSTA",
-                      #                      "kernel_method": "gap",
-                      #                      "old_version": False,
-                      #                      "t": 2,
-                      #                      'n_neighbors': 10,
-                      #                      "decay": 10,
-                      #                      'knn_dist': 'euclidean',
-                      #                      },
 
+                      "FoSTA_t2_balanced": {"method_type": "FoSTA",
+                                     "t": "2",
+                                     "model_type": "rf",
+                                     "class_weight": 'balanced_subsample'},
+                      
 
-
-                        # "New FoSTA t2": {"method_type": "FoSTA",
-                        #                      "kernel_method": "gap",
-                        #                      "old_version": False,
-                        #                      "t": 2,
-                        #                      'n_neighbors': 10,
-                        #                      "decay": 10,
-                        #                      'knn_dist': 'euclidean'
-                        #                      },
-                        # "New FoSTAker t2": {"method_type": "FoSTA",
-                        #                      "kernel_method": "kerf",
-                        #                      "old_version": False,
-                        #                      "t": 2,
-                        #                      'n_neighbors': 10,
-                        #                      "decay": 10,
-                        #                      'knn_dist': 'euclidean'
-                        #                      },
-                        
-                        # "New FoSTA auto": {"method_type": "FoSTA",
-                        #                      "kernel_method": "gap",
-                        #                      "old_version": False,
-                        #                      "t": 'auto',
-                        #                      'n_neighbors': 10,
-                        #                      "decay": 10,
-                        #                      'knn_dist': 'euclidean'
-                        #                      },
-                        # "New FoSTAker auto": {"method_type": "FoSTA",
-                        #                      "kernel_method": "kerf",
-                        #                      "old_version": False,
-                        #                      "t": 'auto',
-                        #                      'n_neighbors': 10,
-                        #                      "decay": 10,
-                        #                      'knn_dist': 'euclidean'
-                        #                      },
+                      "FoSTA_t2_et": {"method_type": "FoSTA",
+                                     "t": "2",
+                                     "kernel_method": "kerf",
+                                     "model_type": "et",
+                                     "bootstrap": False},
+                      
+                      "FoSTA_tauto": {"method_type": "FoSTA",
+                                     "t": "auto",
+                                     "model_type": "rf"},
+                
+                      
+                      
+                      "FoSTA_t2_kerf": {"method_type": "FoSTA",
+                                     "t": "2",
+                                     "model_type": "kerf"},
+                      
+                      "FoSTA_tauto_kerf": {"method_type": "FoSTA",
+                                     "t": "auto",
+                                     "model_type": "kerf"},
+                      
+                      
                                              
                                              
                     
