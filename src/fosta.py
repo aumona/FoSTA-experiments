@@ -25,7 +25,7 @@ class FoSTA:
     def __init__(
         self,
         mu=1,
-        
+
         kernel_method="gap",
         force_nonzero_diag=True,
         force_symmetric=True,
@@ -48,7 +48,7 @@ class FoSTA:
         # labeled domain-specific       -> not coupled
         # unlabeled predicted shared    -> coupled
         # unlabeled predicted nonshared -> not coupled
-        unlabeled_coupling="include",  # include, exclude, or predict_shared --> should we include unlabeled points in the coupling computation, and if so, should we predict which ones are shared based on the forest predictions?
+        unlabeled_coupling="predict_shared",  # include, exclude, or predict_shared --> should we include unlabeled points in the coupling computation, and if so, should we predict which ones are shared based on the forest predictions?
 
         ot_solver="hiref",
         entR=0,
