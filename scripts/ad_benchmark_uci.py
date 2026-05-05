@@ -69,7 +69,7 @@ METHODS = [
     # "FoSTA_ICML_auto",
 
     # "FoSTA_gap_t2",
-    "FoSTA_gap_auto",
+    # "FoSTA_gap_auto",
     # "FoSTA_gap_mauto_t2",
     # "FoSTA_gap_mauto_auto",
 
@@ -78,14 +78,18 @@ METHODS = [
     # "FoSTA_kerf_mauto_t2",
     # "FoSTA_kerf_mauto_auto",
 
-    "MALI",
-    "MALI_nodpt",
+    "FoSTA_umap",
+    "FoSTA_dense",
+    "FoSTA_et",
+
+    # "MALI",
+    # "MALI_nodpt",
 
 
-    "Pamona",
+    # "Pamona",
 
-    "KEMAlin",
-    "KEMArbf",
+    # "KEMAlin",
+    # "KEMArbf",
 ]
 
 SPLITS = [
@@ -100,8 +104,8 @@ SPLITS = [
 SEEDS = list(range(5))
 
 TRANSFORM = "standardize"
-MASK_FRACTIONS = [0.1, 0.3, 0.5, 0.7, 0.9]  # fraction of target labels to mask (set to -1) for label transfer evaluation
-# MASK_FRACTIONS = [0.5]  # fraction of target labels to mask (set to -1) for label transfer evaluation
+# MASK_FRACTIONS = [0.1, 0.3, 0.5, 0.7, 0.9]  # fraction of target labels to mask (set to -1) for label transfer evaluation
+MASK_FRACTIONS = [0.5]  # fraction of target labels to mask (set to -1) for label transfer evaluation
 
 NOISE_SIGMA = 0.5  # reasonable amount of noise
 SIGNAL_TO_NOISE_RATIO = 0.1
@@ -422,6 +426,42 @@ def build_model(method: str, seed: int):
             model_type=MODEL_TYPE,
             n_estimators=N_ESTIMATORS,
             t='auto',
+            beta=BETA,
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
+        )
+    
+    if m == 'fosta_umap':
+        return FoSTA(
+            embedder='UMAP',
+            n_components=N_COMPONENTS,
+            model_type=MODEL_TYPE,
+            n_estimators=N_ESTIMATORS,
+            beta=BETA,
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
+        )
+    
+    if m == 'fosta_dense':
+        return FoSTA(
+            embedder=EMBEDDER,
+            n_components=N_COMPONENTS,
+            model_type=MODEL_TYPE,
+            n_estimators=N_ESTIMATORS,
+            beta=BETA,
+            ot_solver='dense',
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
+        )
+    if m == 'fosta_et':
+        return FoSTA(
+            embedder=EMBEDDER,
+            n_components=N_COMPONENTS,
+            model_type='et',
+            n_estimators=N_ESTIMATORS,
             beta=BETA,
             random_state=seed,
             n_jobs=N_JOBS,
