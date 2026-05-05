@@ -28,6 +28,7 @@ def main_argparser(default_savename="experiment", default_globalmasking=0):
     parser.add_argument('--savename', default = default_savename, type=str) 
     parser.add_argument('--test', action='store_true') 
     parser.add_argument('--remove_unshared', action='store_true') 
+    parser.add_argument('--mask_unshared_labels', action='store_true') 
     # parser.add_argument('-t', default = "auto") 
 
     return parser
@@ -58,8 +59,7 @@ def prepare_adata(adata, save_path, label_key, batch_key, args, masked_encoded_l
     masked_label_key = f"{label_key}_masked" # update label key to the masked version for benchmarking (so that methods that can leverage labels will be affected by the masking)
 
     # creates a new column "cell_type_cleaned_encoded" with cleaned and encoded labels for our methods (that need numbers)
-    adata = clean_and_encode_labels(adata, label_key=masked_label_key, batch_key= batch_key, encoded_label_key= masked_encoded_label_key, min_cells=0)
-
+    adata = clean_and_encode_labels(adata, label_key=masked_label_key, batch_key= batch_key, encoded_label_key= masked_encoded_label_key, min_cells=0, mask_unshared_labels=args.mask_unshared_labels) 
 
     # # ensure our encoded labels are present in both batches. if not, set them as unlabeled -- not needed, already done in clean_and_encode_labels with replace_by=np.nan
     # adata, labels_missing_in_batch1, labels_missing_in_batch2 = ensure_label_intersection(adata, label_key="cell_type_cleaned_encoded", batch_key=batch_key)
