@@ -1,9 +1,12 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from phate import phate
+import rfphate
 from scipy import sparse
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import accuracy_score, silhouette_score
 import seaborn as sns
+import scanpy as sc
 
 from metrics import label_transfer_accuracy
 from matplotlib.legend_handler import HandlerTuple
@@ -290,99 +293,6 @@ def plot_metric_grouped_by(results_df, groupby_cols=["noise_std", "dropout_prob"
         plt.show()
 
 
-# def plot_bio_vs_batch_correction(results_df, save_path=None):
-#     ratio_df = results_df.groupby(['method'])[["Bio conservation", "Batch correction"]].mean()
-
-#     sns.scatterplot(data=ratio_df, x="Batch correction", y="Bio conservation", hue=ratio_df.index, palette="tab20")
-#     # plt.ylim(0, 1)
-#     # plt.xlim(0, 1)
-#     plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-#     plt.title("Bio conservation vs Batch correction")
-#     if save_path is not None:
-#         plt.tight_layout()
-#         plt.savefig(f"{save_path}/bio_vs_batch_correction_ncomp_{n_components}.pdf", format='pdf')
-#         plt.savefig(f"{save_path}/bio_vs_batch_correction_ncomp_{n_components}.png", format='png')
-#     plt.show()
-
-
-
-# def plot_bio_vs_batch_correction(results_df, save_path=None):
-#     # 1. Calculate Mean and Standard Deviation
-#     mean_df = results_df.groupby(['method'])[["Bio conservation", "Batch correction"]].mean()
-#     std_df = results_df.groupby(['method'])[["Bio conservation", "Batch correction"]].std()
-#     std_df = std_df.fillna(0)
-
-#     # 2. Calculate Ranks (Assuming higher score is better -> ascending=False)
-#     mean_df['Bio Rank'] = mean_df['Bio conservation'].rank(ascending=False).astype(int)
-#     mean_df['Batch Rank'] = mean_df['Batch correction'].rank(ascending=False).astype(int)
-    
-#     # 3. Calculate Average Rank and Sort
-#     mean_df['Avg Rank'] = (mean_df['Bio Rank'] + mean_df['Batch Rank']) / 2
-#     mean_df = mean_df.sort_values('Avg Rank')
-
-#     plt.figure(figsize=(10, 8)) 
-    
-#     # Use a fixed color map so colors stay consistent regardless of sorting
-#     unique_methods = results_df['method'].unique()
-#     # Create palette
-#     palette_list = sns.color_palette("tab20", n_colors=len(unique_methods))
-#     color_map = dict(zip(unique_methods, palette_list))
-    
-#     # Iterate through the SORTED methods
-#     for method in mean_df.index:
-#         x = mean_df.loc[method, "Batch correction"]
-#         y = mean_df.loc[method, "Bio conservation"]
-#         x_err = std_df.loc[method, "Batch correction"]
-#         y_err = std_df.loc[method, "Bio conservation"]
-        
-#         bio_rank = mean_df.loc[method, 'Bio Rank']
-#         batch_rank = mean_df.loc[method, 'Batch Rank']
-#         avg_rank = mean_df.loc[method, 'Avg Rank']
-
-#         # Legend Label: Includes Bio and Batch ranks
-#         legend_label = f"{method} (Bio #{bio_rank}, Batch #{batch_rank})"
-
-#         # 4. Plot Error Bars
-#         plt.errorbar(
-#             x, y, 
-#             xerr=x_err, 
-#             yerr=y_err, 
-#             fmt='none',
-#             ecolor=color_map[method],
-#             elinewidth=1.5,
-#             capsize=5,
-#             alpha=0.4, 
-#             label=None 
-#         )
-
-#         # 5. Plot the Marker (No annotation on plot)
-#         plt.scatter(
-#             x, y, 
-#             s=100, 
-#             color=color_map[method], 
-#             label=legend_label, 
-#             zorder=3
-#         )
-
-#     # 6. Final Formatting
-#     plt.legend(
-#         bbox_to_anchor=(1.05, 1), 
-#         loc='upper left', 
-#         title="Method (Ordered by Avg Rank)",
-#         frameon=True
-#     )
-    
-#     plt.title("Bio conservation vs Batch correction")
-#     plt.xlabel("Batch correction")
-#     plt.ylabel("Bio conservation")
-#     plt.grid(True, linestyle='--', alpha=0.5)
-
-#     if save_path is not None:
-#         plt.tight_layout()
-#         plt.savefig(f"{save_path}/bio_vs_batch_correction.pdf", format='pdf')
-#         plt.savefig(f"{save_path}/bio_vs_batch_correction.png", format='png')
-#     plt.show()
-
 def plot_bio_vs_batch_correction(results_df, title = "Bio conservation vs Batch correction", save_path=None):
     # 1. Calculate Mean and Standard Deviation
     mean_df = results_df.groupby(['method'])[["Bio conservation", "Batch correction"]].mean()
@@ -458,9 +368,6 @@ def plot_bio_vs_batch_correction(results_df, title = "Bio conservation vs Batch 
     plt.show()
 
 
-
-
-
 def plot_bio_vs_batch_correction_markers(results_df, title="Bio conservation vs Batch correction", save_path=None):
     # 1. Calculate Mean and Standard Deviation
     mean_df = results_df.groupby(['method'])[["Bio conservation", "Batch correction"]].mean()
@@ -487,7 +394,8 @@ def plot_bio_vs_batch_correction_markers(results_df, title="Bio conservation vs 
         r"$\mathit{\xi}$", r"$\mathit{\pi}$", r"$\mathit{\rho}$", 
         r"$\mathit{\sigma}$", r"$\mathit{\tau}$", r"$\mathit{\phi}$", 
         r"$\mathit{\chi}$", r"$\mathit{\psi}$", r"$\mathit{\omega}$",
-        r"$\clubsuit$", r"$\spadesuit$", r"$\heartsuit$", r"$\diamondsuit$"
+        r"$\clubsuit$", r"$\spadesuit$", r"$\heartsuit$", r"$\diamondsuit$",
+        r"$\star$", r"$\dagger$", r"$\ddagger$", r"$\S$", r"$\P$"
     ]
     
     palette_list = sns.color_palette("tab20", n_colors=len(unique_methods))
@@ -543,3 +451,196 @@ def plot_bio_vs_batch_correction_markers(results_df, title="Bio conservation vs 
     if save_path is not None:
         plt.savefig(f"{save_path}/bio_vs_batch_correction.png", bbox_inches="tight")
     plt.show()
+    
+    
+def clean_cell_types(adata, threshold=10):
+    adata.obs["original_cell_type"] = adata.obs["cell_type"]
+    
+    value_counts = adata.obs["cell_type"].value_counts()
+    small_types = value_counts.index[value_counts < threshold]
+
+    # replace cell_type "Type 2" with "Alveolar Type 2" 
+    adata.obs.replace({"cell_type": {"Type 2": "Alveolar Type 2"}}, inplace=True)
+
+
+    for small_type in small_types:
+        adata.obs.replace({"cell_type": {small_type: "Other"}}, inplace=True)
+
+
+    # reorder the categories so that "Other" is last
+    categories = [cat for cat in adata.obs["cell_type"].cat.categories if cat != "Other"]
+    categories.append("Other")
+    adata.obs["cell_type"] = adata.obs["cell_type"].cat.reorder_categories(categories)
+
+    return adata
+
+
+def load_adata(save_path,noise_level=0.5, dropout_level=0.5):
+    # format noise and dropout to match folder names (1 decimal place)
+    noise_level = f"{noise_level:.1f}"
+    dropout_level = f"{dropout_level:.1f}"
+    path = f"{save_path}/noise_{noise_level}_dropout_{dropout_level}/2_components"
+    adata = sc.read_h5ad(f"{path}/adata_intermediate.h5ad")
+    # rename FoSTA_PHATE_t2 to FoSTA in the adata
+    adata.obsm["FoSTA"] = adata.obsm["FoSTA_PHATE_t2"]
+    del adata.obsm["FoSTA_PHATE_t2"]
+
+
+    adata = clean_cell_types(adata)
+    return adata, path
+
+
+    
+def add_rfphate_phate_embeddings(adata = None, label_key = "cell_type", batch_key = "simulated_batch", noise_level=0.5, dropout_level=0.5, embedding_basis = "X_pca", t=2):
+    if adata is None:
+        adata, path = load_adata(noise_level=noise_level, dropout_level=dropout_level)
+    else:
+        path = None
+    phate_operator = phate.PHATE(n_components=2, t=t, seed = 42)
+    rfphate_operator = rfphate.RFPHATE(n_components=2, t=t, seed = 42)
+
+    phate_embeddings = phate_operator.fit_transform(adata.obsm[embedding_basis])
+    rfphate_embeddings = rfphate_operator.fit_transform(adata.obsm[embedding_basis], adata.obs[label_key])
+
+    adata.obsm[f"PHATE_t{t}"] = phate_embeddings
+    adata.obsm[f"RFPHATE_t{t}"] = rfphate_embeddings
+    
+    return adata, path
+
+
+def plot_embeddings(adata = None, methods = None, noise_level=0.5, dropout_level=0.5, save_path = None, rename_dict = None, figsize=None, marker_test="*", size_test=20, **kwargs):
+    label_key = "cell_type"
+    batch_key = "simulated_batch"
+    
+
+    if adata is None:
+        adata, save_path = load_adata(save_path=save_path, noise_level=noise_level, dropout_level=dropout_level)
+     
+    if methods is None:
+        methods = list(adata.obsm.keys())
+    n = len(methods)
+    
+    if figsize is None:
+        figsize = (6*n, 8)
+        
+    fig, axes = plt.subplots(figsize=figsize, nrows=2, ncols=n)
+
+
+    # ---- TOP ROW (batch_key) ----
+    for i, method in enumerate(methods):
+        if rename_dict is None:
+            method_name = method
+        else:
+            method_name = rename_dict[method]
+            
+        sc.pl.embedding(
+            adata[adata.obs['mask_indices'] == 0],
+            ax=axes[0, i],
+            basis=method,
+            color=batch_key,
+            title=f"{method_name}", # : {batch_key}
+            show=False,
+            legend_loc="right" if i == 0 else None,  # create legend ONCE
+            marker='.',
+            alpha=0.3,
+            **kwargs
+        )
+        
+        sc.pl.embedding(
+            adata[adata.obs['mask_indices'] == 1], # test set have different markers
+            ax=axes[0, i],
+            basis=method,
+            color=batch_key,
+            title=f"{method_name}", # {label_key}
+            show=False,
+            legend_loc= None,
+            marker=marker_test,
+            size=size_test,
+            **kwargs
+        )
+
+    # ---- BOTTOM ROW (label_key) ----
+    for i, method in enumerate(methods):
+        if rename_dict is None:
+            method_name = method
+        else:
+            method_name = rename_dict[method]
+            
+        sc.pl.embedding(
+            adata[adata.obs['mask_indices'] == 0],
+            ax=axes[1, i],
+            basis=method,
+            color=label_key,
+            title=f"{method_name}", # {label_key}
+            show=False,
+            legend_loc="right" if i == 0 else None,
+            marker='.',
+            alpha=0.3,
+            # size=20,
+            **kwargs
+        )
+        sc.pl.embedding(
+            adata[adata.obs['mask_indices'] == 1], # test set have different markers
+            ax=axes[1, i],
+            basis=method,
+            color=label_key,
+            title=f"{method_name}", # {label_key}
+            show=False,
+            legend_loc= None,
+            marker=marker_test,
+            size=size_test,
+            **kwargs
+        )
+
+    from matplotlib.lines import Line2D   
+    # 1. Create the custom "Proxy" markers
+    # We use color='black' or 'gray' to keep them neutral
+    train_handle = Line2D([0], [0], marker='.', color='none', 
+                        markerfacecolor='gray', alpha=0.3, 
+                        label='Training Points', markersize=8)
+
+    test_handle = Line2D([0], [0], marker='*', color='none', 
+                        markerfacecolor='gray',  # or 'none' if you want edge only
+                        markeredgecolor='gray',
+                        label='Test Points', markersize=10)
+
+    # ---- EXTRACT + MOVE LEGENDS ----
+    leg_top = axes[0, 0].get_legend()
+    leg_bottom = axes[1, 0].get_legend()
+
+    # 2. Update the handles (This adds the new markers to the bottom of the lists)
+    # You can do this for one or both legends
+    handles_top, labels_top = leg_top.legend_handles, [t.get_text() for t in leg_top.get_texts()]
+    handles_top.extend([train_handle, test_handle])
+    labels_top.extend(["Training", "Test"])
+    handles_bottom, labels_bottom = leg_bottom.legend_handles, [t.get_text() for t in leg_bottom.get_texts()]
+    handles_bottom.extend([train_handle, test_handle])
+    labels_bottom.extend(["Training", "Test"])
+
+    # Re-initialize the legend with the combined list
+    leg_top = fig.legend(handles_top, labels_top)
+    leg_bottom = fig.legend(handles_bottom, labels_bottom)
+
+    # remove them from axes
+    axes[0, 0].legend_.remove()
+    axes[1, 0].legend_.remove()
+
+    # IMPORTANT: anchor legends in FIGURE coordinates
+    plt.tight_layout(rect=[0, 0, 0.88, 1])
+    leg_top.set_bbox_to_anchor((0.88, 0.75), transform=fig.transFigure)
+    leg_bottom.set_bbox_to_anchor((0.88, 0.25), transform=fig.transFigure)
+    leg_top.set_loc("center left")
+    leg_bottom.set_loc("center left")
+
+    # add them back to the figure
+    fig.add_artist(leg_top)
+    fig.add_artist(leg_bottom)
+
+    # plt.show()
+
+    # plt.title(f"Noise level: {noise_level}, Dropout level: {dropout_level}")
+    if save_path is not None:
+        plt.savefig(f"{save_path}/all_methods_embeddings.png", bbox_inches='tight', format="png")
+        plt.savefig(f"{save_path}/all_methods_embeddings.pdf", bbox_inches='tight', format="pdf")
+        
+    return adata
