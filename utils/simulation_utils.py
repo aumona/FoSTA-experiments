@@ -181,15 +181,15 @@ def clean_and_encode_labels(adata,
                             batch_key=None,
                             encoded_label_key = "cell_type_cleaned_encoded", 
                             min_cells=20,
-                            mask_unshared_labels = True):
+                            keep_unshared_labels = False):
     # cell types with fewer than min_cells cells are set as -1 (only for in our methods, others use original column "cell_type")
     # args:
     #   adata: anndata object
     #   label_key: key in adata.obs with the original labels
-    #   batch_key: key in adata.obs with the batch labels. only used if mask_unshared_labels is True
+    #   batch_key: key in adata.obs with the batch labels. only used if keep_unshared_labels is False
     #   encoded_label_key: key in adata.obs to store the cleaned and encoded labels
     #   min_cells: minimum number of cells required to keep a cell type
-    #   mask_unshared_labels: if True, encode dataset-specific cell types (those that are only present in one batch) as -1
+    #   keep_unshared_labels: if False, remove dataset-specific cell types (those that are only present in one batch) by encoding them as -1
     # returns: adata with a new column in adata.obs, named encoded_label_key, containing the cleaned and encoded labels
     
     cell_types = adata.obs[label_key]
@@ -202,7 +202,7 @@ def clean_and_encode_labels(adata,
     
     # remove dataset specific cell types (those that are only present in one batch)
     # this function modifies adata.obs[clean_label_key] by replacing the dataset-specific cell types with "nan"
-    if batch_key is not None and mask_unshared_labels:
+    if batch_key is not None and not keep_unshared_labels:
         cell_types_cleaned, labels_missing_in_batch1, labels_missing_in_batch2 = ensure_label_intersection(adata, labels=cell_types_cleaned, batch_key=batch_key, replace_by=np.nan)
     
     # encode the labels as integers
