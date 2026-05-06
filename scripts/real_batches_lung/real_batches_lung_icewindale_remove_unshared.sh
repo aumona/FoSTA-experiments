@@ -42,7 +42,7 @@ for seed in "${seeds[@]}"; do
       --components 2 \
       --globalmasking 0 \
       --savename "$savename" \
-      --remove_unshared \
+      --remove_unshared_cells \
       > "$log_dir/"$batch1"_"$batch2"_"$seed".out" \
       2> "$log_dir/"$batch1"_"$batch2"_"$seed".err"
 
