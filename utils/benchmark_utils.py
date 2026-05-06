@@ -261,7 +261,7 @@ def run_our_models_from_adatas(adata1, adata2, label_key="cell_type", model_name
 
 
 
-def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours = None, label_key = "cell_type", n_components = 30, seed = 42, embedding_basis="X", **kwargs):
+def run_models_from_adata(adata, model_name, batch_key = "batch", label_key_ours = None, label_key = "cell_type", n_components = 30, seed = 42, embedding_basis="X_pca", **kwargs):
     # kwargs are passed to our methods only
     # runs either our methods or other methods depending on model_name
     # returns adata with embedding in adata.obsm[model_name]
