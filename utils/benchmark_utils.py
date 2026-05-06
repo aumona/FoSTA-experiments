@@ -558,7 +558,7 @@ def benchmark_from_adata(adata, methods, batch_key = "batch", label_key = "cell_
                                                    kbet_per_label=True, 
                                                    graph_connectivity=True, 
                                                    pcr_comparison=True),
-        bio_conservation_metrics = BioConservation(isolated_labels=False, 
+        bio_conservation_metrics = BioConservation(isolated_labels=True, 
                                                    nmi_ari_cluster_labels_leiden=True,
                                                    nmi_ari_cluster_labels_kmeans=True, 
                                                    silhouette_label=True, 
