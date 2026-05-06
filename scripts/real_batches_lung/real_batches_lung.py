@@ -14,7 +14,7 @@ import sys, pathlib
 sys.path.insert(0, str(next(p for p in [pathlib.Path.cwd()] + list(pathlib.Path.cwd().parents) if (p/"src").is_dir())))
 from utils.benchmark_utils import set_seeds, visualization, run_models_from_adata, benchmark_from_adata
 from utils.simulation_utils import add_noise, dropout, global_label_masking, split_and_transform_batch, clean_and_encode_labels, preprocess_adata, ensure_label_intersection
-from utils.script_utils import main_argparser, prepare_adata, run_methods, evaluate_and_save_results, save_embeddings
+from utils.script_utils import load_existing_adata, main_argparser, prepare_adata, run_methods, evaluate_and_save_results, save_embeddings
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 from personal_paths import BASE_PATH, LUNG_BATCHES_DATA_PATH, RESULTS_PATH
@@ -45,27 +45,20 @@ save_path_parent = f"{RESULTS_PATH}/{args.savename}"
 save_path = f"{save_path_parent}/{batches[0]}_{batches[1]}/seed_{args.seed}" 
 
 # LOAD DATA 
-adata_full = sc.read(data_path)
+if os.path.exists(f"{save_path}/adata_intermediate.h5ad"):
+    # load previously computed results
+    adata, methods_params_dict = load_existing_adata(save_path, methods_params_dict) # this will update the adata and methods_params_dict by removing the methods that have already been run (if any)
+    
+else:
+    adata_full = sc.read(data_path)
 
-# subset to the current batches
-adata = adata_full[(adata_full.obs["batch"].isin(batches))].copy()
-# adata, labels_not_in1, labels_not_in2 = remove_dataset_specific_cells(adata, batch_key, label_key)
+    # subset to the current batches
+    adata = adata_full[(adata_full.obs["batch"].isin(batches))].copy()
+    # adata, labels_not_in1, labels_not_in2 = remove_dataset_specific_cells(adata, batch_key, label_key)
+    
+    adata, original_label_key, masked_label_key, masked_encoded_label_key_with_unshared= prepare_adata(adata, save_path, label_key, batch_key, args=args, masked_encoded_label_key=f"{label_key}_encoded_with_unshared")
 
 
-
-
-## only run methods that have not been run yet
-## load previously computed intermediate adata if it exists
-# if os.path.exists(f"{save_path}/adata_intermediate.h5ad"):
-#     print("Loading previously computed intermediate adata...")
-#     adata = sc.read_h5ad(f"{save_path}/adata_intermediate.h5ad")
-#     for method_ran in adata.obsm.keys():
-#         print(f"Method {method_ran} already computed, skipping...")
-#         methods_params_dict.pop(method_ran, None)
-            
-#     print(f"Methods left to run: {list(methods_params_dict.keys())}")
-
-# else:
 set_seeds(args.seed)
 adata, original_label_key, masked_label_key, masked_encoded_label_key= prepare_adata(adata, save_path, label_key, batch_key, args=args)
 adata = run_methods(adata, save_path, masked_label_key, encoded_label_key= masked_encoded_label_key, batch_key = batch_key, methods_params_dict=methods_params_dict, args=args)
