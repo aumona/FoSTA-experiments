@@ -90,13 +90,13 @@ def run_methods(adata, save_path, label_key, encoded_label_key, batch_key, metho
         memory_dict = {}
     
 
-    if args.npca>0:
-        print(f"Using PCA with {args.npca} components as input for the methods...")
-        embedding_basis = "X_pca"
-    else:
-        print(f"Using the original space as input for the methods...")
-        embedding_basis = "X"
-        adata.obsm["X"] = adata.X.copy() # hack so that we can access via adata.obsm[embedding_basis] 
+    # if args.npca>0:
+    #     print(f"Using PCA with {args.npca} components as input for the methods...")
+    #     embedding_basis = "X_pca"
+    # else:
+    #     print(f"Using the original space as input for the methods...")
+    #     embedding_basis = "X"
+    adata.obsm["X"] = adata.X.copy() # hack so that we can access via adata.obsm[embedding_basis] 
     
     for method_name, method_params in methods_params_dict.items():
         
@@ -106,6 +106,7 @@ def run_methods(adata, save_path, label_key, encoded_label_key, batch_key, metho
             method_params["method_type"] = method_name
         
         method_type = method_params.pop("method_type", None)
+        embedding_basis = method_params.pop("embedding_basis", "X_pca") # default to using PCA as input for the methods, but can be overridden by method_params
         
         print(f"Running method {method_name}...")
         adata, time_taken, memory_taken = run_models_from_adata(adata, method_type, batch_key = batch_key, label_key_ours = encoded_label_key, label_key = label_key, embedding_basis=embedding_basis, seed=args.seed, n_components = args.components, **method_params)
