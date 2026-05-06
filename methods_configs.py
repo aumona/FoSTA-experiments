@@ -4,12 +4,6 @@
 
 
 methods_params_dict = {
-                        # "MALI": {"t:": 'auto'
-                        # },
-
-
-
-
                         # "ICML-FoSTA t2": {"method_type": "FoSTA_ICML",
                         #                 "t": 2},
 
@@ -71,35 +65,38 @@ methods_params_dict = {
 
 
                       "FoSTA_t2": {"method_type": "FoSTA",
-                                     "t": "2",
+                                     "t": 2,
                                      "model_type": "rf"},
                       
 
                       "FoSTA_t2_balanced": {"method_type": "FoSTA",
-                                     "t": "2",
+                                     "t": 2,
                                      "model_type": "rf",
                                      "class_weight": 'balanced_subsample'},
                       
 
                       "FoSTA_t2_et": {"method_type": "FoSTA",
-                                     "t": "2",
+                                     "t": 2,
                                      "kernel_method": "kerf",
                                      "model_type": "et",
-                                     "bootstrap": False},
+                                     "bootstrap": True},
                       
-                      "FoSTA_tauto": {"method_type": "FoSTA",
-                                     "t": "auto",
-                                     "model_type": "rf"},
+                      # "FoSTA_tauto": {"method_type": "FoSTA",
+                      #                "t": "auto",
+                      #                "model_type": "rf"},
                 
                       
                       
-                      "FoSTA_t2_kerf": {"method_type": "FoSTA",
-                                     "t": "2",
-                                     "model_type": "kerf"},
+                      # "FoSTA_t2_kerf": {"method_type": "FoSTA",
+                      #                "t": "2",
+                      #                "model_type": "kerf"},
                       
                       "FoSTA_tauto_kerf": {"method_type": "FoSTA",
                                      "t": "auto",
-                                     "model_type": "kerf"},
+                                     "kernel_method": "kerf"},
+                      "FoSTA_tauto_kerf": {"method_type": "FoSTA",
+                                     "t": "auto",
+                                     "kernel_method": "gap"},
                       
                       
                                              
@@ -122,8 +119,10 @@ methods_params_dict = {
 
                         # "scVI":{},
                         # "scANVI":{},
-                        # "Pamona":{},
-                        # "KEMArbf": {},
-                        # "KEMAlin": {}
+                        "MALI_unshared_labels": {"method_type": "MALI",
+                                                 "t": "auto"},
+                        "Pamona_unshared_labels":{"method_type": "Pamona"},
+                        "KEMArbf_unshared_labels": {"method_type": "KEMArbf"},
+                        "KEMAlin_unshared_labels": {"method_type": "KEMAlin"}
 
                     }
