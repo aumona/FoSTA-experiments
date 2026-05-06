@@ -138,6 +138,10 @@ def evaluate_and_save_results(adata, save_path_subfolder, save_path_parent, orig
         methods_to_benchmark.remove("Unintegrated")
     except ValueError:
         pass
+    try:
+        methods_to_benchmark.remove("X")
+    except ValueError:
+        pass
     
     if "global_masking_fraction" not in adata.uns.keys():
         adata.uns["global_masking_fraction"] = 0
