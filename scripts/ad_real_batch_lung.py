@@ -33,7 +33,8 @@ BASE_RESULT_DIR = "/Users/aumona/Projects/RF-MALI/result_sc_ad/"
 
 BATCH_KEY = "batch"
 LABEL_KEY = "cell_type"
-BATCH_LIST = ['B1', 'B2', 'B3', 'B4']
+# BATCH_LIST = ['B1', 'B2', 'B3', 'B4']
+BATCH_LIST = ['1', '2', '3', '4', '5', '6']
 
 SEEDS = [39041, 56089, 79121] 
 MASK = False 
@@ -44,17 +45,18 @@ FOSTA_USE_PCA = True
 FOSTA_PCA_COMPONENTS = 30
 N_DIM = 2
 
+# Set to [] to run Unintegrated only
 MODELS_TO_RUN = [
-                    "scVI",
-                 "scANVI", 
-                 "LIGER", 
-                 "Scanorama", 
-                 "FoSTA", 
-                 "KEMAlin", 
-                 "KEMArbf", 
-                 "MALI", 
-                 "Pamona"
-                 ]
+    "scVI",
+    "scANVI", 
+    "LIGER", 
+    "Scanorama", 
+    "FoSTA", 
+    "KEMAlin", 
+    "KEMArbf", 
+    "MALI", 
+    "Pamona"
+]
 
 FOSTA_CONFIGS = {
     "FoSTA_t2": {
@@ -100,7 +102,6 @@ def add_custom_aggregates(df_res):
     return pd.concat([score_df, metric_type_ext.to_frame().T.rename(index={0: "Metric Type"})])
 
 def benchmark_method_and_update_csv(adata, method_key, metrics_csv, seed):
-    # Determine evaluation set: only masked cells if MASK is True
     if MASK and adata.obs["is_masked"].any():
         print(f"Benchmarking {method_key} (Seed {seed}) - MASKED CELLS ONLY...")
         eval_adata = adata[adata.obs["is_masked"]].copy()
@@ -119,7 +120,9 @@ def benchmark_method_and_update_csv(adata, method_key, metrics_csv, seed):
     return current
 
 def save_method_plot(adata, method_key, result_dir):
-    adata.obsm["X_2d_viz"] = adata.obsm[method_key]
+    # Standard plotting using first 2 dims of the specified key
+    adata.obsm["X_2d_viz"] = adata.obsm[method_key][:, :2]
+    
     for col, suffix in [(LABEL_KEY, "masked"), ("ground_truth_labels", "truth")]:
         fig = sc.pl.embedding(adata, basis="X_2d_viz", color=[BATCH_KEY, col],
                              show=False, return_fig=True, title=[f"{method_key} Batch", f"{method_key} {suffix}"])
@@ -166,11 +169,21 @@ for CURRENT_SEED in SEEDS:
         adata.layers["counts"] = adata.X.copy()
         sc.pp.highly_variable_genes(adata, n_top_genes=2000, flavor="cell_ranger", batch_key=BATCH_KEY)
         adata = adata[:, adata.var.highly_variable].copy()
+        
+        # scIB standard baseline: PCA 30
         sc.tl.pca(adata, n_comps=30)
         
         # 0. Unintegrated
-        adata.obsm["Unintegrated"] = adata.obsm["X_pca"][:, :N_DIM]
+        # Evaluate on full PCA 30D, Plotting function will automatically slice to first 2 PCs
+        adata.obsm["Unintegrated"] = adata.obsm["X_pca"].copy()
         benchmark_method_and_update_csv(adata, "Unintegrated", METRICS_CSV, CURRENT_SEED)
+        save_method_plot(adata, "Unintegrated", RESULT_DIR)
+
+        # Efficiency: Skip model training if no models are requested
+        if not MODELS_TO_RUN:
+            print("MODELS_TO_RUN is empty. Saving Unintegrated result and continuing...")
+            adata.write(os.path.join(RESULT_DIR, "adata_final.h5ad"))
+            continue
 
         # 1. scVI / scANVI
         if any(m in MODELS_TO_RUN for m in ["scVI", "scANVI"]):
@@ -225,15 +238,11 @@ for CURRENT_SEED in SEEDS:
             benchmark_method_and_update_csv(adata, "Scanorama", METRICS_CSV, CURRENT_SEED)
             save_method_plot(adata, "Scanorama", RESULT_DIR)
 
-        # 4. Label-Supervised Models (FoSTA, MALI, etc.)
+        # 4. Supervised Models
         active_supervised = [m for m in MODELS_TO_RUN if m in SUPERVISED_CLASSES]
         if active_supervised:
             idx_a, idx_b = (adata.obs[BATCH_KEY] == BATCH_1), (adata.obs[BATCH_KEY] == BATCH_2)
-            if FOSTA_USE_PCA:
-                x_a, x_b = adata[idx_a].obsm["X_pca"][:, :FOSTA_PCA_COMPONENTS], adata[idx_b].obsm["X_pca"][:, :FOSTA_PCA_COMPONENTS]
-            else:
-                x_a = adata[idx_a].X.toarray() if hasattr(adata[idx_a].X, "toarray") else adata[idx_a].X
-                x_b = adata[idx_b].X.toarray() if hasattr(adata[idx_b].X, "toarray") else adata[idx_b].X
+            x_a, x_b = adata[idx_a].obsm["X_pca"][:, :FOSTA_PCA_COMPONENTS], adata[idx_b].obsm["X_pca"][:, :FOSTA_PCA_COMPONENTS]
             y_a_f, y_b_f = prepare_fosta_labels(adata[idx_a].obs[LABEL_KEY]), prepare_fosta_labels(adata[idx_b].obs[LABEL_KEY])
 
             for m_name in active_supervised:
@@ -255,6 +264,6 @@ for CURRENT_SEED in SEEDS:
                     benchmark_method_and_update_csv(adata, m_name, METRICS_CSV, CURRENT_SEED)
                     save_method_plot(adata, m_name, RESULT_DIR)
 
-        adata.write(os.path.join(RESULT_DIR, f"adata_final.h5ad"))
+        adata.write(os.path.join(RESULT_DIR, "adata_final.h5ad"))
 
 print(f"\nFinished! Results in: {ROOT_RESULT_DIR}")

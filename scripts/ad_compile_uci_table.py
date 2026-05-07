@@ -31,11 +31,8 @@ lower_is_better = ["foscttm"]
 #     "rotate"
 # ]
 
-split_order = [
+split_order = ["distort"]
 
-    "distort",
- 
-]
 
 split_display_map = {
     "add_gaussian_noise_features": "Noise",
@@ -47,9 +44,9 @@ split_display_map = {
 }
 
 method_order = [
-    # "FoSTA_gap_auto",
+    "FoSTA_gap_auto",
 
-    "FoSTA_gap_t2",
+    # "FoSTA_gap_t2",
     # "FoSTA_gap_auto",
     # "FoSTA_kerf_t2",
     # "FoSTA_kerf_auto",
@@ -79,6 +76,25 @@ method_display_map = {
     "KEMArbf": "KEMArbf"
 }
 
+
+
+# =========================================================
+# HIGHLIGHTING LOGIC
+# =========================================================
+def get_highlighted_value(val, m_key, split_name):
+    if pd.isna(val): return "---"
+    all_scores = all_summaries[m_key][split_name].sort_values(ascending=(m_key in lower_is_better))
+    unique_vals = all_scores.unique()
+    formatted = f"{val:.3f}"
+    
+    if desired_top >= 1 and val == unique_vals[0]:
+        return f"\\gold{{{formatted}}}" 
+    elif desired_top >= 2 and len(unique_vals) > 1 and val == unique_vals[1]:
+        return f"\\silver{{{formatted}}}" 
+    elif desired_top >= 3 and len(unique_vals) > 2 and val == unique_vals[2]:
+        return f"\\bronze{{{formatted}}}" 
+    return formatted
+
 # =========================================================
 # PROCESSING
 # =========================================================
@@ -87,66 +103,63 @@ if "status" in df.columns:
     df = df[df["status"] == "ok"].copy()
 
 all_summaries = {}
+all_stds = {} 
+
 for m_key in metrics.keys():
     x = df[df["method"].isin(method_order)].copy()
     piv = x.pivot_table(index=["dataset", "split", "seed"], columns="method", values=m_key)
     valid_idx = piv.index[piv[method_order].notna().all(axis=1)]
-    means = x.set_index(["dataset", "split", "seed"]).loc[valid_idx].reset_index()
-    all_summaries[m_key] = means.groupby(["split", "method"])[m_key].mean().unstack(level=0)
+    
+    # Filter for valid runs
+    filtered = x.set_index(["dataset", "split", "seed"]).loc[valid_idx].reset_index()
+    
+    # 1. Calculate Mean (Average of all scores)
+    all_summaries[m_key] = filtered.groupby(["split", "method"])[m_key].mean().unstack(level=0)
+    
+    # 2. NEW LOGIC: Calculate STD per dataset, then take the Mean of those STDs
+    stds_per_dataset = filtered.groupby(["split", "method", "dataset"])[m_key].std()
+    mean_of_stds = stds_per_dataset.groupby(["split", "method"]).mean()
+    all_stds[m_key] = mean_of_stds.unstack(level=0)
 
 # =========================================================
-# HIGHLIGHTING LOGIC
+# LATEX GENERATION - TWO-ROW FORMAT
 # =========================================================
-def get_highlighted_value(val, m_key, split_name):
-    """Returns formatted value with leading zeros and ranking highlights."""
-    if pd.isna(val): return "---"
-    
-    # Get all scores for this metric and split
-    all_scores = all_summaries[m_key][split_name].sort_values(ascending=(m_key in lower_is_better))
-    unique_vals = all_scores.unique()
-    
-    # Keeping the leading zero (standard 0.3f format)
-    formatted = f"{val:.3f}"
-    
-    # Check ranks against thresholds
-    if desired_top >= 1 and val == unique_vals[0]:
-        return f"\\gold{{{formatted}}}" 
-    elif desired_top >= 2 and len(unique_vals) > 1 and val == unique_vals[1]:
-        return f"\\silver{{{formatted}}}" 
-    elif desired_top >= 3 and len(unique_vals) > 2 and val == unique_vals[2]:
-        return f"\\bronze{{{formatted}}}" 
-    
-    return formatted
+print("\n" + "="*50)
+print(f"LATEX TABLE: TWO-ROW FORMAT (SCORES + STDS)")
+print("="*50 + "\n")
 
-# =========================================================
-# LATEX GENERATION
-# =========================================================
-print("\n" + "="*30)
-print(f"LATEX TABLE OUTPUT (LEADING ZEROS INCLUDED)")
-print("="*30 + "\n")
-
-header = "Model "
-for s in split_order:
-    header += f"& \multicolumn{{3}}{{c}}{{{split_display_map[s]}}} "
-print(header + "\\\\")
-
+header_row = "Model "
 sub_header = " "
-for _ in split_order:
+for s in split_order:
+    header_row += f"& \multicolumn{{3}}{{c}}{{{split_display_map[s]}}} "
     sub_header += "& Acc & AS & FOS "
+
+print(header_row + "\\\\")
 print(sub_header + "\\\\")
 print("\\midrule")
 
 for m in method_order:
-    row_parts = [method_display_map[m]]
+    # --- ROW 1: MEANS ---
+    row_means = [method_display_map[m]]
     for s in split_order:
-        acc_val = all_summaries["label_transfer"].loc[m, s]
-        as_val = all_summaries["alignment_score"].loc[m, s]
-        fos_val = all_summaries["foscttm"].loc[m, s]
+        row_means.append(get_highlighted_value(all_summaries["label_transfer"].loc[m, s], "label_transfer", s))
+        row_means.append(get_highlighted_value(all_summaries["alignment_score"].loc[m, s], "alignment_score", s))
+        row_means.append(get_highlighted_value(all_summaries["foscttm"].loc[m, s], "foscttm", s))
+    print(" & ".join(row_means) + " \\\\")
+
+    # --- ROW 2: ERRORS (Standard Deviation) ---
+    # UPDATED: Label changed to "std." to reflect the metric change
+    row_errs = ["\\scriptsize{$\\pm$ std.}"] 
+    for s in split_order:
+        acc_e = all_stds["label_transfer"].loc[m, s]
+        as_e = all_stds["alignment_score"].loc[m, s]
+        fos_e = all_stds["foscttm"].loc[m, s]
         
-        row_parts.append(get_highlighted_value(acc_val, "label_transfer", s))
-        row_parts.append(get_highlighted_value(as_val, "alignment_score", s))
-        row_parts.append(get_highlighted_value(fos_val, "foscttm", s))
+        # Formatting to 2 decimals with math-mode \pm
+        row_errs.append(f"\\scriptsize{{$\\pm${acc_e:.2f}}}" if not pd.isna(acc_e) else " ")
+        row_errs.append(f"\\scriptsize{{$\\pm${as_e:.2f}}}" if not pd.isna(as_e) else " ")
+        row_errs.append(f"\\scriptsize{{$\\pm${fos_e:.2f}}}" if not pd.isna(fos_e) else " ")
     
-    print(" & ".join(row_parts) + " \\\\")
+    print(" & ".join(row_errs) + " \\\\[0.5ex]")
 
 print("\\bottomrule")

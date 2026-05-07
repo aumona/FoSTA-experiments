@@ -4,13 +4,19 @@ import pandas as pd
 # =========================================================
 # CONFIG
 # =========================================================
-results_csv = "results_uci/results_20260503_201720_other_ablation.csv"
+
+# results_csv = "results_uci/results_20260503_015528_general.csv"
+results_csv = "results_uci/results_20260503_122708_general_distort05.csv"
+# results_csv = "results_uci/results_20260503_201720_other_ablation.csv"
 
 desired_top = 3
 metrics = {"label_transfer": "Acc", "alignment_score": "AS", "foscttm": "FOS"}
 lower_is_better = ["foscttm"]
 
-split_order = ["add_gaussian_noise_features", "alternate_importance", "distort", "importance", "random", "rotate"]
+# split_order = ["add_gaussian_noise_features", "alternate_importance", "distort", "importance", "random", "rotate"]
+
+split_order = ["distort"]
+
 
 split_display_map = {
     "add_gaussian_noise_features": "Noise", 
@@ -22,9 +28,14 @@ split_display_map = {
 }
 
 method_order = [
-    "FoSTA_umap",
-    "FoSTA_dense",
-    "FoSTA_et",
+    # "FoSTA_et",
+
+    "FoSTA_gap_t2",
+    "FoSTA_kerf_auto",
+
+    # "FoSTA_dense",
+
+    # "FoSTA_umap",
 ]
 
 method_display_map = {
@@ -67,17 +78,6 @@ ref_scores = {
     }
 }
 
-# =========================================================
-# PROCESSING
-# =========================================================
-df = pd.read_csv(results_csv)
-if "status" in df.columns:
-    df = df[df["status"] == "ok"].copy()
-
-all_summaries = {}
-for m_key in metrics.keys():
-    x = df[df["method"].isin(method_order)].copy()
-    all_summaries[m_key] = x.groupby(["split", "method"])[m_key].mean().unstack(level=0)
 
 def get_highlighted_value(val, m_key, split_name):
     if pd.isna(val): return "---"
@@ -96,22 +96,46 @@ def get_highlighted_value(val, m_key, split_name):
         return f"\\bronze{{{formatted}}}"
     return formatted
 
+
+
+# =========================================================
+# PROCESSING
+# =========================================================
+df = pd.read_csv(results_csv)
+if "status" in df.columns:
+    df = df[df["status"] == "ok"].copy()
+
+all_summaries = {}
+all_stds = {} 
+
+for m_key in metrics.keys():
+    # Filter methods
+    x = df[df["method"].isin(method_order)].copy()
+    
+    # Calculate Mean (Global average for the top row)
+    all_summaries[m_key] = x.groupby(["split", "method"])[m_key].mean().unstack(level=0)
+    
+    # Calculate Mean of STDs per dataset (for the error row)
+    # 1. STD per dataset
+    stds_per_dataset = x.groupby(["split", "method", "dataset"])[m_key].std()
+    # 2. Mean of those STDs
+    mean_of_stds = stds_per_dataset.groupby(["split", "method"]).mean()
+    all_stds[m_key] = mean_of_stds.unstack(level=0)
+
 # =========================================================
 # LATEX GENERATION
 # =========================================================
 print("\n" + "="*40)
-print("ABLATION TABLE (COMPARED AGAINST BASELINES)")
+print("ABLATION TABLE (SCORES + MEAN-OF-STDS)")
 print("="*40 + "\n")
 
-# Use raw string (fr) to fix SyntaxWarning with \m
 header = "Model "
+sub_header = " "
 for s in split_order:
     header += fr"& \multicolumn{{3}}{{c}}{{{split_display_map[s]}}} "
-print(header + " \\\\")
-
-sub_header = " "
-for _ in split_order:
     sub_header += "& Acc & AS & FOS "
+
+print(header + " \\\\")
 print(sub_header + " \\\\")
 print("\\midrule")
 
@@ -119,16 +143,31 @@ for m in method_order:
     if m not in all_summaries["label_transfer"].index:
         continue
         
-    row_parts = [method_display_map.get(m, m)]
+    # --- ROW 1: MEANS ---
+    row_means = [method_display_map.get(m, m)]
     for s in split_order:
-        acc_val = all_summaries["label_transfer"].loc[m, s]
-        as_val = all_summaries["alignment_score"].loc[m, s]
-        fos_val = all_summaries["foscttm"].loc[m, s]
+        acc_v = all_summaries["label_transfer"].loc[m, s]
+        as_v = all_summaries["alignment_score"].loc[m, s]
+        fos_v = all_summaries["foscttm"].loc[m, s]
         
-        row_parts.append(get_highlighted_value(acc_val, "label_transfer", s))
-        row_parts.append(get_highlighted_value(as_val, "alignment_score", s))
-        row_parts.append(get_highlighted_value(fos_val, "foscttm", s))
+        row_means.append(get_highlighted_value(acc_v, "label_transfer", s))
+        row_means.append(get_highlighted_value(as_v, "alignment_score", s))
+        row_means.append(get_highlighted_value(fos_v, "foscttm", s))
     
-    print(" & ".join(row_parts) + " \\\\")
+    print(" & ".join(row_means) + " \\\\")
+
+    # --- ROW 2: ERRORS (Mean of STDs) ---
+    row_errs = [r"\scriptsize{$\pm$ std.}"]
+    for s in split_order:
+        acc_e = all_stds["label_transfer"].loc[m, s]
+        as_e = all_stds["alignment_score"].loc[m, s]
+        fos_e = all_stds["foscttm"].loc[m, s]
+        
+        # Formatting to 2 decimals with math-mode \pm
+        row_errs.append(fr"\scriptsize{{$\pm${acc_e:.2f}}}" if not pd.isna(acc_e) else " ")
+        row_errs.append(fr"\scriptsize{{$\pm${as_e:.2f}}}" if not pd.isna(as_e) else " ")
+        row_errs.append(fr"\scriptsize{{$\pm${fos_e:.2f}}}" if not pd.isna(fos_e) else " ")
+    
+    print(" & ".join(row_errs) + r" \\[0.5ex]")
 
 print("\\bottomrule")
