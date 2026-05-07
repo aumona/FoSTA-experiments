@@ -1,3 +1,5 @@
+import os
+
 import matplotlib.pyplot as plt
 import numpy as np
 from phate import phate
@@ -7,6 +9,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import accuracy_score, silhouette_score
 import seaborn as sns
 import scanpy as sc
+import pandas as pd
 
 from metrics import label_transfer_accuracy
 from matplotlib.legend_handler import HandlerTuple
@@ -366,9 +369,67 @@ def plot_bio_vs_batch_correction(results_df, title = "Bio conservation vs Batch 
         plt.savefig(f"{save_path}/bio_vs_batch_correction.pdf", format='pdf', bbox_inches="tight")
         plt.savefig(f"{save_path}/bio_vs_batch_correction.png", format='png', bbox_inches="tight")
     plt.show()
+    return
 
 
-def plot_bio_vs_batch_correction_markers(results_df, title="Bio conservation vs Batch correction", save_path=None):
+def rename_reorder_methods(results_df, right_fosta_name):
+    if right_fosta_name not in results_df["method"].values:
+        print(f"(!) Warning: '{right_fosta_name}' not found in 'method' column. please try with a different name.")
+        return results_df
+    
+    results_df["method"] = results_df["method"].replace({right_fosta_name: "FoSTA"})
+
+    methods_to_plot = define_methods_to_plot()
+    results_df = results_df[results_df['method'].isin(methods_to_plot)] # subset to methods to keep
+
+   
+    methods_to_plot.remove("FoSTA")
+    methods_to_plot.insert(0, "FoSTA")  # FoSTA second
+    methods_to_plot.remove("Unintegrated")
+    methods_to_plot.append("Unintegrated") # Unintegrated last
+
+    results_df["method"] = pd.Categorical(results_df["method"], ordered=True, categories = methods_to_plot)
+
+    return results_df
+
+def define_methods_to_plot():
+    methods_list = ['Unintegrated', 
+                    'FoSTA',
+                    'LIGER', 
+                    'Scanorama', 
+                    'scANVI', 
+                    'scVI',
+                    'KEMAlin', 
+                    'KEMArbf', 
+                    'MALI', 
+                    'Pamona', 
+                    # 'Harmony',
+                    # below to remove after testing
+                    # 'FoSTA_t2',
+                    # 'FoSTA_t2_balanced', 
+                    # 'FoSTA_t2_et', 
+                    # 'FoSTA_tauto_kerf',
+                    # 'FoSTA_tauto_gap',
+                    # 'MALI_unshared_labels',
+                    # 'Pamona_unshared_labels',
+                    # 'KEMArbf_unshared_labels',
+                    # 'KEMAlin_unshared_labels'
+                    ]
+
+    return methods_list
+
+
+# def make_symbol_map(methods):
+    
+#     return 
+
+def plot_bio_vs_batch_correction_markers(results_df, title="Bio conservation vs Batch correction", methods_to_plot=None, save_path=None):
+    # subset to the methods to plot
+    if methods_to_plot is not None:
+        results_df = results_df[results_df['method'].isin(methods_to_plot)]
+    else:
+        methods_to_plot = results_df['method'].unique()
+        
     # 1. Calculate Mean and Standard Deviation
     mean_df = results_df.groupby(['method'])[["Bio conservation", "Batch correction"]].mean()
     std_df = results_df.groupby(['method'])[["Bio conservation", "Batch correction"]].std()
@@ -383,13 +444,11 @@ def plot_bio_vs_batch_correction_markers(results_df, title="Bio conservation vs 
     mean_df = mean_df.sort_values('Avg Rank')
 
     plt.figure(figsize=(6, 6)) 
-    unique_methods = results_df['method'].unique()
     
-    # Using \mathit for thin symbols, supported by almost all Matplotlib versions
     symbols = [
-        r"$\mathit{\alpha}$", r"$\mathit{\beta}$", r"$\mathit{\gamma}$", 
+        r"$\mathit{0}$", r"$\mathit{f}$", r"$\mathit{\kappa}$", r"$\mathit{\alpha}$", r"$\mathit{\beta}$", r"$\mathit{\gamma}$", 
         r"$\mathit{\delta}$", r"$\mathit{\epsilon}$", r"$\mathit{\zeta}$", 
-        r"$\mathit{\eta}$", r"$\mathit{\theta}$", r"$\mathit{\kappa}$", 
+        r"$\mathit{\eta}$", r"$\mathit{\theta}$",
         r"$\mathit{\lambda}$", r"$\mathit{\mu}$", r"$\mathit{\nu}$", 
         r"$\mathit{\xi}$", r"$\mathit{\pi}$", r"$\mathit{\rho}$", 
         r"$\mathit{\sigma}$", r"$\mathit{\tau}$", r"$\mathit{\phi}$", 
@@ -397,15 +456,16 @@ def plot_bio_vs_batch_correction_markers(results_df, title="Bio conservation vs 
         r"$\clubsuit$", r"$\spadesuit$", r"$\heartsuit$", r"$\diamondsuit$",
         r"$\star$", r"$\dagger$", r"$\ddagger$", r"$\S$", r"$\P$"
     ]
-    
-    palette_list = sns.color_palette("tab20", n_colors=len(unique_methods))
-    color_map = dict(zip(unique_methods, palette_list))
-    symbol_map = dict(zip(unique_methods, symbols[:len(unique_methods)]))
+    palette_list = sns.color_palette("tab20", n_colors=len(methods_to_plot))
+    color_map = dict(zip(methods_to_plot, palette_list))
+    symbol_map = dict(zip(methods_to_plot, symbols[:len(methods_to_plot)]))
     
     legend_handles = []
     legend_labels = []
 
     for method in mean_df.index:
+        if method not in methods_to_plot:
+            continue
         x = mean_df.loc[method, "Batch correction"]
         y = mean_df.loc[method, "Bio conservation"]
         x_err = std_df.loc[method, "Batch correction"]
@@ -450,8 +510,102 @@ def plot_bio_vs_batch_correction_markers(results_df, title="Bio conservation vs 
 
     if save_path is not None:
         plt.savefig(f"{save_path}/bio_vs_batch_correction.png", bbox_inches="tight")
+        plt.savefig(f"{save_path}/bio_vs_batch_correction.pdf", bbox_inches="tight")
     plt.show()
     
+    
+
+def plot_bio_vs_batch_correction_markers_order_by_mean(results_df, title="Bio conservation vs Batch correction", methods_to_plot=None, save_path=None):
+    # subset to the methods to plot
+    if methods_to_plot is not None:
+        results_df = results_df[results_df['method'].isin(methods_to_plot)]
+    else:
+        methods_to_plot = results_df['method'].unique()
+        
+    # 1. Calculate Mean and Standard Deviation
+    mean_df = results_df.groupby(['method'])[["Bio conservation", "Batch correction", "Total"]].mean()
+    std_df = results_df.groupby(['method'])[["Bio conservation", "Batch correction", "Total"]].std()
+    std_df = std_df.fillna(0)
+
+    # # 2. Calculate Ranks
+    # mean_df['Bio Rank'] = mean_df['Bio conservation'].rank(ascending=False).astype(int)
+    # mean_df['Batch Rank'] = mean_df['Batch correction'].rank(ascending=False).astype(int)
+    
+    # # 3. Average Rank and Sort
+    # mean_df['Avg Rank'] = (mean_df['Bio Rank'] + mean_df['Batch Rank']) / 2
+    # mean_df = mean_df.sort_values('Avg Rank')
+    mean_df = mean_df.sort_values('Total', ascending=False)
+
+    plt.figure(figsize=(6, 6)) 
+    
+    symbols = [
+        r"$\mathit{0}$", r"$\mathit{f}$", r"$\mathit{\kappa}$", r"$\mathit{\alpha}$", r"$\mathit{\beta}$", r"$\mathit{\gamma}$", 
+        r"$\mathit{\delta}$", r"$\mathit{\epsilon}$", r"$\mathit{\zeta}$", 
+        r"$\mathit{\eta}$", r"$\mathit{\theta}$",
+        r"$\mathit{\lambda}$", r"$\mathit{\mu}$", r"$\mathit{\nu}$", 
+        r"$\mathit{\xi}$", r"$\mathit{\pi}$", r"$\mathit{\rho}$", 
+        r"$\mathit{\sigma}$", r"$\mathit{\tau}$", r"$\mathit{\phi}$", 
+        r"$\mathit{\chi}$", r"$\mathit{\psi}$", r"$\mathit{\omega}$",
+        r"$\clubsuit$", r"$\spadesuit$", r"$\heartsuit$", r"$\diamondsuit$",
+        r"$\star$", r"$\dagger$", r"$\ddagger$", r"$\S$", r"$\P$"
+    ]
+    palette_list = sns.color_palette("tab20", n_colors=len(methods_to_plot))
+    color_map = dict(zip(methods_to_plot, palette_list))
+    symbol_map = dict(zip(methods_to_plot, symbols[:len(methods_to_plot)]))
+    
+    legend_handles = []
+    legend_labels = []
+
+    for method in mean_df.index:
+        if method not in methods_to_plot:
+            continue
+        x = mean_df.loc[method, "Batch correction"]
+        y = mean_df.loc[method, "Bio conservation"]
+        x_err = std_df.loc[method, "Batch correction"]
+        y_err = std_df.loc[method, "Bio conservation"]
+        
+        # bio_rank = mean_df.loc[method, 'Bio Rank']
+        # batch_rank = mean_df.loc[method, 'Batch Rank']
+        # label = f"{method} (Bio #{bio_rank}, Batch #{batch_rank})"
+        label = f"{method} (Total={mean_df.loc[method, 'Total']:.3f})"
+
+        # 1. Error Bars
+        plt.errorbar(x, y, xerr=x_err, yerr=y_err, fmt='none', 
+                     ecolor=color_map[method], elinewidth=1.5, capsize=5, alpha=0.3)
+
+        # 2. Circle (Background)
+        c = plt.scatter(x, y, s=180, color=color_map[method], marker='o', zorder=3)
+        
+        # 3. Symbol (Foreground)
+        s = plt.scatter(x, y, s=50, color="white", marker=symbol_map[method], zorder=4)
+
+        legend_handles.append((c, s))
+        legend_labels.append(label)
+
+    # --- UPDATED LEGEND LOGIC ---
+    # ndivide=None tells the legend to plot both items at the same center point
+    # handlelength=1.5 ensures there is enough room for the circular icon to be centered
+    plt.legend(
+        handles=legend_handles,
+        labels=legend_labels,
+        handler_map={tuple: HandlerTuple(ndivide=None, pad=-2)},
+        bbox_to_anchor=(1.05, 1), loc='upper left', 
+        title="Method (Ordered by Total)",
+        frameon=True, 
+        fontsize='small',
+        handlelength=2, 
+        handletextpad=0.5
+    )
+    
+    plt.title(title)
+    plt.xlabel("Batch correction")
+    plt.ylabel("Bio conservation")
+    plt.grid(True, linestyle='--', alpha=0.5)
+
+    if save_path is not None:
+        plt.savefig(f"{save_path}/bio_vs_batch_correction.png", bbox_inches="tight")
+        plt.savefig(f"{save_path}/bio_vs_batch_correction.pdf", bbox_inches="tight")
+    plt.show()
     
 def clean_cell_types(adata, threshold=10):
     adata.obs["original_cell_type"] = adata.obs["cell_type"]
@@ -462,6 +616,12 @@ def clean_cell_types(adata, threshold=10):
     # replace cell_type "Type 2" with "Alveolar Type 2" 
     adata.obs.replace({"cell_type": {"Type 2": "Alveolar Type 2"}}, inplace=True)
 
+    # replace cell_type "Type 2" with "Alveolar Type 2" 
+    adata.obs.replace({"cell_type": {"Type 2": "Alveolar Type 2"}}, inplace=True)
+    # replace cell_type "Endothelium" with "Endothelium (Blood Endothelial Cell)" 
+    adata.obs.replace({"cell_type": {"Endothelium": "Blood Endothelial Cell"}}, inplace=True)
+    # replace cell_type "Lymphatic" with "Lymphatic (Lymphatic Endothelial Cell)" 
+    adata.obs.replace({"cell_type": {"Lymphatic": "Lymphatic Endothelial Cell"}}, inplace=True)
 
     for small_type in small_types:
         adata.obs.replace({"cell_type": {small_type: "Other"}}, inplace=True)
@@ -475,29 +635,25 @@ def clean_cell_types(adata, threshold=10):
     return adata
 
 
-def load_adata(save_path,noise_level=0.5, dropout_level=0.5):
+def load_adata(save_path, noise_level=0.5, dropout_level=0.5, seed=39041):
     # format noise and dropout to match folder names (1 decimal place)
     noise_level = f"{noise_level:.1f}"
     dropout_level = f"{dropout_level:.1f}"
-    path = f"{save_path}/noise_{noise_level}_dropout_{dropout_level}/2_components"
+    path = f"{save_path}/noise_{noise_level}_dropout_{dropout_level}/2_components/seed_{seed}"
     adata = sc.read_h5ad(f"{path}/adata_intermediate.h5ad")
-    # rename FoSTA_PHATE_t2 to FoSTA in the adata
-    adata.obsm["FoSTA"] = adata.obsm["FoSTA_PHATE_t2"]
-    del adata.obsm["FoSTA_PHATE_t2"]
-
 
     adata = clean_cell_types(adata)
     return adata, path
 
 
     
-def add_rfphate_phate_embeddings(adata = None, label_key = "cell_type", batch_key = "simulated_batch", noise_level=0.5, dropout_level=0.5, embedding_basis = "X_pca", t=2):
+def add_rfphate_phate_embeddings(adata = None, save_path = None, label_key = "cell_type", batch_key = "simulated_batch", noise_level=0.5, dropout_level=0.5, seed=39041, embedding_basis = "X_pca", t=2):
     if adata is None:
-        adata, path = load_adata(noise_level=noise_level, dropout_level=dropout_level)
+        adata, path = load_adata(save_path, noise_level=noise_level, dropout_level=dropout_level, seed=seed)
     else:
         path = None
-    phate_operator = phate.PHATE(n_components=2, t=t, seed = 42)
-    rfphate_operator = rfphate.RFPHATE(n_components=2, t=t, seed = 42)
+    phate_operator = phate.PHATE(n_components=2, t=t, random_state=42)
+    rfphate_operator = rfphate.RFPHATE(n_components=2, t=t, random_state=42)
 
     phate_embeddings = phate_operator.fit_transform(adata.obsm[embedding_basis])
     rfphate_embeddings = rfphate_operator.fit_transform(adata.obsm[embedding_basis], adata.obs[label_key])
@@ -508,14 +664,19 @@ def add_rfphate_phate_embeddings(adata = None, label_key = "cell_type", batch_ke
     return adata, path
 
 
-def plot_embeddings(adata = None, methods = None, noise_level=0.5, dropout_level=0.5, save_path = None, rename_dict = None, figsize=None, marker_test="*", size_test=20, **kwargs):
+def plot_embeddings(adata = None, methods = None, noise_level=0.5, dropout_level=0.5, save_path = None, rename_dict = None, figsize=None, seed= None, right_fosta_key="FoSTA", marker_test="*", size_test=20, **kwargs):
     label_key = "cell_type"
     batch_key = "simulated_batch"
-    
 
     if adata is None:
-        adata, save_path = load_adata(save_path=save_path, noise_level=noise_level, dropout_level=dropout_level)
+        adata, save_path = load_adata(save_path=save_path, noise_level=noise_level, dropout_level=dropout_level, seed= seed)
      
+    if right_fosta_key not in adata.obsm.keys():
+        right_fosta_key = "FoSTA"
+    else:
+        # rename FoSTA_PHATE_t2 to FoSTA in the adata
+        adata.obsm["FoSTA"] = adata.obsm[right_fosta_key]
+
     if methods is None:
         methods = list(adata.obsm.keys())
     n = len(methods)
@@ -640,6 +801,9 @@ def plot_embeddings(adata = None, methods = None, noise_level=0.5, dropout_level
 
     # plt.title(f"Noise level: {noise_level}, Dropout level: {dropout_level}")
     if save_path is not None:
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+
         plt.savefig(f"{save_path}/all_methods_embeddings.png", bbox_inches='tight', format="png")
         plt.savefig(f"{save_path}/all_methods_embeddings.pdf", bbox_inches='tight', format="pdf")
         
