@@ -21,26 +21,28 @@ dropout_probs=(0.25 0.5 0.75)
 # dropout_probs=(0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9) 
 # n_components=(2) # 3 10 20)
 seeds=(39041 56089 79121)
+# seeds=(11784 39041 56089)
 # 4386721 11784)
 
 
 
-# first run 0.5 0.5 with all seeds to get a baseline, then run the rest of the combinations
-for seed in "${seeds[@]}"; do
-  python3 scripts/simulated_batches/simulated_batches.py \
-        --globalmasking 0.2  \
-        --savename "simulated_batches/${timestamp}" \
-        --noise 0.5 \
-        --dropout 0.5 \
-        --seed "$seed"  \
-       > "$log_dir/noise${noise}_dropout${dropout}_seed${seed}.log" 2>&1
-done
+# # first run 0.5 0.5 with all seeds to get a baseline, then run the rest of the combinations
+# for seed in "${seeds[@]}"; do
+#   python3 scripts/simulated_batches/simulated_batches.py \
+#         --globalmasking 0.2  \
+#         --savename "simulated_batches/${timestamp}" \
+#         --noise 0.5 \
+#         --dropout 0.5 \
+#         --seed "$seed"  \
+#        > "$log_dir/noise${noise}_dropout${dropout}_seed${seed}.log" 2>&1
+# done
 
 
 
 for seed in "${seeds[@]}"; do
   for noise in "${noise_stds[@]}"; do
     for dropout in "${dropout_probs[@]}"; do
+      printf "Running with noise=%.2f, dropout=%.2f, seed=%d\n" "$noise" "$dropout" "$seed"
       python3 scripts/simulated_batches/simulated_batches.py \
         --globalmasking 0.2  \
         --savename "simulated_batches/${timestamp}" \
