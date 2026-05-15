@@ -39,7 +39,7 @@ for seed in "${seeds[@]}"; do
       --batch2 "$batch2" \
       --seed "$seed" \
       --components 2 \
-      --globalmasking 0.2 \
+      --globalmasking 0\
       --savename "$savename" \
       --keep_unshared_labels \
       > "$log_dir/"$batch1"_"$batch2"_"$seed".out" \
