@@ -44,11 +44,17 @@ batches = [args.batch1, args.batch2]
 save_path_parent = f"{RESULTS_PATH}/{args.savename}"
 save_path = f"{save_path_parent}/{batches[0]}_{batches[1]}/seed_{args.seed}" 
 
+
+
+set_seeds(args.seed)
+
+
 # LOAD DATA 
 if os.path.exists(f"{save_path}/adata_intermediate.h5ad"):
     # load previously computed results
     adata, methods_params_dict = load_existing_adata(save_path, methods_params_dict) # this will update the adata and methods_params_dict by removing the methods that have already been run (if any)
-    
+    masked_label_key = f"{label_key}_masked" # update label key to the masked version for benchmarking (so that methods that can leverage labels will be affected by the masking)
+    masked_encoded_label_key = "cell_type_cleaned_encoded"
 else:
     adata_full = sc.read(data_path)
 
@@ -59,8 +65,8 @@ else:
     adata, original_label_key, masked_label_key, masked_encoded_label_key_with_unshared= prepare_adata(adata, save_path, label_key, batch_key, args=args, masked_encoded_label_key=f"{label_key}_encoded_with_unshared")
 
 
-set_seeds(args.seed)
-adata, original_label_key, masked_label_key, masked_encoded_label_key= prepare_adata(adata, save_path, label_key, batch_key, args=args)
+
+# adata, original_label_key, masked_label_key, masked_encoded_label_key= prepare_adata(adata, save_path, label_key, batch_key, args=args)
 adata = run_methods(adata, save_path, masked_label_key, encoded_label_key= masked_encoded_label_key, batch_key = batch_key, methods_params_dict=methods_params_dict, args=args)
 evaluate_and_save_results(adata, save_path_subfolder=save_path, save_path_parent=save_path_parent, original_label_key=original_label_key, batch_key=batch_key, args=args, save_name = "real_batches_lung")
 save_embeddings(adata, save_path, label_key, batch_key)
