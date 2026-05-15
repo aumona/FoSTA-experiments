@@ -14,14 +14,14 @@ import sys, pathlib
 sys.path.insert(0, str(next(p for p in [pathlib.Path.cwd()] + list(pathlib.Path.cwd().parents) if (p/"src").is_dir())))
 from utils.benchmark_utils import set_seeds, visualization, run_models_from_adata, benchmark_from_adata
 from utils.simulation_utils import add_noise, dropout, split_and_transform_batch, clean_and_encode_labels, preprocess_adata, split_and_transform_batch_stratified, global_label_masking, ensure_label_intersection
-from utils.script_utils import main_argparser, prepare_adata, run_methods, evaluate_and_save_results, save_embeddings
+from utils.script_utils import load_existing_adata, main_argparser, prepare_adata, run_methods, evaluate_and_save_results, save_embeddings
 
 
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 from personal_paths import BASE_PATH, LUNG_BATCHES_DATA_PATH, RESULTS_PATH
 
-from methods_configs import methods_params_dict
+from methods_configs_simulated_batches import methods_params_dict
 
 parser = main_argparser(default_savename="simulated_batches")
 parser.add_argument('-b', '--batch', default = "4") 
@@ -29,6 +29,8 @@ parser.add_argument('-d', '--dropout', default = 0, type=float)
 parser.add_argument('-n', '--noise', default = 0, type=float)  
 args = parser.parse_args()
 
+
+set_seeds(args.seed)
 
 if args.test:
     from methods_configs_test import methods_params_dict
@@ -53,29 +55,28 @@ save_path = f"{save_path_parent}/{batch}"
 save_path_subfolder = f"{save_path}/noise_{noise_std}_dropout_{dropout_prob}/{n_components}_components/seed_{seed}"
 
 
+
 # LOAD DATA 
-adata_full = sc.read(data_path)
-adata_full
+if os.path.exists(f"{save_path_subfolder}/adata_intermediate.h5ad"):
+    # load previously computed results
+    adata, methods_params_dict = load_existing_adata(save_path_subfolder, methods_params_dict) # this will update the adata and methods_params_dict by removing the methods that have already been run (if any)
+    original_label_key = label_key
+    masked_label_key = f"{label_key}_masked" # update label key to the masked version for benchmarking (so that methods that can leverage labels will be affected by the masking)
+    masked_encoded_label_key = "cell_type_cleaned_encoded"
+else:
+    adata_full = sc.read(data_path)
 
-# subset to the current batch
-adata = adata_full[(adata_full.obs["batch"] == batch)]
+    # subset to the current batch
+    adata = adata_full[(adata_full.obs["batch"] == batch)]
 
-# adata = adata[0:200] # for testing purposes
+    # adata = adata[0:200] # for testing purposes
 
+    # TRANSFORM the second half with noise and dropout
+    print(f"Running benchmark for noise std: {noise_std}, dropout prob: {dropout_prob}")
+    adata = split_and_transform_batch_stratified(adata, noise_std=noise_std, dropout_prob = dropout_prob, new_batch_key= batch_key, embedding_basis="X", seed = seed)
 
+    adata, original_label_key, masked_label_key, masked_encoded_label_key = prepare_adata(adata, save_path_subfolder, label_key, batch_key, args=args)
 
-
-set_seeds(args.seed)
-
-
-# TRANSFORM the second half with noise and dropout
-print(f"Running benchmark for noise std: {noise_std}, dropout prob: {dropout_prob}")
-adata = split_and_transform_batch_stratified(adata, noise_std=noise_std, dropout_prob = dropout_prob, new_batch_key= batch_key, embedding_basis="X", seed = seed)
-
-
-
-
-adata, original_label_key, masked_label_key, masked_encoded_label_key = prepare_adata(adata, save_path_subfolder, label_key, batch_key, args=args)
 adata = run_methods(adata, save_path_subfolder, masked_label_key, encoded_label_key=masked_encoded_label_key, batch_key= batch_key, methods_params_dict=methods_params_dict, args=args)
 evaluate_and_save_results(adata, save_path_subfolder=save_path_subfolder, save_path_parent=save_path_parent, original_label_key=original_label_key, batch_key=batch_key, args=args, save_name = "simulated_batches")
 save_embeddings(adata, save_path_subfolder, label_key, batch_key)
