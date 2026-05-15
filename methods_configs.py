@@ -61,7 +61,10 @@ methods_params_dict = {
 
 
 
-
+                      "FoSTA no pca": {"method_type": "FoSTA",
+                                     "t": 2,
+                                     "model_type": "rf",
+                                     "embedding_basis" : "X"},  
 
 
                       "FoSTA_t2": {"method_type": "FoSTA",
@@ -94,7 +97,7 @@ methods_params_dict = {
                       "FoSTA_tauto_kerf": {"method_type": "FoSTA",
                                      "t": "auto",
                                      "kernel_method": "kerf"},
-                      "FoSTA_tauto_kerf": {"method_type": "FoSTA",
+                      "FoSTA_tauto_gap": {"method_type": "FoSTA",
                                      "t": "auto",
                                      "kernel_method": "gap"},
                       
