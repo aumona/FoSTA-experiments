@@ -510,7 +510,8 @@ def plot_bio_vs_batch_correction_markers(results_df, title="Bio conservation vs 
 
     if save_path is not None:
         plt.savefig(f"{save_path}/bio_vs_batch_correction.png", bbox_inches="tight")
-        plt.savefig(f"{save_path}/bio_vs_batch_correction.pdf", bbox_inches="tight")
+        plt.savefig(f"{save_path}/bio_vs_batch_correction.pdf", bbox_inches="tight", format='pdf')
+        plt.savefig(f"{save_path}/bio_vs_batch_correction.svg", bbox_inches="tight", format='svg')
     plt.show()
     
     
@@ -806,5 +807,112 @@ def plot_embeddings(adata = None, methods = None, noise_level=0.5, dropout_level
 
         plt.savefig(f"{save_path}/all_methods_embeddings.png", bbox_inches='tight', format="png")
         plt.savefig(f"{save_path}/all_methods_embeddings.pdf", bbox_inches='tight', format="pdf")
+        plt.savefig(f"{save_path}/all_methods_embeddings.svg", bbox_inches='tight', format="svg")
         
     return adata
+
+
+
+
+
+def plot_bio_vs_batch_correction_markers_legend_separate(results_df, title="Bio conservation vs Batch correction", methods_to_plot=None, save_path=None):
+    # Subset to the methods to plot
+    if methods_to_plot is not None:
+        results_df = results_df[results_df['method'].isin(methods_to_plot)]
+    else:
+        methods_to_plot = results_df['method'].unique()
+        
+    # 1. Calculate Mean and Standard Deviation
+    mean_df = results_df.groupby(['method'])[["Bio conservation", "Batch correction"]].mean()
+    std_df = results_df.groupby(['method'])[["Bio conservation", "Batch correction"]].std()
+    std_df = std_df.fillna(0)
+
+    # 2. Calculate Ranks
+    mean_df['Bio Rank'] = mean_df['Bio conservation'].rank(ascending=False).astype(int)
+    mean_df['Batch Rank'] = mean_df['Batch correction'].rank(ascending=False).astype(int)
+    
+    # 3. Average Rank and Sort
+    mean_df['Avg Rank'] = (mean_df['Bio Rank'] + mean_df['Batch Rank']) / 2
+    mean_df = mean_df.sort_values('Avg Rank')
+
+    # --- MAIN PLOT ---
+    fig, ax = plt.subplots(figsize=(6, 6)) 
+    
+    symbols = [
+        r"$\mathit{0}$", r"$\mathit{f}$", r"$\mathit{\kappa}$", r"$\mathit{\alpha}$", r"$\mathit{\beta}$", r"$\mathit{\gamma}$", 
+        r"$\mathit{\delta}$", r"$\mathit{\epsilon}$", r"$\mathit{\zeta}$", 
+        r"$\mathit{\eta}$", r"$\mathit{\theta}$",
+        r"$\mathit{\lambda}$", r"$\mathit{\mu}$", r"$\mathit{\nu}$", 
+        r"$\mathit{\xi}$", r"$\mathit{\pi}$", r"$\mathit{\rho}$", 
+        r"$\mathit{\sigma}$", r"$\mathit{\tau}$", r"$\mathit{\phi}$", 
+        r"$\mathit{\chi}$", r"$\mathit{\psi}$", r"$\mathit{\omega}$",
+        r"$\clubsuit$", r"$\spadesuit$", r"$\heartsuit$", r"$\diamondsuit$",
+        r"$\star$", r"$\dagger$", r"$\ddagger$", r"$\S$", r"$\P$"
+    ]
+    palette_list = sns.color_palette("tab20", n_colors=len(methods_to_plot))
+    color_map = dict(zip(methods_to_plot, palette_list))
+    symbol_map = dict(zip(methods_to_plot, symbols[:len(methods_to_plot)]))
+    
+    legend_handles = []
+    legend_labels = []
+
+    for method in mean_df.index:
+        if method not in methods_to_plot:
+            continue
+        x = mean_df.loc[method, "Batch correction"]
+        y = mean_df.loc[method, "Bio conservation"]
+        x_err = std_df.loc[method, "Batch correction"]
+        y_err = std_df.loc[method, "Bio conservation"]
+        
+        bio_rank = mean_df.loc[method, 'Bio Rank']
+        batch_rank = mean_df.loc[method, 'Batch Rank']
+        label = f"{method} (Bio #{bio_rank}, Batch #{batch_rank})"
+
+        # 1. Error Bars
+        ax.errorbar(x, y, xerr=x_err, yerr=y_err, fmt='none', 
+                    ecolor=color_map[method], elinewidth=1.5, capsize=5, alpha=0.3)
+
+        # 2. Circle (Background)
+        c = ax.scatter(x, y, s=180, color=color_map[method], marker='o', zorder=3)
+        
+        # 3. Symbol (Foreground)
+        s = ax.scatter(x, y, s=50, color="white", marker=symbol_map[method], zorder=4)
+
+        legend_handles.append((c, s))
+        legend_labels.append(label)
+
+    ax.set_title(title)
+    ax.set_xlabel("Batch correction")
+    ax.set_ylabel("Bio conservation")
+    ax.grid(True, linestyle='--', alpha=0.5)
+
+    # Save the main plot WITHOUT the legend
+    if save_path is not None:
+        if not os.path.exists(save_path): os.makedirs(save_path)
+        fig.savefig(f"{save_path}/bio_vs_batch_correction.png", bbox_inches="tight")
+        fig.savefig(f"{save_path}/bio_vs_batch_correction.pdf", bbox_inches="tight")
+
+    # --- SEPARATE LEGEND PLOT ---
+    # Create a new figure just for the legend
+    fig_leg = plt.figure(figsize=(4, len(legend_labels) * 0.3)) # Scale height by number of items
+    ax_leg = fig_leg.add_subplot(111)
+    ax_leg.axis('off') # Hide axes
+
+    legend = ax_leg.legend(
+        handles=legend_handles,
+        labels=legend_labels,
+        handler_map={tuple: HandlerTuple(ndivide=None, pad=-2)},
+        loc='center',
+        title="Method (Ordered by Avg Rank)",
+        frameon=True, 
+        fontsize='small',
+        handlelength=2, 
+        handletextpad=0.5
+    )
+
+    # Save the legend separately
+    if save_path is not None:
+        fig_leg.savefig(f"{save_path}/bio_vs_batch_legend.png", bbox_inches="tight")
+        fig_leg.savefig(f"{save_path}/bio_vs_batch_legend.pdf", bbox_inches="tight")
+
+    plt.show()
