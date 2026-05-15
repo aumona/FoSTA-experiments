@@ -60,7 +60,9 @@ if os.path.exists(f"{save_path}/adata_intermediate.h5ad"):
     original_label_key = label_key # the original label key is the same as the input label key, since we are not modifying the labels in this script (we are keeping the unshared labels)
     masked_label_key = f"{label_key}_masked" # update label key to the masked version for benchmarking (so that methods that can leverage labels will be affected by the masking
     masked_encoded_label_key_with_unshared = f"{label_key}_encoded_with_unshared"
-    adata = clean_and_encode_labels(adata, label_key=label_key, batch_key= batch_key, encoded_label_key= masked_encoded_label_key_with_unshared, min_cells=0, keep_unshared_labels=args.keep_unshared_labels) 
+    
+    if masked_encoded_label_key_with_unshared not in adata.obs.columns:
+        adata = clean_and_encode_labels(adata, label_key=label_key, batch_key= batch_key, encoded_label_key= masked_encoded_label_key_with_unshared, min_cells=0, keep_unshared_labels=args.keep_unshared_labels) 
     
     
 else:
@@ -70,7 +72,7 @@ else:
     adata = adata_full[(adata_full.obs["batch"].isin(batches))].copy()
     # adata, labels_not_in1, labels_not_in2 = remove_dataset_specific_cells(adata, batch_key, label_key)
     
-    adata, original_label_key, masked_label_key, masked_encoded_label_key_with_unshared= prepare_adata(adata, save_path, label_key, batch_key, args=args, masked_encoded_label_key=f"{label_key}_encoded_with_unshared")
+    adata, original_label_key, masked_label_key, masked_encoded_label_key_with_unshared = prepare_adata(adata, save_path, label_key, batch_key, args=args, masked_encoded_label_key=f"{label_key}_encoded_with_unshared")
 
 adata = run_methods(adata, save_path, masked_label_key, encoded_label_key= masked_encoded_label_key_with_unshared, batch_key = batch_key, methods_params_dict=methods_params_dict, args=args)
 evaluate_and_save_results(adata, save_path_subfolder=save_path, save_path_parent=save_path_parent, original_label_key=original_label_key, batch_key=batch_key, args=args, save_name = "real_batches_lung")
