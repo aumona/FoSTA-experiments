@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 # --- CONFIG ---
 # List the full paths to the timestamp folders you want to aggregate
 SELECTED_TIMESTAMPS = [
-    "/Users/aumona/Projects/RF-MALI/result_sc_ad/20260506_233231",
+    "/Users/aumona/Projects/RF-MALI/results_sc_ad/20260506_233231",
 ]
 
 # 1. Collect files from all selected timestamp folders

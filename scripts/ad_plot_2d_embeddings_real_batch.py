@@ -5,7 +5,7 @@ import seaborn as sns
 from matplotlib.legend_handler import HandlerTuple
 
 # --- CONFIGURATION ---
-BASE_DIR = "/Users/aumona/Projects/RF-MALI/result_sc_ad/20260506_233231"
+BASE_DIR = "/Users/aumona/Projects/RF-MALI/results_sc_ad/20260506_233231"
 BATCH_PAIR = "B2_vs_B3"
 SEED = "56089"
 SELECTED_MODELS = ["FoSTA_t2", "KEMArbf", "scANVI", "scVI", "MALI", "Unintegrated"] 

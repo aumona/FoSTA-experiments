@@ -29,7 +29,7 @@ from src.pamona import Pamona
 # CONFIG
 # =============================================================================
 DATA_PATH = "/Users/aumona/Projects/RF-MALI/data_sc/lung_batches.h5ad"
-BASE_RESULT_DIR = "/Users/aumona/Projects/RF-MALI/result_sc_ad/"
+BASE_RESULT_DIR = "/Users/aumona/Projects/RF-MALI/results_sc_ad/"
 
 BATCH_KEY = "batch"
 LABEL_KEY = "cell_type"
