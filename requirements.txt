@@ -1,4 +1,5 @@
 forestkernel @ git+https://github.com/jakerhodes/RF-GAP-Python@forestkernel-wip
+demap @ git+https://github.com/scottgigante/DEMaP
 torch
 # aeon==1.4.0
 phate
@@ -11,3 +12,4 @@ matplotlib
 pandas
 ipykernel
 scanpy
+rpy2  # for splatter
