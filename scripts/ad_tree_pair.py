@@ -1,7 +1,7 @@
 '''
 Ground-truth tree = gen_tree(seed=seed, sigma=0)
 Batch A = gen_tree(seed=seed, sigma=4) with p_a% dropout
-Batch B = gen_tree(seed=seed+100_000, sigma=2) with p_b% dropout
+Batch B = gen_tree(seed=seed+seed_offset, sigma=2) with p_b% dropout
 For each batch, some % of labels are masked to simulate partial supervision.
 We then run various methods to integrate Batch A and Batch B, and evaluate how well they recover
 the structure of the ground-truth tree using DeMAP and FOSCTTM metrics.
@@ -16,6 +16,7 @@ from pathlib import Path
 
 import anndata as ad
 import numpy as np
+np.int = int
 import pandas as pd
 import phate
 import scanorama
@@ -35,7 +36,7 @@ from src.fosta import FoSTA
 from src.kemalin import KEMAlin
 from src.kemarbf import KEMArbf
 from src.mali import MALI
-from src.Pamona.eval import test_alignment_score
+from src.Pamona.eval import test_alignment_score, test_transfer_accuracy
 from src.pamona import Pamona
 from utils.tree_utils import gen_tree
 from utils.metrics import calc_domainAveraged_FOSCTTM
@@ -64,7 +65,7 @@ TREE_PARAMS = dict(
     n_branch=10,
     n_child=2,
     n_dim_per_branch=4,
-    branch_length=1000,
+    branch_length=100,
     merged_branch=False,
 )
 
@@ -72,15 +73,14 @@ SEEDS = [39041, 56089, 79121]
 # SEEDS = [39041]
 
 GROUND_TRUTH_SIGMA = 0
-BATCH_A_SIGMA = 4
+BATCH_A_SIGMA = 2
 BATCH_A_DROPOUT_LEVEL = 0.20
-BATCH_B_SIGMA = 2
-BATCH_B_DROPOUT_LEVEL = 0.80
+BATCH_B_SIGMA = 5
+BATCH_B_DROPOUT_LEVEL = 0.50
 BATCH_B_SEED_OFFSET = 100_000
-LABEL_MASKING_LEVEL_A = 0.50
 LABEL_MASKING_LEVEL_B = 0.50
 N_COMPONENTS = 2
-DEMAP_KNN = 30
+DEMAP_KNN = 30   # default value used in the original DeMAP code
 
 MODELS_TO_RUN = [
     "scVI",
@@ -126,7 +126,6 @@ def validate_probability(name, value):
 def validate_config():
     validate_probability("BATCH_A_DROPOUT_LEVEL", BATCH_A_DROPOUT_LEVEL)
     validate_probability("BATCH_B_DROPOUT_LEVEL", BATCH_B_DROPOUT_LEVEL)
-    validate_probability("LABEL_MASKING_LEVEL_A", LABEL_MASKING_LEVEL_A)
     validate_probability("LABEL_MASKING_LEVEL_B", LABEL_MASKING_LEVEL_B)
 
 
@@ -143,7 +142,6 @@ def save_experiment_metadata(output_dir, timestamp):
             "batch_b_sigma": BATCH_B_SIGMA,
             "batch_b_dropout_level": BATCH_B_DROPOUT_LEVEL,
             "batch_b_seed_offset": BATCH_B_SEED_OFFSET,
-            "label_masking_level_a": LABEL_MASKING_LEVEL_A,
             "label_masking_level_b": LABEL_MASKING_LEVEL_B,
         },
         "model_settings": {
@@ -157,6 +155,15 @@ def save_experiment_metadata(output_dir, timestamp):
     }
     with (output_dir / "experiment_metadata.json").open("w") as f:
         json.dump(metadata, f, indent=2)
+
+
+def append_result_row(results_csv, row):
+    pd.DataFrame([row]).to_csv(
+        results_csv,
+        mode="a",
+        header=not results_csv.exists(),
+        index=False,
+    )
 
 
 def minmax_normalize(x):
@@ -204,17 +211,12 @@ def build_pair(seed):
     if not np.array_equal(labels, labels_a) or not np.array_equal(labels, labels_b):
         raise ValueError("Generated batch labels do not match ground-truth labels.")
 
-    source_mask = make_stratified_mask(labels, LABEL_MASKING_LEVEL_A, seed + 13)
     target_mask = make_stratified_mask(labels, LABEL_MASKING_LEVEL_B, seed + 17)
-
-    source_labels_obs = np.asarray(labels).astype(int).copy()
-    source_labels_obs[source_mask] = -1
 
     target_labels_obs = np.asarray(labels).astype(int).copy()
     target_labels_obs[target_mask] = -1
 
     scanvi_labels_a = np.asarray(labels).astype(str).copy()
-    scanvi_labels_a[source_mask] = "Unknown"
     scanvi_labels_obs = np.asarray(labels).astype(str).copy()
     scanvi_labels_obs[target_mask] = "Unknown"
 
@@ -223,14 +225,13 @@ def build_pair(seed):
         batch_a_tree,
         batch_b_tree,
         np.asarray(labels).astype(int),
-        source_labels_obs,
         target_labels_obs,
         scanvi_labels_a,
         scanvi_labels_obs,
     )
 
 
-def build_adata(clean_tree, noisy_tree, labels_a, labels_a_obs, labels_b_obs, scanvi_labels_a, scanvi_labels_b):
+def build_adata(clean_tree, noisy_tree, labels_a, labels_b_obs, scanvi_labels_a, scanvi_labels_b):
     x = np.vstack([clean_tree, noisy_tree])
     obs = pd.DataFrame(
         {
@@ -239,7 +240,7 @@ def build_adata(clean_tree, noisy_tree, labels_a, labels_a_obs, labels_b_obs, sc
                 categories=["A", "B"],
             ),
             "ground_truth_labels": np.concatenate([labels_a, labels_a]),
-            "observed_labels": np.concatenate([labels_a_obs, labels_b_obs]),
+            "observed_labels": np.concatenate([labels_a, labels_b_obs]),
             "scanvi_labels": np.concatenate([scanvi_labels_a, scanvi_labels_b]),
             "pair_id": np.concatenate([np.arange(len(clean_tree)), np.arange(len(noisy_tree))]),
         }
@@ -333,7 +334,7 @@ def coerce_embedding_array(embedding):
     return embedding
 
 
-def benchmark_method(method_name, embedding, ground_truth_tree, labels_a, output_dir):
+def benchmark_method(method_name, embedding, ground_truth_tree, labels_a, labels_b_obs, output_dir):
     emb = coerce_embedding_array(embedding)
     if emb.shape[1] > 2:
         emb = emb[:, :2]
@@ -348,6 +349,16 @@ def benchmark_method(method_name, embedding, ground_truth_tree, labels_a, output
     foscttm_vals = calc_domainAveraged_FOSCTTM(emb_a, emb_b)
     foscttm = float(np.mean(foscttm_vals))
     alignment_score = test_alignment_score(emb_a, emb_b)
+    mask_missing_target = np.asarray(labels_b_obs) == -1
+    if np.any(mask_missing_target):
+        label_transfer = test_transfer_accuracy(
+            data1=emb_b[mask_missing_target],
+            data2=emb_a,
+            type1=np.asarray(labels_a)[mask_missing_target],
+            type2=np.asarray(labels_a),
+        )
+    else:
+        label_transfer = np.nan
 
     method_dir = output_dir / method_name
     save_embeddings(method_dir, method_name, emb, n_a)
@@ -358,17 +369,17 @@ def benchmark_method(method_name, embedding, ground_truth_tree, labels_a, output
         "DeMAP": float(demap),
         "FOSCTTM": foscttm,
         "alignment_score": float(alignment_score),
+        "label_transfer": float(label_transfer) if not np.isnan(label_transfer) else np.nan,
     }
 
 
-def save_pair_inputs(output_dir, ground_truth_tree, batch_a_tree, batch_b_tree, labels_a, labels_a_obs, labels_b_obs):
+def save_pair_inputs(output_dir, ground_truth_tree, batch_a_tree, batch_b_tree, labels_a, labels_b_obs):
     np.savez_compressed(
         output_dir / "paired_tree_inputs.npz",
         ground_truth_tree=ground_truth_tree,
         batch_a_tree=batch_a_tree,
         batch_b_tree=batch_b_tree,
         labels_a=labels_a,
-        labels_a_obs=labels_a_obs,
         labels_b_obs=labels_b_obs,
     )
 
@@ -471,6 +482,7 @@ def main():
     root_dir = RESULTS_ROOT / timestamp
     root_dir.mkdir(parents=True, exist_ok=True)
     save_experiment_metadata(root_dir, timestamp)
+    results_csv = root_dir / "tree_alignment_results.csv"
 
     all_rows = []
 
@@ -481,7 +493,6 @@ def main():
             batch_a_tree,
             batch_b_tree,
             labels_a,
-            labels_a_obs,
             labels_b_obs,
             scanvi_labels_a,
             scanvi_labels_b,
@@ -489,13 +500,12 @@ def main():
 
         seed_dir = root_dir / f"seed_{seed}"
         seed_dir.mkdir(parents=True, exist_ok=True)
-        save_pair_inputs(seed_dir, ground_truth_tree, batch_a_tree, batch_b_tree, labels_a, labels_a_obs, labels_b_obs)
+        save_pair_inputs(seed_dir, ground_truth_tree, batch_a_tree, batch_b_tree, labels_a, labels_b_obs)
 
         adata = build_adata(
             batch_a_tree,
             batch_b_tree,
             labels_a,
-            labels_a_obs,
             labels_b_obs,
             scanvi_labels_a,
             scanvi_labels_b,
@@ -503,7 +513,7 @@ def main():
 
         x_a = batch_a_tree
         x_b = batch_b_tree
-        y_a = labels_a_obs
+        y_a = labels_a
         y_b = labels_b_obs
 
         method_runs = [
@@ -534,13 +544,15 @@ def main():
                 else:
                     out_name, embedding = method_name, result
 
-                metrics = benchmark_method(out_name, embedding, ground_truth_tree, labels_a, seed_dir)
+                metrics = benchmark_method(out_name, embedding, ground_truth_tree, labels_a, labels_b_obs, seed_dir)
                 metrics["seed"] = seed
                 metrics["runtime_sec"] = float(time.perf_counter() - start)
                 metrics["status"] = "ok"
                 all_rows.append(metrics)
+                append_result_row(results_csv, metrics)
                 print(
                     f"  DeMAP={metrics['DeMAP']:.4f} | "
+                    f"Acc={metrics['label_transfer']:.4f} | "
                     f"AS={metrics['alignment_score']:.4f} | "
                     f"FOSCTTM={metrics['FOSCTTM']:.4f} | "
                     f"{metrics['runtime_sec']:.1f}s"
@@ -549,6 +561,7 @@ def main():
                 metrics = {
                     "method": next(iter(FOSTA_CONFIGS)) if method_name == "FoSTA" else method_name,
                     "DeMAP": np.nan,
+                    "label_transfer": np.nan,
                     "alignment_score": np.nan,
                     "FOSCTTM": np.nan,
                     "seed": seed,
@@ -556,11 +569,11 @@ def main():
                     "status": f"error: {exc}",
                 }
                 all_rows.append(metrics)
+                append_result_row(results_csv, metrics)
                 print(f"  FAILED: {exc}")
 
     results_df = pd.DataFrame(all_rows)
     results_df = results_df.sort_values(["seed", "method"], kind="stable")
-    results_csv = root_dir / "tree_alignment_results.csv"
     results_df.to_csv(results_csv, index=False)
 
     print(f"\nFinished. Results saved to: {root_dir}")
