@@ -320,9 +320,12 @@ class DTA():
             
 
     def compute_dpt(self, ridge=1e-8):
+        rng = np.random.default_rng(self.random_state)
+
         # Domain 1
-        w, rv = scipy.sparse.linalg.eigs(self.p1, k=1)
-        w, lv = scipy.sparse.linalg.eigs(self.p1.transpose(), k=1)
+        v0 = rng.random(self.p1.shape[0])
+        w, rv = scipy.sparse.linalg.eigs(self.p1, k=1, v0=v0)
+        w, lv = scipy.sparse.linalg.eigs(self.p1.transpose(), k=1, v0=v0)
     
         P = self.p1.toarray()
         A1 = np.eye(P.shape[0]) - (P - np.outer(rv.real, lv.real))
@@ -330,8 +333,9 @@ class DTA():
         self.M1 = np.linalg.solve(A1, np.eye(A1.shape[0])) - np.eye(A1.shape[0])
     
         # Domain 2
-        w, rv = scipy.sparse.linalg.eigs(self.p2, k=1)
-        w, lv = scipy.sparse.linalg.eigs(self.p2.transpose(), k=1)
+        v0 = rng.random(self.p2.shape[0])
+        w, rv = scipy.sparse.linalg.eigs(self.p2, k=1, v0=v0)
+        w, lv = scipy.sparse.linalg.eigs(self.p2.transpose(), k=1, v0=v0)
     
         P = self.p2.toarray()
         A2 = np.eye(P.shape[0]) - (P - np.outer(rv.real, lv.real))
