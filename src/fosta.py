@@ -134,7 +134,7 @@ class FoSTA:
         ).tocsr()
         prox.data = np.maximum(prox.data, 0)
 
-        self._log(f"[Domain {domain_name}] Shapes: prox={prox.shape}")
+        self._log(f"[Domain {domain_name}] Shapes: prox={prox.shape} | NNZ density={prox.nnz / (prox.shape[0] * prox.shape[1]):.6f}")
 
         return kernel, prox
 
