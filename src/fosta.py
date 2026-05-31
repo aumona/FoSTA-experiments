@@ -96,13 +96,7 @@ class FoSTA:
         self.entR = entR
         self.m = m
         self.distance = distance
-        self.Distances12 = None
-
-        # State storage
-        self.kernel_a = self.kernel_b = None
-        self.prox_a = self.prox_b = None
-        self.post_a = self.post_b = None
-        self.T_sparse = self.W = self.embedding_ = None
+        self.embedding_ = None
         self.classes_ = self.n = self.n_a = self.n_b = None
 
     def _log(self, msg):
@@ -198,9 +192,9 @@ class FoSTA:
             X[zero_x, 0] = eps
             Y[zero_y, 0] = eps
     
-        self.Distances12 = cdist(X, Y, self.distance)
-        self.Distances12 = np.nan_to_num(
-            self.Distances12,
+        distances = cdist(X, Y, self.distance)
+        distances = np.nan_to_num(
+            distances,
             nan=1.0,
             posinf=1.0,
             neginf=1.0,
@@ -231,7 +225,7 @@ class FoSTA:
                 m_eff = np.floor(m_eff * N1) / N1
                 transport = "wotpartial" if self.entR == 0 else "wotpartialR"
     
-        C = self.Distances12[:N1, :N2]
+        C = distances[:N1, :N2]
     
         if transport == "wot":
             T = ot.emd(a, b, C)
@@ -288,8 +282,7 @@ class FoSTA:
             format="csr",
         )
 
-    def fit(self, x_a, x_b, y_a, y_b):
-        """Fits FoSTA alignment across two domains."""
+    def _fit_affinity(self, x_a, x_b, y_a, y_b):
         self.n_a, self.n_b = x_a.shape[0], x_b.shape[0]
         self.n = self.n_a + self.n_b
     
@@ -305,18 +298,18 @@ class FoSTA:
         self.classes_ = all_labels
         self.shared_classes_ = shared_labels
     
-        self.kernel_a, self.prox_a = self._compute_domain_geometry(x_a, y_a, "A")
-        self.kernel_b, self.prox_b = self._compute_domain_geometry(x_b, y_b, "B")
+        kernel_a, prox_a = self._compute_domain_geometry(x_a, y_a, "A")
+        kernel_b, prox_b = self._compute_domain_geometry(x_b, y_b, "B")
     
-        self.post_a = self._get_semantic_vectors_from_prox(
-            self.prox_a,
+        post_a = self._get_semantic_vectors_from_prox(
+            prox_a,
             y_a,
             all_labels,
             domain_name="A",
         )
     
-        self.post_b = self._get_semantic_vectors_from_prox(
-            self.prox_b,
+        post_b = self._get_semantic_vectors_from_prox(
+            prox_b,
             y_b,
             all_labels,
             domain_name="B",
@@ -337,8 +330,8 @@ class FoSTA:
             idx_shared_b = np.flatnonzero(mask_unl_b | np.isin(y_b_arr, shared_labels))
         
         elif self.unlabeled_coupling == "predict_shared":
-            pred_a = self.kernel_a.forest_.predict(x_a)
-            pred_b = self.kernel_b.forest_.predict(x_b)
+            pred_a = kernel_a.forest_.predict(x_a)
+            pred_b = kernel_b.forest_.predict(x_b)
         
             idx_shared_a = np.flatnonzero(
                 ((~mask_unl_a) & np.isin(y_a_arr, shared_labels))
@@ -371,14 +364,14 @@ class FoSTA:
         )
     
         T_sub = self._compute_coupling(
-            self.post_a[idx_shared_a][:, shared_mask],
-            self.post_b[idx_shared_b][:, shared_mask],
+            post_a[idx_shared_a][:, shared_mask],
+            post_b[idx_shared_b][:, shared_mask],
         ).tocsr()
     
         rows, cols = T_sub.nonzero()
         vals = np.asarray(T_sub[rows, cols]).ravel()
     
-        self.T_sparse = sparse.coo_matrix(
+        T_sparse = sparse.coo_matrix(
             (
                 vals,
                 (idx_shared_a[rows], idx_shared_b[cols]),
@@ -386,17 +379,21 @@ class FoSTA:
             shape=(self.n_a, self.n_b),
         ).tocsr()
     
-        self.W = self._build_balanced_affinity(
-            self.prox_a,
-            self.prox_b,
-            self.T_sparse,
+        return self._build_balanced_affinity(
+            prox_a,
+            prox_b,
+            T_sparse,
         )
+
+    def fit(self, x_a, x_b, y_a, y_b):
+        """Fits FoSTA alignment across two domains without retaining large intermediates."""
+        self._fit_affinity(x_a, x_b, y_a, y_b)
     
         return self
 
     def fit_transform(self, x_a, x_b, y_a, y_b):
         """Fits alignment and computes embedding."""
-        self.fit(x_a, x_b, y_a, y_b)
+        W = self._fit_affinity(x_a, x_b, y_a, y_b)
 
         if self.embedder == "PHATE":
             embedder = PageRankPHATE(
@@ -409,14 +406,14 @@ class FoSTA:
                 n_jobs=self.n_jobs,
                 beta=self.beta,
             )
-            self.embedding_ = embedder.fit_transform(self.W)
+            self.embedding_ = embedder.fit_transform(W)
 
         else:
             self.embedding_ = UMAP(
                 n_components=self.n_components,
                 metric="precomputed",
                 random_state=self.random_state,
-            ).fit_transform(kernel2Dist(self.W.toarray()))
+            ).fit_transform(kernel2Dist(W.toarray()))
 
         return self.embedding_
 
