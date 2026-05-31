@@ -2,6 +2,7 @@
 data/
 data_uci/
 data_sc/
+data_sketchy/
 
 # nohup
 nohup.out
@@ -24,6 +25,7 @@ results_uci/
 results_sc/
 results_sc_ad/
 results_tree/
+results_sketchy/
 
 # figures
 figures/
