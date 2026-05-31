@@ -5,39 +5,97 @@ import random
 from scipy import sparse
 from sklearn.metrics.pairwise import euclidean_distances
 
-def calc_frac_idx(x1_mat,x2_mat):
+
+def calc_frac_idx(x1_mat, x2_mat, ids1=None, ids2=None):
     """
-    Returns fraction closer than true match for each sample (as an array)
+    Returns FOSCTTM fractions from x1_mat to x2_mat.
+
+    If ids1 and ids2 are None:
+        assumes one-to-one correspondence by row index.
+
+    If ids1 and ids2 are provided:
+        valid matches for x1[i] are all x2[j] with ids2[j] == ids1[i].
+
+        For multiple valid matches, we use the farthest true match.
+        This measures the fraction of incorrect samples that are closer
+        than the worst-ranked true match.
     """
     fracs = []
     x = []
-    nsamp = x1_mat.shape[0]
-    rank=0
-    for row_idx in range(nsamp):
-        euc_dist = np.sqrt(np.sum(np.square(np.subtract(x1_mat[row_idx,:], x2_mat)), axis=1))
-        true_nbr = euc_dist[row_idx]
-        sort_euc_dist = sorted(euc_dist)
-        rank =sort_euc_dist.index(true_nbr)
-        frac = float(rank)/(nsamp -1)
+
+    nsamp1 = x1_mat.shape[0]
+    nsamp2 = x2_mat.shape[0]
+
+    use_ids = ids1 is not None and ids2 is not None
+
+    if use_ids:
+        ids1 = np.asarray(ids1)
+        ids2 = np.asarray(ids2)
+
+    for row_idx in range(nsamp1):
+        euc_dist = np.sqrt(
+            np.sum(np.square(x1_mat[row_idx, :] - x2_mat), axis=1)
+        )
+
+        if use_ids:
+            valid = np.where(ids2 == ids1[row_idx])[0]
+
+            if len(valid) == 0:
+                fracs.append(np.nan)
+                x.append(-1)
+                continue
+
+            invalid_mask = np.ones(nsamp2, dtype=bool)
+            invalid_mask[valid] = False
+
+            # Farthest true match = strict many-match FOSCTTM
+            true_nbr = np.max(euc_dist[valid])
+
+            rank = np.sum(euc_dist[invalid_mask] < true_nbr)
+            frac = float(rank) / max(np.sum(invalid_mask), 1)
+
+            # store nearest valid match index, for compatibility/debugging
+            x.append(valid[np.argmin(euc_dist[valid])] + 1)
+
+        else:
+            true_nbr = euc_dist[row_idx]
+            rank = np.sum(euc_dist < true_nbr)
+            frac = float(rank) / max(nsamp2 - 1, 1)
+
+            x.append(row_idx + 1)
 
         fracs.append(frac)
-        x.append(row_idx+1)
 
-    return fracs,x
+    return fracs, x
 
-def calc_domainAveraged_FOSCTTM(x1_mat, x2_mat):
+
+def calc_domainAveraged_FOSCTTM(x1_mat, x2_mat, ids1=None, ids2=None):
     """
-    Metric from SCOT: "FOSCTTM"
-    Outputs average FOSCTTM measure (averaged over both domains)
-    Get the fraction matched for all data points in both directions
-    Averages the fractions in both directions for each data point
+    Domain-averaged FOSCTTM.
+
+    If ids1 and ids2 are None:
+        preserves the original one-to-one behavior:
+        returns one averaged score per paired sample.
+
+    If ids1 and ids2 are provided:
+        supports one-to-many / many-to-many correspondences.
+
+        Since domains may have different sizes, index-wise averaging is
+        not meaningful. We return the concatenated directional scores:
+            x1 -> x2 scores followed by x2 -> x1 scores.
+
+        Downstream code using np.mean(fracs) still works.
     """
-    fracs1,xs = calc_frac_idx(x1_mat, x2_mat)
-    fracs2,xs = calc_frac_idx(x2_mat, x1_mat)
-    fracs = []
-    for i in range(len(fracs1)):
-        fracs.append((fracs1[i]+fracs2[i])/2)  
-    return fracs
+    fracs1, _ = calc_frac_idx(x1_mat, x2_mat, ids1=ids1, ids2=ids2)
+    fracs2, _ = calc_frac_idx(x2_mat, x1_mat, ids1=ids2, ids2=ids1)
+
+    if ids1 is None and ids2 is None:
+        fracs = []
+        for i in range(len(fracs1)):
+            fracs.append((fracs1[i] + fracs2[i]) / 2)
+        return fracs
+
+    return fracs1 + fracs2
     
 
 def test_transfer_accuracy(data1, data2, type1, type2):
