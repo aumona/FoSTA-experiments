@@ -36,10 +36,9 @@ from src.fosta import FoSTA
 from src.kemalin import KEMAlin
 from src.kemarbf import KEMArbf
 from src.mali import MALI
-from src.Pamona.eval import test_alignment_score, test_transfer_accuracy
+from src.Pamona.eval import test_alignment_score, test_transfer_accuracy, calc_domainAveraged_FOSCTTM
 from src.pamona import Pamona
 from utils.tree_utils import gen_tree
-from utils.metrics import calc_domainAveraged_FOSCTTM
 
 
 def load_official_demap_metric():
