@@ -11,6 +11,74 @@ def print_mat_stats(name, M):
     Print basic mass / row / col statistics for a matrix.
     Works for dense numpy arrays and scipy sparse matrices.
     """
+    def _sparse_value_stats(data, total_count):
+        data = np.asarray(data, dtype=float)
+        implicit_zeros = int(total_count - data.size)
+
+        if total_count <= 0:
+            return dict(min=np.nan, median=np.nan, max=np.nan, mean=np.nan)
+
+        if data.size == 0:
+            return dict(min=0.0, median=0.0, max=0.0, mean=0.0)
+
+        val_min = min(float(data.min()), 0.0) if implicit_zeros > 0 else float(data.min())
+        val_max = max(float(data.max()), 0.0) if implicit_zeros > 0 else float(data.max())
+        val_mean = float(data.sum() / total_count)
+
+        explicit_zeros = int(np.sum(data == 0))
+        zero_count = implicit_zeros + explicit_zeros
+        nonzero_data = np.sort(data[data != 0])
+        neg_count = int(np.sum(nonzero_data < 0))
+
+        def kth_value(k):
+            if k < neg_count:
+                return float(nonzero_data[k])
+            if k < neg_count + zero_count:
+                return 0.0
+            return float(nonzero_data[k - zero_count])
+
+        mid = total_count // 2
+        if total_count % 2:
+            val_median = kth_value(mid)
+        else:
+            val_median = 0.5 * (kth_value(mid - 1) + kth_value(mid))
+
+        return dict(min=val_min, median=val_median, max=val_max, mean=val_mean)
+
+    def _print_distribution(label, values=None, stats=None):
+        if stats is None:
+            values = np.asarray(values, dtype=float)
+            if values.size == 0:
+                stats = dict(min=np.nan, median=np.nan, max=np.nan, mean=np.nan)
+            else:
+                stats = {
+                    "min": float(np.min(values)),
+                    "median": float(np.median(values)),
+                    "max": float(np.max(values)),
+                    "mean": float(np.mean(values)),
+                }
+        print(
+            f"  {label:<12}: min={stats['min']:.4f}, median={stats['median']:.4f}, "
+            f"max={stats['max']:.4f}, mean={stats['mean']:.4f}"
+        )
+
+    def _dense_value_stats(values):
+        values = np.asarray(values, dtype=float)
+        if values.size == 0:
+            stats = {
+                "min": np.nan,
+                "median": np.nan,
+                "max": np.nan,
+                "mean": np.nan,
+            }
+            return stats
+        return {
+            "min": float(np.min(values)),
+            "median": float(np.median(values)),
+            "max": float(np.max(values)),
+            "mean": float(np.mean(values)),
+        }
+
     # Total mass
     total_mass = M.sum()
 
@@ -18,23 +86,38 @@ def print_mat_stats(name, M):
     row_sums = np.asarray(M.sum(axis=1)).ravel()
     col_sums = np.asarray(M.sum(axis=0)).ravel()
 
-    # Min / max values (handle sparse safely)
+    n_rows, n_cols = M.shape
+    n_values = n_rows * n_cols
+    n_diag = min(n_rows, n_cols)
+    n_offdiag = n_values - n_diag
+
+    # Value distributions include implicit sparse zeros without densifying.
     if sparse.issparse(M):
-        data = M.data
-        val_min = data.min() if data.size > 0 else 0.0
-        val_max = data.max() if data.size > 0 else 0.0
+        all_value_stats = _sparse_value_stats(M.data, n_values)
+        diag_values = np.asarray(M.diagonal(), dtype=float)
+
+        coo = M.tocoo()
+        offdiag_data = coo.data[coo.row != coo.col]
+        offdiag_stats = _sparse_value_stats(offdiag_data, n_offdiag)
     else:
-        val_min = M.min()
-        val_max = M.max()
+        M = np.asarray(M)
+        all_value_stats = _dense_value_stats(M.ravel())
+        diag_values = np.diag(M)
+        offdiag_stats = _dense_value_stats(M[~np.eye(n_rows, n_cols, dtype=bool)])
 
     print(f"\n{name}:")
     print(f"  Total mass : {total_mass:.4f}")
-    print(f"  Row sums   : min={row_sums.min():.4f}, "
-          f"max={row_sums.max():.4f}, mean={row_sums.mean():.4f}")
-    print(f"  Col sums   : min={col_sums.min():.4f}, "
-          f"max={col_sums.max():.4f}, mean={col_sums.mean():.4f}")
-    print(f"  Values     : min={val_min:.4f}, max={val_max:.4f}")
-    print(f"% Non-zero entries: {100.0 * (M.nnz if sparse.issparse(M) else np.count_nonzero(M)) / (M.shape[0] * M.shape[1]):.4f}%")
+    _print_distribution("Row sums", row_sums)
+    _print_distribution("Col sums", col_sums)
+    if sparse.issparse(M):
+        _print_distribution("Values", stats=all_value_stats)
+        _print_distribution("Diagonal", diag_values)
+        _print_distribution("Off-diagonal", stats=offdiag_stats)
+    else:
+        _print_distribution("Values", stats=all_value_stats)
+        _print_distribution("Diagonal", diag_values)
+        _print_distribution("Off-diagonal", stats=offdiag_stats)
+    print(f"  Non-zero entries: {100.0 * (M.nnz if sparse.issparse(M) else np.count_nonzero(M)) / n_values:.4f}%")
 
 
 def kernel2Dist(K):

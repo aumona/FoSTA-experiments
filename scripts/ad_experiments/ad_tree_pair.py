@@ -7,7 +7,6 @@ We then run various methods to integrate Batch A and Batch B, and evaluate how w
 the structure of the ground-truth tree using DeMAP and FOSCTTM metrics.
 '''
 import importlib.util
-import json
 import sys
 import time
 import warnings
@@ -28,9 +27,12 @@ from sklearn.preprocessing import MinMaxScaler
 
 warnings.filterwarnings("ignore")
 
+SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
 from src.fosta import FoSTA
 from src.kemalin import KEMAlin
@@ -39,6 +41,13 @@ from src.mali import MALI
 from src.Pamona.eval import test_alignment_score, test_transfer_accuracy, calc_domainAveraged_FOSCTTM
 from src.pamona import Pamona
 from utils.tree_utils import gen_tree
+from ad_experiment_utils import (
+    append_result_row,
+    coerce_embedding_array,
+    save_embedding_plots,
+    save_embeddings,
+    write_json,
+)
 
 
 def load_official_demap_metric():
@@ -152,17 +161,7 @@ def save_experiment_metadata(output_dir, timestamp):
             "supervised_methods": sorted(SUPERVISED_CLASSES),
         },
     }
-    with (output_dir / "experiment_metadata.json").open("w") as f:
-        json.dump(metadata, f, indent=2)
-
-
-def append_result_row(results_csv, row):
-    pd.DataFrame([row]).to_csv(
-        results_csv,
-        mode="a",
-        header=not results_csv.exists(),
-        index=False,
-    )
+    write_json(output_dir / "experiment_metadata.json", metadata)
 
 
 def minmax_normalize(x):
@@ -254,83 +253,13 @@ def build_adata(clean_tree, noisy_tree, labels_a, labels_b_obs, scanvi_labels_a,
     adata.layers["counts"] = x.copy()
     return adata
 
-def save_embeddings(method_dir, method_name, embedding, n_a):
-    method_dir.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(
-        method_dir / f"{method_name}_embedding.npz",
-        embedding=np.asarray(embedding),
-        source=np.asarray(embedding[:n_a]),
-        target=np.asarray(embedding[n_a:]),
-    )
-
-
-def save_embedding_plots(method_dir, method_name, embedding, labels_a, n_a):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    emb = np.asarray(embedding, dtype=float)
-    if emb.shape[1] < 2:
-        raise ValueError(f"Expected at least 2 embedding dimensions for plotting, got {emb.shape[1]}.")
-
-    emb_2d = emb[:, :2]
+def make_plot_specs(labels_a, n_a, n_total):
     labels = np.concatenate([labels_a, labels_a]).astype(str)
-    batches = np.array(["A"] * n_a + ["B"] * (emb_2d.shape[0] - n_a))
-
-    plot_specs = [
+    batches = np.array(["A"] * n_a + ["B"] * (n_total - n_a))
+    return [
         ("labels", labels, "tab20", "Ground Truth Label"),
         ("batch", batches, "tab10", "Batch"),
     ]
-
-    for suffix, values, cmap_name, legend_title in plot_specs:
-        fig, ax = plt.subplots(figsize=(7, 6))
-        unique_values = np.unique(values)
-        cmap = plt.get_cmap(cmap_name, max(len(unique_values), 1))
-
-        for i, value in enumerate(unique_values):
-            mask = values == value
-            ax.scatter(
-                emb_2d[mask, 0],
-                emb_2d[mask, 1],
-                s=12,
-                alpha=0.75,
-                color=cmap(i),
-                label=str(value),
-                edgecolors="none",
-                rasterized=True,
-            )
-
-        ax.set_title(f"{method_name} colored by {legend_title.lower()}")
-        ax.set_xlabel("Embedding 1")
-        ax.set_ylabel("Embedding 2")
-        ax.set_xticks([])
-        ax.set_yticks([])
-        for spine in ax.spines.values():
-            spine.set_visible(False)
-
-        ax.legend(
-            title=legend_title,
-            bbox_to_anchor=(1.02, 1),
-            loc="upper left",
-            frameon=False,
-            markerscale=1.8,
-        )
-        fig.tight_layout()
-        fig.savefig(method_dir / f"{method_name}_embedding_by_{suffix}.png", dpi=300, bbox_inches="tight")
-        plt.close(fig)
-
-
-def coerce_embedding_array(embedding):
-    if isinstance(embedding, (list, tuple)):
-        if len(embedding) == 1:
-            embedding = embedding[0]
-        else:
-            embedding = np.vstack([np.asarray(part) for part in embedding])
-
-    embedding = np.asarray(embedding, dtype=float)
-    if embedding.ndim != 2:
-        raise ValueError(f"Expected a 2D embedding, got shape {embedding.shape}.")
-    return embedding
 
 
 def benchmark_method(method_name, embedding, ground_truth_tree, labels_a, labels_b_obs, output_dir):
@@ -361,7 +290,7 @@ def benchmark_method(method_name, embedding, ground_truth_tree, labels_a, labels
 
     method_dir = output_dir / method_name
     save_embeddings(method_dir, method_name, emb, n_a)
-    save_embedding_plots(method_dir, method_name, emb, labels_a, n_a)
+    save_embedding_plots(method_dir, method_name, emb, make_plot_specs(labels_a, n_a, emb.shape[0]))
 
     return {
         "method": method_name,
