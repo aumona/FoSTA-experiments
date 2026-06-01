@@ -29,6 +29,8 @@ os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 import numpy as np
 np.int = int
 import pandas as pd
+import phate
+from sklearn.decomposition import PCA
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 
 warnings.filterwarnings("ignore")
@@ -68,6 +70,8 @@ N_COMPONENTS = 2
 N_JOBS = -1
 
 MODELS_TO_RUN = [
+    "Unintegrated",
+    "Unintegrated_PHATE",
     "FoSTA",
     "KEMAlin",
     "KEMArbf",
@@ -77,6 +81,7 @@ MODELS_TO_RUN = [
 
 FOSTA_CONFIGS = {
     "FoSTA_t2": {
+        "mu": 3,
         "unlabeled_coupling": "predict_shared",
         "t": 2,
         "class_weight": "balanced_subsample",
@@ -100,9 +105,9 @@ FOSTA_CONFIGS = {
 }
 
 MALI_CONFIG = {
-    "t": 'auto',
-    "n_jobs": N_JOBS,
-    'distances': 'none' 
+    # "t": 'auto',
+    # "n_jobs": N_JOBS,
+    # 'distances': 'none' 
 }
 
 SUPERVISED_CLASSES = {
@@ -264,6 +269,16 @@ def save_pair_metadata(output_dir, pair):
 # =============================================================================
 # METHODS
 # =============================================================================
+def run_unintegrated_pca(pair, seed):
+    x = np.vstack([pair["x_a"], pair["x_b"]])
+    return PCA(n_components=N_COMPONENTS, random_state=seed).fit_transform(x)
+
+
+def run_unintegrated_phate(pair, seed):
+    x = np.vstack([pair["x_a"], pair["x_b"]])
+    return phate.PHATE(n_components=N_COMPONENTS, random_state=seed).fit_transform(x)
+
+
 def run_supervised_method(method_name, pair, seed):
     if method_name == "FoSTA":
         for out_name, params in FOSTA_CONFIGS.items():
@@ -283,6 +298,10 @@ def run_supervised_method(method_name, pair, seed):
 
 
 def run_method(method_name, pair, seed):
+    if method_name == "Unintegrated":
+        return method_name, run_unintegrated_pca(pair, seed)
+    if method_name == "Unintegrated_PHATE":
+        return method_name, run_unintegrated_phate(pair, seed)
     return run_supervised_method(method_name, pair, seed)
 
 
