@@ -263,11 +263,11 @@ class FoSTA:
         Constructs a joint affinity matrix using raw surjective T,
         followed by optional nonzero-edge mean cross-block scaling.
         """
-        W_ab = prox_a.dot(T)
-        W_ba = prox_b.dot(T.transpose())
+        W_ab = self.mu * prox_a.dot(T)
+        W_ba = self.mu * prox_b.dot(T.transpose())
     
         if self.verbose:
-            print("\nJOINT AFFINITY BLOCK STATISTICS")
+            print("\nJOINT AFFINITY BLOCK STATISTICS (incl. cross-block scaling):")
             print("------------------------------")
             print_mat_stats("Within-domain A (W1)", prox_a)
             print_mat_stats("Within-domain B (W2)", prox_b)
@@ -276,8 +276,8 @@ class FoSTA:
     
         return sparse.bmat(
             [
-                [prox_a, self.mu * W_ab],
-                [self.mu * W_ba, prox_b],
+                [prox_a, W_ab],
+                [W_ba, prox_b],
             ],
             format="csr",
         )
