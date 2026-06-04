@@ -6,6 +6,12 @@ from scipy import sparse
 from sklearn.metrics.pairwise import euclidean_distances
 
 
+def _alignment_score_rng(random_state):
+    if random_state is None:
+        return random.Random()
+    return random.Random(random_state)
+
+
 def calc_frac_idx(x1_mat, x2_mat, ids1=None, ids2=None):
     """
     Returns FOSCTTM fractions from x1_mat to x2_mat.
@@ -116,9 +122,16 @@ def test_transfer_accuracy(data1, data2, type1, type2):
     return count / len(type1)
 
 
-def test_alignment_score(data1_shared, data2_shared, data1_specific=None, data2_specific=None):
+def test_alignment_score(
+    data1_shared,
+    data2_shared,
+    data1_specific=None,
+    data2_specific=None,
+    random_state=None,
+):
 
     N = 2
+    rng = _alignment_score_rng(random_state)
 
     if len(data1_shared) < len(data2_shared):
         data1 = data1_shared
@@ -126,7 +139,7 @@ def test_alignment_score(data1_shared, data2_shared, data1_specific=None, data2_
     else:
         data2 = data1_shared
         data1 = data2_shared
-    data2 = data2[random.sample(range(len(data2)), len(data1))]
+    data2 = data2[rng.sample(range(len(data2)), len(data1))]
     k = np.maximum(10, (len(data1) + len(data2))*0.01)
     k = k.astype(int)
 
@@ -215,7 +228,13 @@ def test_alignment_score(data1_shared, data2_shared, data1_specific=None, data2_
         return score / 2
 
 
-def test_alignment_score_sparse(data1_shared, data2_shared, data1_specific=None, data2_specific=None):
+def test_alignment_score_sparse(
+    data1_shared,
+    data2_shared,
+    data1_specific=None,
+    data2_specific=None,
+    random_state=None,
+):
     def get_bar(query, full_data, k, start_idx, end_idx):
         # euclidean_distances specifically supports sparse CSR/CSC
         dist = euclidean_distances(query, full_data, squared=True)
@@ -225,10 +244,13 @@ def test_alignment_score_sparse(data1_shared, data2_shared, data1_specific=None,
         return np.sum((nn >= start_idx) & (nn < end_idx))
 
     # Balance datasets
+    rng = _alignment_score_rng(random_state)
     if data1_shared.shape[0] < data2_shared.shape[0]:
-        data1, data2 = data1_shared, data2_shared[random.sample(range(data2_shared.shape[0]), data1_shared.shape[0])]
+        data1 = data1_shared
+        data2 = data2_shared[rng.sample(range(data2_shared.shape[0]), data1_shared.shape[0])]
     else:
-        data2, data1 = data1_shared, data2_shared[random.sample(range(data2_shared.shape[0]), data1_shared.shape[0])]
+        data1 = data2_shared
+        data2 = data1_shared[rng.sample(range(data1_shared.shape[0]), data2_shared.shape[0])]
 
     n1, n2 = data1.shape[0], data2.shape[0]
     k = max(10, int((n1 + n2) * 0.01))
