@@ -104,13 +104,27 @@ def calc_domainAveraged_FOSCTTM(x1_mat, x2_mat, ids1=None, ids2=None):
     return fracs1 + fracs2
     
 
-def test_transfer_accuracy(data1, data2, type1, type2):
+def test_transfer_accuracy(
+    data1,
+    data2,
+    type1,
+    type2,
+    return_classwise_probabilities=False,
+):
     """
     Metric from UnionCom: "Label Transfer Accuracy"
+
+    If return_classwise_probabilities is True, returns a dictionary with:
+        - accuracy: label transfer accuracy
+        - predicted_labels: predicted labels for data1
+        - classwise_probabilities: per-sample class probabilities for data1
+        - classes: class order for the probability matrix columns
+
+    By default, returns only the scalar accuracy for backwards compatibility.
     """
     Min = np.minimum(len(data1), len(data2))
     k = np.maximum(10, (len(data1) + len(data2))*0.01)
-    k = k.astype(np.int)
+    k = k.astype(int)
     knn = KNeighborsClassifier(n_neighbors=k)
     knn.fit(data2, type2)
     type1_predict = knn.predict(data1)
@@ -119,7 +133,17 @@ def test_transfer_accuracy(data1, data2, type1, type2):
     for label1, label2 in zip(type1_predict, type1):
         if label1 == label2:
             count += 1
-    return count / len(type1)
+    accuracy = count / len(type1)
+
+    if return_classwise_probabilities:
+        return {
+            "accuracy": accuracy,
+            "predicted_labels": type1_predict,
+            "classwise_probabilities": knn.predict_proba(data1),
+            "classes": knn.classes_,
+        }
+
+    return accuracy
 
 
 def test_alignment_score(
