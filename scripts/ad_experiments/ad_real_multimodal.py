@@ -4,6 +4,7 @@ HAR/RGBD multimodal alignment benchmark.
 Each data table stores labels in the first column and modality features in the
 remaining columns. Train rows stay labeled; test rows are masked as -1.
 """
+import json
 import os
 import pickle
 import sys
@@ -69,6 +70,7 @@ HAR_GYRO_TEST_PATH = HAR_DATA_ROOT / "har_gyro_test.pkl"
 RGBD_DATA_ROOT = PROJECT_ROOT / "data_rgbd"
 RGBD_PHOTO_PATH = RGBD_DATA_ROOT / "rgbd_photo_resnet18_embeddings.npy"
 RGBD_DEPTH_PATH = RGBD_DATA_ROOT / "rgbd_depth_resnet18_embeddings.npy"
+RGBD_LABEL_MAP_PATH = RGBD_DATA_ROOT / "rgbd_label_map.json"
 RGBD_TRAIN_FRACTION = 0.70
 
 SEEDS = [39041, 56089, 79121]
@@ -82,7 +84,7 @@ LABEL_TRANSFER_TOP_KS = (1, 5, 10)
 MODELS_TO_RUN = [
     # "Unintegrated",
     # "Unintegrated_PHATE",
-    "FoSTA",
+    # "FoSTA",
     "KEMAlin",
     "KEMArbf",
     "MALI",
@@ -163,7 +165,11 @@ def validate_config():
             DATASET_CONFIG["domain_b_test_path"],
         ]
     else:
-        paths = [DATASET_CONFIG["domain_a_path"], DATASET_CONFIG["domain_b_path"]]
+        paths = [
+            DATASET_CONFIG["domain_a_path"],
+            DATASET_CONFIG["domain_b_path"],
+            RGBD_LABEL_MAP_PATH,
+        ]
 
     for path in paths:
         if not path.exists():
@@ -205,6 +211,7 @@ def save_experiment_metadata(output_dir, timestamp):
     else:
         metadata["domain_a"]["path"] = str(DATASET_CONFIG["domain_a_path"].relative_to(PROJECT_ROOT))
         metadata["domain_b"]["path"] = str(DATASET_CONFIG["domain_b_path"].relative_to(PROJECT_ROOT))
+        metadata["rgbd_label_map_path"] = str(RGBD_LABEL_MAP_PATH.relative_to(PROJECT_ROOT))
         metadata["rgbd_train_fraction"] = RGBD_TRAIN_FRACTION
         metadata["rgbd_split"] = "deterministic stratified by label in original row order"
     write_json(output_dir / "experiment_metadata.json", metadata)
@@ -333,7 +340,16 @@ def standardize_domain(x):
     return StandardScaler().fit_transform(x)
 
 
-def make_pair_dict(x_a, y_a_raw, train_mask_a, x_b, y_b_raw, train_mask_b, label_encoder):
+def make_pair_dict(
+    x_a,
+    y_a_raw,
+    train_mask_a,
+    x_b,
+    y_b_raw,
+    train_mask_b,
+    label_encoder,
+    display_classes=None,
+):
     y_a_true = label_encoder.transform(y_a_raw)
     y_b_true = label_encoder.transform(y_b_raw)
 
@@ -355,7 +371,31 @@ def make_pair_dict(x_a, y_a_raw, train_mask_a, x_b, y_b_raw, train_mask_b, label
         "train_mask_a": train_mask_a,
         "train_mask_b": train_mask_b,
         "classes": label_encoder.classes_,
+        "display_classes": (
+            np.asarray(display_classes).astype(str)
+            if display_classes is not None
+            else label_encoder.classes_.astype(str)
+        ),
     }
+
+
+def load_rgbd_label_names(classes):
+    with RGBD_LABEL_MAP_PATH.open() as f:
+        name_to_id = json.load(f)
+
+    id_to_name = {int(label_id): str(name) for name, label_id in name_to_id.items()}
+    display_names = []
+    for label in classes:
+        try:
+            label_id = int(float(label))
+        except ValueError as exc:
+            raise ValueError(f"RGBD label {label!r} is not numeric and cannot be mapped.") from exc
+
+        if label_id not in id_to_name:
+            raise ValueError(f"RGBD label id {label_id} is missing from {RGBD_LABEL_MAP_PATH}.")
+        display_names.append(id_to_name[label_id])
+
+    return np.asarray(display_names, dtype=str)
 
 
 def load_har_domain(train_path, test_path):
@@ -421,6 +461,7 @@ def build_rgbd_pair():
         raise ValueError("Expected RGBD modalities to have identical labels in the same row order.")
 
     label_encoder = LabelEncoder().fit(np.concatenate([labels_a, labels_b]))
+    display_classes = load_rgbd_label_names(label_encoder.classes_)
     train_mask = make_stratified_train_mask(labels_a, RGBD_TRAIN_FRACTION)
 
     x_a, y_a_raw, train_mask_a = load_rgbd_domain(DATASET_CONFIG["domain_a_path"], train_mask)
@@ -436,7 +477,16 @@ def build_rgbd_pair():
     x_a = standardize_domain(x_a)
     x_b = standardize_domain(x_b)
 
-    return make_pair_dict(x_a, y_a_raw, train_mask_a, x_b, y_b_raw, train_mask_b, label_encoder)
+    return make_pair_dict(
+        x_a,
+        y_a_raw,
+        train_mask_a,
+        x_b,
+        y_b_raw,
+        train_mask_b,
+        label_encoder,
+        display_classes=display_classes,
+    )
 
 
 def build_pair():
@@ -457,6 +507,7 @@ def save_pair_metadata(output_dir, pair):
         train_mask_a=pair["train_mask_a"],
         train_mask_b=pair["train_mask_b"],
         classes=pair["classes"],
+        display_classes=pair["display_classes"],
     )
 
 
@@ -513,7 +564,7 @@ def make_plot_specs(pair):
         + [DATASET_CONFIG["domain_b_name"]] * pair["x_b"].shape[0]
     )
     label_ids = np.concatenate([pair["labels_a_true"], pair["labels_b_true"]]).astype(int)
-    labels = pair["classes"][label_ids].astype(str)
+    labels = pair["display_classes"][label_ids].astype(str)
 
     return [
         ("modality", modalities, "tab10", "Modality"),
