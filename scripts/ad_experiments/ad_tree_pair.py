@@ -77,8 +77,8 @@ TREE_PARAMS = dict(
     merged_branch=False,
 )
 
-SEEDS = [39041, 56089, 79121]
-# SEEDS = [39041]
+# SEEDS = [39041, 56089, 79121]
+SEEDS = [39041]
 
 GROUND_TRUTH_SIGMA = 0
 BATCH_A_SIGMA = 2
@@ -105,9 +105,7 @@ BASELINES_TO_RUN = {"Unintegrated", "Unintegrated_PHATE"}
 
 FOSTA_CONFIGS = {
     "FoSTA_tauto": {
-        "unlabeled_coupling": "predict_shared",
         "t": 'auto',
-        "class_weight": "balanced_subsample",
     }
 }
 
@@ -257,7 +255,7 @@ def make_plot_specs(labels_a, n_a, n_total):
     labels = np.concatenate([labels_a, labels_a]).astype(str)
     batches = np.array(["A"] * n_a + ["B"] * (n_total - n_a))
     return [
-        ("labels", labels, "tab20", "Ground Truth Label"),
+        ("labels", labels, "colorblind", "Ground Truth Label"),
         ("batch", batches, "tab10", "Batch"),
     ]
 
