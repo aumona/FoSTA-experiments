@@ -6,13 +6,14 @@ penultimate column, and object IDs in the final column.
 """
 import json
 import os
+import pickle
 import sys
 import time
 import warnings
 from datetime import datetime
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 os.environ.setdefault("MPLCONFIGDIR", "/private/tmp/rf-mali-matplotlib")
@@ -31,25 +32,27 @@ from src.kemarbf import KEMArbf
 from src.mali import MALI
 from src.Pamona.eval import test_alignment_score, test_transfer_accuracy, calc_domainAveraged_FOSCTTM
 from src.pamona import Pamona
+from scripts.ad_experiments.ad_experiment_utils import save_embedding_plots, save_embeddings
 
 
 # =============================================================================
 # CONFIG
 # =============================================================================
 DATA_ROOT = ROOT / "data_sketchy"
-SOURCE_DATA_PATH = DATA_ROOT / "dinov2base_photo_embeddings.npy"
-TARGET_DATA_PATH = DATA_ROOT / "dinov2base_sketch_embeddings.npy"
+SOURCE_DATA_PATH = DATA_ROOT / "photo_resnet18_embeddings.npy"
+TARGET_DATA_PATH = DATA_ROOT / "sketch_resnet18_embeddings.npy"
+LABEL_DICT_PATH = DATA_ROOT / "label_dic"
 
 SEEDS = [39041, 56089, 79121]
-LABEL_MASKING_LEVEL_B = 0.50
+LABEL_MASKING_LEVEL_B = 0.70
 N_COMPONENTS = 2
 L2_NORMALIZE = False
 
 # Count-based methods from ad_tree_pair are intentionally excluded here because
 # the DINO features are signed and we use the same raw input for every method.
 MODELS_TO_RUN = [
-    # "Unintegrated",
-    # "Unintegrated_PHATE",
+    "Unintegrated",
+    "Unintegrated_PHATE",
     "FoSTA",
     "KEMAlin",
     "KEMArbf",
@@ -69,7 +72,7 @@ FOSTA_CONFIGS = {
         "unlabeled_coupling": "predict_shared",
         "t": 2,
         "class_weight": "balanced_subsample",
-        "n_estimators": 500,
+        "n_estimators": 1000,
     }
 }
 
@@ -95,7 +98,7 @@ def validate_probability(name, value):
 
 def validate_config():
     validate_probability("LABEL_MASKING_LEVEL_B", LABEL_MASKING_LEVEL_B)
-    for path in [SOURCE_DATA_PATH, TARGET_DATA_PATH]:
+    for path in [SOURCE_DATA_PATH, TARGET_DATA_PATH, LABEL_DICT_PATH]:
         if not path.exists():
             raise FileNotFoundError(f"Missing data file: {path}")
 
@@ -106,9 +109,11 @@ def save_experiment_metadata(output_dir, timestamp):
         "timestamp": timestamp,
         "source_path": str(SOURCE_DATA_PATH.relative_to(ROOT)),
         "target_path": str(TARGET_DATA_PATH.relative_to(ROOT)),
+        "label_dict_path": str(LABEL_DICT_PATH.relative_to(ROOT)),
         "feature_columns": ":-2",
         "label_column": "-2",
         "object_id_column": "-1",
+        "target_mask_unit": "source_object_id",
         "seeds": SEEDS,
         "label_masking_level_b": LABEL_MASKING_LEVEL_B,
         "n_components": N_COMPONENTS,
@@ -128,6 +133,23 @@ def append_result_row(results_csv, row):
         header=not results_csv.exists(),
         index=False,
     )
+
+
+def load_label_name_mapping():
+    with LABEL_DICT_PATH.open("rb") as f:
+        raw_mapping = pickle.load(f)
+    return {int(code): str(name) for code, name in raw_mapping.items()}
+
+
+def map_label_names(labels):
+    code_to_name = load_label_name_mapping()
+    names = []
+    for label in np.asarray(labels):
+        try:
+            names.append(code_to_name[int(label)])
+        except (KeyError, TypeError, ValueError):
+            names.append(str(label))
+    return np.asarray(names)
 
 
 def coerce_integral_column(values, name):
@@ -160,19 +182,24 @@ def l2_normalize_rows(x):
     return np.divide(x, norms, out=np.zeros_like(x), where=norms > 0)
 
 
-def make_stratified_mask(labels, frac, seed):
-    labels = np.asarray(labels).astype(str)
+def make_source_object_mask(source_labels, source_object_ids, target_object_ids, frac, seed):
+    source_labels = np.asarray(source_labels).astype(str)
+    source_object_ids = np.asarray(source_object_ids).astype(str)
+    target_object_ids = np.asarray(target_object_ids).astype(str)
     if frac <= 0:
-        return np.zeros(labels.shape[0], dtype=bool)
+        return np.zeros(target_object_ids.shape[0], dtype=bool)
+    if np.unique(source_object_ids).size != source_object_ids.size:
+        raise ValueError("Expected source/photo object IDs to be unique.")
 
     rng = np.random.default_rng(seed)
-    mask = np.zeros(labels.shape[0], dtype=bool)
-    for label in np.unique(labels):
-        idx = np.where(labels == label)[0]
-        n_mask = int(np.floor(idx.size * frac))
+    masked_object_ids = []
+    for label in np.unique(source_labels):
+        class_object_ids = source_object_ids[source_labels == label]
+        n_mask = int(np.floor(class_object_ids.size * frac))
         if n_mask > 0:
-            mask[rng.choice(idx, size=n_mask, replace=False)] = True
-    return mask
+            masked_object_ids.extend(rng.choice(class_object_ids, size=n_mask, replace=False))
+
+    return np.isin(target_object_ids, masked_object_ids)
 
 
 def build_pair(seed):
@@ -183,7 +210,13 @@ def build_pair(seed):
         x_source = l2_normalize_rows(x_source)
         x_target = l2_normalize_rows(x_target)
 
-    target_mask = make_stratified_mask(labels_target_true, LABEL_MASKING_LEVEL_B, seed + 17)
+    target_mask = make_source_object_mask(
+        labels_source,
+        object_ids_source,
+        object_ids_target,
+        LABEL_MASKING_LEVEL_B,
+        seed + 17,
+    )
     labels_source_model = np.asarray(labels_source).copy()
     labels_target_model = np.asarray(labels_target_true).copy()
     labels_target_model[target_mask] = -1
@@ -270,14 +303,15 @@ def run_supervised_method(method_name, pair, seed):
     return method_name, embedding
 
 
-def save_embedding(method_dir, method_name, embedding, n_source):
-    method_dir.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(
-        method_dir / f"{method_name}_embedding.npz",
-        embedding=embedding,
-        source=embedding[:n_source],
-        target=embedding[n_source:],
-    )
+def make_plot_specs(pair):
+    n_source = pair["x_source"].shape[0]
+    domains = np.array(["photo"] * n_source + ["sketch"] * pair["x_target"].shape[0])
+    labels = map_label_names(np.concatenate([pair["labels_source_true"], pair["labels_target_true"]]))
+
+    return [
+        ("domain", domains, "tab10", "Domain"),
+        ("labels", labels, "colorblind", "Ground Truth Label"),
+    ]
 
 
 def benchmark_method(method_name, embedding, pair, output_dir):
@@ -307,7 +341,9 @@ def benchmark_method(method_name, embedding, pair, output_dir):
             type2=pair["labels_source_true"],
         )
 
-    save_embedding(output_dir / method_name, method_name, emb, n_source)
+    method_dir = output_dir / method_name
+    save_embeddings(method_dir, method_name, emb, n_source)
+    save_embedding_plots(method_dir, method_name, emb, make_plot_specs(pair))
 
     return {
         "method": method_name,

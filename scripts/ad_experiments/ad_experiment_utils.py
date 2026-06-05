@@ -65,6 +65,26 @@ def save_embeddings(method_dir, method_name, embedding, n_a, names=("source", "t
     )
 
 
+def make_color_mapper(plt, cmap_name, n_values):
+    if cmap_name != "colorblind":
+        return plt.get_cmap(cmap_name, max(n_values, 1))
+
+    okabe_ito = [
+        "#000000",
+        "#E69F00",
+        "#56B4E9",
+        "#009E73",
+        "#F0E442",
+        "#0072B2",
+        "#D55E00",
+        "#CC79A7",
+    ]
+    if n_values <= len(okabe_ito):
+        return lambda i: okabe_ito[i]
+
+    return plt.get_cmap("viridis", max(n_values, 1))
+
+
 def save_embedding_plots(method_dir, method_name, embedding, plot_specs, ext="png", dpi=300):
     import matplotlib
     matplotlib.use("Agg")
@@ -76,9 +96,13 @@ def save_embedding_plots(method_dir, method_name, embedding, plot_specs, ext="pn
 
     for suffix, values, cmap_name, legend_title in plot_specs:
         values = np.asarray(values).astype(str)
-        fig, ax = plt.subplots(figsize=(7, 6))
         unique_values = np.unique(values)
-        cmap = plt.get_cmap(cmap_name, max(len(unique_values), 1))
+        n_values = len(unique_values)
+        legend_rows = 24
+        legend_cols = max(1, int(np.ceil(n_values / legend_rows)))
+        fig_width = min(7 + 1.45 * legend_cols, 14)
+        fig, ax = plt.subplots(figsize=(fig_width, 6))
+        color_for = make_color_mapper(plt, cmap_name, n_values)
 
         for i, value in enumerate(unique_values):
             mask = values == value
@@ -87,7 +111,7 @@ def save_embedding_plots(method_dir, method_name, embedding, plot_specs, ext="pn
                 emb[mask, 1],
                 s=12,
                 alpha=0.75,
-                color=cmap(i),
+                color=color_for(i),
                 label=str(value),
                 edgecolors="none",
                 rasterized=True,
@@ -106,7 +130,14 @@ def save_embedding_plots(method_dir, method_name, embedding, plot_specs, ext="pn
             bbox_to_anchor=(1.02, 1),
             loc="upper left",
             frameon=False,
-            markerscale=1.8,
+            ncol=legend_cols,
+            columnspacing=0.9,
+            handletextpad=0.35,
+            borderaxespad=0,
+            labelspacing=0.25,
+            markerscale=1.15,
+            fontsize=7 if n_values > 20 else 8,
+            title_fontsize=8,
         )
         fig.tight_layout()
         save_kwargs = {"bbox_inches": "tight"}
