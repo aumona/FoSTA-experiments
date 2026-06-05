@@ -4,6 +4,7 @@ data_uci/
 data_sc/
 data_sketchy/
 data_har/
+data_rgbd/
 
 # nohup
 nohup.out
@@ -28,6 +29,7 @@ results_sc_ad/
 results_tree/
 results_sketchy/
 results_har/
+results_rgbd/
 
 # figures
 figures/
