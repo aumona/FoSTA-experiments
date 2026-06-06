@@ -31,7 +31,7 @@ class FoSTA:
         force_symmetric=True,
         normalize_diagonal=True,
         model_type="rf",
-        n_estimators=1000,
+        n_estimators=100,
         class_weight=None,
         bootstrap=True,
 
