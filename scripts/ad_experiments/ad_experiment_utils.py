@@ -65,9 +65,16 @@ def save_embeddings(method_dir, method_name, embedding, n_a, names=("source", "t
     )
 
 
-def make_color_mapper(plt, cmap_name, n_values):
+def make_style_mapper(plt, cmap_name, n_values):
+    markers = ("o", "s", "^", "D", "P", "X", "v", "<", ">", "h")
+
     if cmap_name != "colorblind":
-        return plt.get_cmap(cmap_name, max(n_values, 1))
+        cmap = plt.get_cmap(cmap_name, max(n_values, 1))
+        n_colors = getattr(cmap, "N", n_values)
+        return lambda i: (
+            cmap(i % n_colors),
+            markers[(i // n_colors) % len(markers)],
+        )
 
     okabe_ito = [
         "#000000",
@@ -79,10 +86,15 @@ def make_color_mapper(plt, cmap_name, n_values):
         "#D55E00",
         "#CC79A7",
     ]
-    if n_values <= len(okabe_ito):
-        return lambda i: okabe_ito[i]
+    return lambda i: (
+        okabe_ito[i % len(okabe_ito)],
+        markers[(i // len(okabe_ito)) % len(markers)],
+    )
 
-    return plt.get_cmap("viridis", max(n_values, 1))
+
+def make_color_mapper(plt, cmap_name, n_values):
+    style_for = make_style_mapper(plt, cmap_name, n_values)
+    return lambda i: style_for(i)[0]
 
 
 def save_embedding_plots(method_dir, method_name, embedding, plot_specs, ext="png", dpi=300):
@@ -102,16 +114,18 @@ def save_embedding_plots(method_dir, method_name, embedding, plot_specs, ext="pn
         legend_cols = max(1, int(np.ceil(n_values / legend_rows)))
         fig_width = min(7 + 1.45 * legend_cols, 14)
         fig, ax = plt.subplots(figsize=(fig_width, 6))
-        color_for = make_color_mapper(plt, cmap_name, n_values)
+        style_for = make_style_mapper(plt, cmap_name, n_values)
 
         for i, value in enumerate(unique_values):
             mask = values == value
+            color, marker = style_for(i)
             ax.scatter(
                 emb[mask, 0],
                 emb[mask, 1],
                 s=12,
                 alpha=0.75,
-                color=color_for(i),
+                color=color,
+                marker=marker,
                 label=str(value),
                 edgecolors="none",
                 rasterized=True,
