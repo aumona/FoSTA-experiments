@@ -110,13 +110,9 @@ MASK_FRACTIONS = [0.5]  # fraction of target labels to mask (set to -1) for labe
 NOISE_SIGMA = 0.5  # reasonable amount of noise
 SIGNAL_TO_NOISE_RATIO = 0.1
 
+
+# Shared parameters across models
 N_COMPONENTS = 2
-EMBEDDER = "PHATE"
-GAMMA = 0.5
-MODEL_TYPE = "rf"
-N_ESTIMATORS = 500
-T = 'auto'
-BETA = 0.7
 N_JOBS = -1
 VERBOSE = 1
 
@@ -299,22 +295,15 @@ def build_model(method: str, seed: int):
 
     if m == "fosta_icml_t2":
         return FoSTA_ICML(
-            embedder=EMBEDDER,
-            n_components=N_COMPONENTS,
-            n_estimators=N_ESTIMATORS,
             t=2,
-            beta=BETA,
             random_state=seed,
             n_jobs=N_JOBS,
             verbose=VERBOSE,
         )
     if m == "fosta_icml_auto":
         return FoSTA_ICML(
-            embedder=EMBEDDER,
             n_components=N_COMPONENTS,
-            n_estimators=N_ESTIMATORS,
             t='auto',
-            beta=BETA,
             random_state=seed,
             n_jobs=N_JOBS,
             verbose=VERBOSE,
@@ -322,13 +311,9 @@ def build_model(method: str, seed: int):
 
     if m == "fosta_gap_t2":
         return FoSTA(
-            embedder=EMBEDDER,
             n_components=N_COMPONENTS,
             kernel_method='gap',
-            model_type=MODEL_TYPE,
-            n_estimators=N_ESTIMATORS,
             t=2,
-            beta=BETA,
             random_state=seed,
             n_jobs=N_JOBS,
             verbose=VERBOSE,
@@ -336,54 +321,18 @@ def build_model(method: str, seed: int):
     
     if m == "fosta_gap_auto":
         return FoSTA(
-            embedder=EMBEDDER,
             n_components=N_COMPONENTS,
             kernel_method='gap',
-            model_type=MODEL_TYPE,
-            n_estimators=N_ESTIMATORS,
             t='auto',
-            beta=BETA,
-            random_state=seed,
-            n_jobs=N_JOBS,
-            verbose=VERBOSE,
-        )
-    if m == "fosta_gap_mauto_t2":
-        return FoSTA(
-            embedder=EMBEDDER,
-            mu='auto',
-            n_components=N_COMPONENTS,
-            kernel_method='gap',
-            model_type=MODEL_TYPE,
-            n_estimators=N_ESTIMATORS,
-            t=2,
-            beta=BETA,
-            random_state=seed,
-            n_jobs=N_JOBS,
-            verbose=VERBOSE,
-        )
-    if m == "fosta_gap_mauto_auto":
-        return FoSTA(
-            embedder=EMBEDDER,
-            mu='auto',
-            n_components=N_COMPONENTS,
-            kernel_method='gap',
-            model_type=MODEL_TYPE,
-            n_estimators=N_ESTIMATORS,
-            t='auto',
-            beta=BETA,
             random_state=seed,
             n_jobs=N_JOBS,
             verbose=VERBOSE,
         )
     if m == "fosta_kerf_t2":
         return FoSTA(
-            embedder=EMBEDDER,
             n_components=N_COMPONENTS,
             kernel_method='kerf',
-            model_type=MODEL_TYPE,
-            n_estimators=N_ESTIMATORS,
             t=2,
-            beta=BETA,
             random_state=seed,
             n_jobs=N_JOBS,
             verbose=VERBOSE,
@@ -391,42 +340,9 @@ def build_model(method: str, seed: int):
     
     if m == "fosta_kerf_auto":
         return FoSTA(
-            embedder=EMBEDDER,
             n_components=N_COMPONENTS,
             kernel_method='kerf',
-            model_type=MODEL_TYPE,
-            n_estimators=N_ESTIMATORS,
             t='auto',
-            beta=BETA,
-            random_state=seed,
-            n_jobs=N_JOBS,
-            verbose=VERBOSE,
-        )
-    
-    if m == "fosta_kerf_mauto_t2":
-        return FoSTA(
-            embedder=EMBEDDER,
-            mu='auto',
-            n_components=N_COMPONENTS,
-            kernel_method='kerf',
-            model_type=MODEL_TYPE,
-            n_estimators=N_ESTIMATORS,
-            t=2,
-            beta=BETA,
-            random_state=seed,
-            n_jobs=N_JOBS,
-            verbose=VERBOSE,
-        )
-    if m == "fosta_kerf_mauto_auto":
-        return FoSTA(
-            embedder=EMBEDDER,
-            mu='auto',
-            n_components=N_COMPONENTS,
-            kernel_method='kerf',
-            model_type=MODEL_TYPE,
-            n_estimators=N_ESTIMATORS,
-            t='auto',
-            beta=BETA,
             random_state=seed,
             n_jobs=N_JOBS,
             verbose=VERBOSE,
@@ -436,9 +352,6 @@ def build_model(method: str, seed: int):
         return FoSTA(
             embedder='UMAP',
             n_components=N_COMPONENTS,
-            model_type=MODEL_TYPE,
-            n_estimators=N_ESTIMATORS,
-            beta=BETA,
             random_state=seed,
             n_jobs=N_JOBS,
             verbose=VERBOSE,
@@ -446,23 +359,17 @@ def build_model(method: str, seed: int):
     
     if m == 'fosta_dense':
         return FoSTA(
-            embedder=EMBEDDER,
             n_components=N_COMPONENTS,
-            model_type=MODEL_TYPE,
-            n_estimators=N_ESTIMATORS,
-            beta=BETA,
             ot_solver='dense',
             random_state=seed,
             n_jobs=N_JOBS,
             verbose=VERBOSE,
         )
+    
     if m == 'fosta_et':
         return FoSTA(
-            embedder=EMBEDDER,
             n_components=N_COMPONENTS,
             model_type='et',
-            n_estimators=N_ESTIMATORS,
-            beta=BETA,
             random_state=seed,
             n_jobs=N_JOBS,
             verbose=VERBOSE,
@@ -470,21 +377,14 @@ def build_model(method: str, seed: int):
    
     if m == "mali":
         return MALI(
-            embedder=EMBEDDER,
             n_components=N_COMPONENTS,
-            t=T,
-            beta=BETA,
-            distances="DPT",
             random_state=seed,
             verbose=VERBOSE,
         )
 
     if m == "mali_nodpt":
         return MALI(
-            embedder=EMBEDDER,
             n_components=N_COMPONENTS,
-            t=T,
-            beta=BETA,
             distances="noDPT",
             random_state=seed,
             verbose=VERBOSE,
@@ -493,8 +393,6 @@ def build_model(method: str, seed: int):
     if m == "pamona":
         return Pamona(
             n_components=N_COMPONENTS,
-            embedder=EMBEDDER,
-            gamma=GAMMA,
             random_state=seed,
         )
 
@@ -541,12 +439,6 @@ def run_experiment():
         "noise_sigma": NOISE_SIGMA,
         "signal_to_noise_ratio": SIGNAL_TO_NOISE_RATIO,
         "n_components": N_COMPONENTS,
-        "embedder": EMBEDDER,
-        "gamma": GAMMA,
-        "model_type": MODEL_TYPE,
-        "n_estimators": N_ESTIMATORS,
-        "t": T,
-        "beta": BETA,
         "n_jobs": N_JOBS,
         "verbose": VERBOSE,
     }
