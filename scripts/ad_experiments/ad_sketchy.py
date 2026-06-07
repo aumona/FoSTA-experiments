@@ -44,15 +44,15 @@ TARGET_DATA_PATH = DATA_ROOT / "sketch_resnet18_embeddings.npy"
 LABEL_DICT_PATH = DATA_ROOT / "label_dic"
 
 SEEDS = [39041, 56089, 79121]
-LABEL_MASKING_LEVEL_B = 0.70
+LABEL_MASKING_LEVEL_B = 0.50
 N_COMPONENTS = 2
 L2_NORMALIZE = False
 
 # Count-based methods from ad_tree_pair are intentionally excluded here because
 # the DINO features are signed and we use the same raw input for every method.
 MODELS_TO_RUN = [
-    "Unintegrated",
-    "Unintegrated_PHATE",
+    # "Unintegrated",
+    # "Unintegrated_PHATE",
     "FoSTA",
     "KEMAlin",
     "KEMArbf",
@@ -69,10 +69,8 @@ FOSTA_CONFIGS = {
     #     "n_estimators": 500,
     # }
     "FoSTA_t2": {
-        "unlabeled_coupling": "predict_shared",
         "t": 2,
-        "class_weight": "balanced_subsample",
-        "n_estimators": 1000,
+        "n_estimators": 100,
     }
 }
 
@@ -80,8 +78,8 @@ SUPERVISED_CLASSES = {
     "FoSTA": FoSTA,
     "KEMAlin": KEMAlin,
     "KEMArbf": KEMArbf,
-    "MALI": MALI,
-    "Pamona": Pamona,
+    # "MALI": MALI,
+    # "Pamona": Pamona,
 }
 
 RESULTS_ROOT = ROOT / "results_sketchy"
@@ -314,7 +312,7 @@ def make_plot_specs(pair):
     ]
 
 
-def benchmark_method(method_name, embedding, pair, output_dir):
+def benchmark_method(method_name, embedding, pair, output_dir, seed=None):
     emb = coerce_embedding_array(embedding)
     n_source = pair["x_source"].shape[0]
     n_target = pair["x_target"].shape[0]
@@ -331,7 +329,7 @@ def benchmark_method(method_name, embedding, pair, output_dir):
         ids1=pair["object_ids_source"],
         ids2=pair["object_ids_target"],
     )))
-    alignment_score = float(test_alignment_score(emb_source, emb_target))
+    alignment_score = float(test_alignment_score(emb_source, emb_target, random_state=seed))
     label_transfer = np.nan
     if np.any(mask_missing):
         label_transfer = test_transfer_accuracy(
@@ -381,7 +379,7 @@ def main():
                 print(f"Running {method_name}...")
                 out_name, embedding = run_method(method_name, pair, seed)
 
-                row = benchmark_method(out_name, embedding, pair, seed_dir)
+                row = benchmark_method(out_name, embedding, pair, seed_dir, seed=seed)
                 row.update(seed=seed, runtime_sec=float(time.perf_counter() - start), status="ok")
             except Exception as exc:
                 row = {
