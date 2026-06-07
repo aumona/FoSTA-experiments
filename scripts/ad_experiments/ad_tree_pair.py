@@ -28,9 +28,9 @@ from sklearn.preprocessing import MinMaxScaler
 warnings.filterwarnings("ignore")
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
@@ -77,8 +77,10 @@ TREE_PARAMS = dict(
     merged_branch=False,
 )
 
+SEEDS = [11784, 39041, 56089, 79121, 4386721]
+
 # SEEDS = [39041, 56089, 79121]
-SEEDS = [39041]
+# SEEDS = [39041]
 
 GROUND_TRUTH_SIGMA = 0
 BATCH_A_SIGMA = 2
@@ -117,7 +119,7 @@ SUPERVISED_CLASSES = {
     "Pamona": Pamona,
 }
 
-RESULTS_ROOT = ROOT / "results_tree"
+RESULTS_ROOT = PROJECT_ROOT / "results_tree"
 RESULTS_ROOT.mkdir(parents=True, exist_ok=True)
 
 
@@ -137,7 +139,7 @@ def validate_config():
 
 def save_experiment_metadata(output_dir, timestamp):
     metadata = {
-        "script": str(Path(__file__).relative_to(ROOT)),
+        "script": str(Path(__file__).relative_to(PROJECT_ROOT)),
         "timestamp": timestamp,
         "tree_params": TREE_PARAMS,
         "seeds": SEEDS,
