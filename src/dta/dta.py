@@ -40,7 +40,7 @@ class DTA():
              npca=100,
              knn_dist="euclidean",
              knn_max=None,
-             n_jobs=1,
+             n_jobs=-1,
              random_state=None,
              verbose=0,
              njobs=None,
