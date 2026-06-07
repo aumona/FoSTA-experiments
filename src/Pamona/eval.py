@@ -22,9 +22,9 @@ def calc_frac_idx(x1_mat, x2_mat, ids1=None, ids2=None):
     If ids1 and ids2 are provided:
         valid matches for x1[i] are all x2[j] with ids2[j] == ids1[i].
 
-        For multiple valid matches, we use the farthest true match.
+        For multiple valid matches, we use the nearest true match.
         This measures the fraction of incorrect samples that are closer
-        than the worst-ranked true match.
+        than the best-ranked true match.
     """
     fracs = []
     x = []
@@ -54,9 +54,9 @@ def calc_frac_idx(x1_mat, x2_mat, ids1=None, ids2=None):
             invalid_mask = np.ones(nsamp2, dtype=bool)
             invalid_mask[valid] = False
 
-            # Farthest true match = strict many-match FOSCTTM
-            true_nbr = np.max(euc_dist[valid])
-
+            # Nearest true match = retrieval-style many-match FOSCTTM
+            true_nbr = np.min(euc_dist[valid])
+            
             rank = np.sum(euc_dist[invalid_mask] < true_nbr)
             frac = float(rank) / max(np.sum(invalid_mask), 1)
 
