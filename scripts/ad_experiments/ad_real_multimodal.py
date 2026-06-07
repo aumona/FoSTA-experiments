@@ -5,7 +5,6 @@ Each data table stores labels in the first column and modality features in the
 remaining columns. Train rows stay labeled; test rows are masked as -1.
 """
 import json
-import os
 import pickle
 import sys
 import time
@@ -19,13 +18,6 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
-os.environ.setdefault("MPLCONFIGDIR", "/private/tmp/rf-mali-matplotlib")
-os.environ.setdefault("PYTHONHASHSEED", "0")
-os.environ.setdefault("OMP_NUM_THREADS", "1")
-os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-os.environ.setdefault("MKL_NUM_THREADS", "1")
-os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")
-os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
 import numpy as np
 np.int = int
@@ -59,7 +51,7 @@ from ad_experiment_utils import (
 # =============================================================================
 # CONFIG
 # =============================================================================
-DATASET = "rgbd_resnet18"  # "har", "rgbd_resnet18", or "rgbd_dinov2base"
+DATASETS = ["ave", "har", "rgbd_resnet18", "rgbd_dinov2base"]  # Any of: "har", "rgbd_resnet18", "rgbd_dinov2base", "ave"
 
 HAR_DATA_ROOT = PROJECT_ROOT / "data_har"
 HAR_ACC_TRAIN_PATH = HAR_DATA_ROOT / "har_acc_total_train.pkl"
@@ -76,8 +68,14 @@ RGBD_LABEL_MAP_PATH = RGBD_DATA_ROOT / "rgbd_label_map.json"
 RGBD_TRAIN_FRACTION = 0.50
 STD_NORMALIZE_RGBD = False   # True works well for DINO, but False is in accordance with MALI and common practice to visualize neural network features. Also, False better for ResNet18
 
-SEEDS = [39041, 56089, 79121]
-MAX_SAMPLE = 10000  # Set to an int for deterministic stratified subsampling per domain.
+AVE_DATA_ROOT = PROJECT_ROOT / "data_ave"
+AVE_AUDIO_TRAIN_PATH = AVE_DATA_ROOT / "train_audio_feature.npy"
+AVE_AUDIO_TEST_PATH = AVE_DATA_ROOT / "test_audio_feature.npy"
+AVE_VIDEO_TRAIN_PATH = AVE_DATA_ROOT / "train_visual_feature.npy"
+AVE_VIDEO_TEST_PATH = AVE_DATA_ROOT / "test_visual_feature.npy"
+
+SEEDS = [11784, 39041, 56089, 79121, 4386721]
+MAX_SAMPLE = None  # Set to an int for deterministic stratified subsampling per domain.
 N_COMPONENTS = 2
 N_JOBS = -1
 
@@ -90,15 +88,13 @@ MODELS_TO_RUN = [
     "FoSTA",
     "KEMAlin",
     "KEMArbf",
-    "MALI",
+    # "MALI",
     # "Pamona",
 ]
 
 FOSTA_CONFIGS = {
     "FoSTA_t2": {
-        "mu": 1,
         "t": 2,
-        "n_estimators": 100,
         "n_jobs": N_JOBS,
     },
     # "FoSTA_tauto": {
@@ -151,33 +147,55 @@ DATASET_CONFIGS = {
         "domain_b_path": RGBD_DINOV2BASE_DEPTH_PATH,
         "results_dir": PROJECT_ROOT / "results_rgbd" / "dinov2base",
     },
+    "ave": {
+        "domain_a_name": "ave_audio",
+        "domain_b_name": "ave_video",
+        "kind": "npy_train_test",
+        "domain_a_train_path": AVE_AUDIO_TRAIN_PATH,
+        "domain_a_test_path": AVE_AUDIO_TEST_PATH,
+        "domain_b_train_path": AVE_VIDEO_TRAIN_PATH,
+        "domain_b_test_path": AVE_VIDEO_TEST_PATH,
+        "results_dir": PROJECT_ROOT / "results_ave",
+    },
 }
 
-if DATASET not in DATASET_CONFIGS:
-    raise ValueError(f"DATASET must be one of {sorted(DATASET_CONFIGS)}, got {DATASET!r}.")
-
-DATASET_CONFIG = DATASET_CONFIGS[DATASET]
-RESULTS_ROOT = DATASET_CONFIG["results_dir"]
-RESULTS_ROOT.mkdir(parents=True, exist_ok=True)
+DATASET = None
+DATASET_CONFIG = None
 
 
 # =============================================================================
 # DATA AND BOOKKEEPING
 # =============================================================================
+def set_active_dataset(dataset):
+    global DATASET, DATASET_CONFIG
+    if dataset not in DATASET_CONFIGS:
+        raise ValueError(f"DATASET must be one of {sorted(DATASET_CONFIGS)}, got {dataset!r}.")
+    DATASET = dataset
+    DATASET_CONFIG = DATASET_CONFIGS[dataset]
+
+
+def validate_datasets():
+    for dataset in DATASETS:
+        if dataset not in DATASET_CONFIGS:
+            raise ValueError(f"DATASETS entries must be in {sorted(DATASET_CONFIGS)}, got {dataset!r}.")
+
+
 def validate_config():
-    if DATASET_CONFIG["kind"] == "har_pickle_train_test":
+    if DATASET_CONFIG["kind"] in {"har_pickle_train_test", "npy_train_test"}:
         paths = [
             DATASET_CONFIG["domain_a_train_path"],
             DATASET_CONFIG["domain_a_test_path"],
             DATASET_CONFIG["domain_b_train_path"],
             DATASET_CONFIG["domain_b_test_path"],
         ]
-    else:
+    elif DATASET_CONFIG["kind"] == "npy_single_file":
         paths = [
             DATASET_CONFIG["domain_a_path"],
             DATASET_CONFIG["domain_b_path"],
             RGBD_LABEL_MAP_PATH,
         ]
+    else:
+        raise ValueError(f"Unknown dataset kind: {DATASET_CONFIG['kind']}")
 
     for path in paths:
         if not path.exists():
@@ -206,7 +224,7 @@ def save_experiment_metadata(output_dir, timestamp):
         "models_to_run": MODELS_TO_RUN,
         "fosta_configs": FOSTA_CONFIGS,
     }
-    if DATASET_CONFIG["kind"] == "har_pickle_train_test":
+    if DATASET_CONFIG["kind"] in {"har_pickle_train_test", "npy_train_test"}:
         metadata["domain_a"].update({
             "train_path": str(DATASET_CONFIG["domain_a_train_path"].relative_to(PROJECT_ROOT)),
             "test_path": str(DATASET_CONFIG["domain_a_test_path"].relative_to(PROJECT_ROOT)),
@@ -215,7 +233,9 @@ def save_experiment_metadata(output_dir, timestamp):
             "train_path": str(DATASET_CONFIG["domain_b_train_path"].relative_to(PROJECT_ROOT)),
             "test_path": str(DATASET_CONFIG["domain_b_test_path"].relative_to(PROJECT_ROOT)),
         })
-    else:
+        if DATASET_CONFIG["kind"] == "npy_train_test":
+            metadata["normalization"] = "none"
+    elif DATASET_CONFIG["kind"] == "npy_single_file":
         metadata["domain_a"]["path"] = str(DATASET_CONFIG["domain_a_path"].relative_to(PROJECT_ROOT))
         metadata["domain_b"]["path"] = str(DATASET_CONFIG["domain_b_path"].relative_to(PROJECT_ROOT))
         metadata["rgbd_embedding_name"] = DATASET_CONFIG["embedding_name"]
@@ -223,6 +243,8 @@ def save_experiment_metadata(output_dir, timestamp):
         metadata["rgbd_train_fraction"] = RGBD_TRAIN_FRACTION
         metadata["std_normalize_rgbd"] = STD_NORMALIZE_RGBD
         metadata["rgbd_split"] = "deterministic stratified by label in original row order"
+    else:
+        raise ValueError(f"Unknown dataset kind: {DATASET_CONFIG['kind']}")
     write_json(output_dir / "experiment_metadata.json", metadata)
 
 
@@ -262,6 +284,18 @@ def split_xy(df):
 
 def split_xy_array(path):
     arr = np.load(path)
+    if arr.ndim != 2 or arr.shape[1] < 2:
+        raise ValueError(f"Expected 2D array with at least 2 columns in {path}, got {arr.shape}")
+
+    labels = arr[:, 0].astype(str)
+    features = np.asarray(arr[:, 1:], dtype=float)
+    if np.any(~np.isfinite(features)):
+        raise ValueError(f"{path.name} features contain non-finite values.")
+    return features, labels
+
+
+def split_xy_pickled_array(path):
+    arr = np.load(path, allow_pickle=True)
     if arr.ndim != 2 or arr.shape[1] < 2:
         raise ValueError(f"Expected 2D array with at least 2 columns in {path}, got {arr.shape}")
 
@@ -413,15 +447,19 @@ def load_rgbd_label_names(classes):
     return np.asarray(display_names, dtype=str)
 
 
-def load_har_domain(train_path, test_path):
-    x_train, y_train_raw = split_xy(load_frame(train_path))
-    x_test, y_test_raw = split_xy(load_frame(test_path))
+def load_train_test_domain(train_path, test_path, split_func):
+    x_train, y_train_raw = split_func(train_path)
+    x_test, y_test_raw = split_func(test_path)
 
     x = np.vstack([x_train, x_test])
     y_raw = np.concatenate([y_train_raw, y_test_raw])
 
     train_mask = np.r_[np.ones(len(y_train_raw), dtype=bool), np.zeros(len(y_test_raw), dtype=bool)]
     return x, y_raw, train_mask
+
+
+def split_xy_frame_path(path):
+    return split_xy(load_frame(path))
 
 
 def load_rgbd_domain(path, train_mask):
@@ -444,13 +482,15 @@ def build_har_pair():
     ])
     label_encoder = LabelEncoder().fit(raw_labels)
 
-    x_a, y_a_raw, train_mask_a = load_har_domain(
+    x_a, y_a_raw, train_mask_a = load_train_test_domain(
         DATASET_CONFIG["domain_a_train_path"],
         DATASET_CONFIG["domain_a_test_path"],
+        split_xy_frame_path,
     )
-    x_b, y_b_raw, train_mask_b = load_har_domain(
+    x_b, y_b_raw, train_mask_b = load_train_test_domain(
         DATASET_CONFIG["domain_b_train_path"],
         DATASET_CONFIG["domain_b_test_path"],
+        split_xy_frame_path,
     )
 
     subsample_idx = make_stratified_subsample_indices(y_a_raw, train_mask_a, MAX_SAMPLE)
@@ -460,6 +500,35 @@ def build_har_pair():
     # Scale each modality after train/test union and optional subsampling.
     x_a = standardize_domain(x_a)
     x_b = standardize_domain(x_b)
+
+    return make_pair_dict(x_a, y_a_raw, train_mask_a, x_b, y_b_raw, train_mask_b, label_encoder)
+
+
+def build_ave_pair():
+    validate_max_sample()
+    x_a, y_a_raw, train_mask_a = load_train_test_domain(
+        DATASET_CONFIG["domain_a_train_path"],
+        DATASET_CONFIG["domain_a_test_path"],
+        split_xy_pickled_array,
+    )
+    x_b, y_b_raw, train_mask_b = load_train_test_domain(
+        DATASET_CONFIG["domain_b_train_path"],
+        DATASET_CONFIG["domain_b_test_path"],
+        split_xy_pickled_array,
+    )
+
+    if x_a.shape[0] != x_b.shape[0]:
+        raise ValueError(f"Expected paired AVE domains with equal rows, got {x_a.shape[0]} and {x_b.shape[0]}.")
+    if not np.array_equal(train_mask_a, train_mask_b):
+        raise ValueError("AVE train/test masks must be identical across audio and video domains.")
+    if not np.array_equal(y_a_raw, y_b_raw):
+        raise ValueError("Expected AVE audio/video labels to match in the same row order.")
+
+    label_encoder = LabelEncoder().fit(np.concatenate([y_a_raw, y_b_raw]))
+
+    subsample_idx = make_stratified_subsample_indices(y_a_raw, train_mask_a, MAX_SAMPLE)
+    x_a, y_a_raw, train_mask_a = apply_subsample(x_a, y_a_raw, train_mask_a, subsample_idx)
+    x_b, y_b_raw, train_mask_b = apply_subsample(x_b, y_b_raw, train_mask_b, subsample_idx)
 
     return make_pair_dict(x_a, y_a_raw, train_mask_a, x_b, y_b_raw, train_mask_b, label_encoder)
 
@@ -506,6 +575,8 @@ def build_rgbd_pair():
 def build_pair():
     if DATASET_CONFIG["kind"] == "har_pickle_train_test":
         return build_har_pair()
+    if DATASET_CONFIG["kind"] == "npy_train_test":
+        return build_ave_pair()
     if DATASET_CONFIG["kind"] == "npy_single_file":
         return build_rgbd_pair()
     raise ValueError(f"Unknown dataset kind: {DATASET_CONFIG['kind']}")
@@ -565,6 +636,27 @@ def run_method(method_name, pair, seed):
 # =============================================================================
 def label_transfer_metric_name(top_k):
     return f"label_transfer_top{top_k}"
+
+
+def result_column_order():
+    return (
+        ["dataset", "method"]
+        + [label_transfer_metric_name(top_k) for top_k in LABEL_TRANSFER_TOP_KS]
+        + ["alignment_score", "FOSCTTM", "seed", "runtime_sec", "status"]
+    )
+
+
+def order_result_row(row):
+    ordered_cols = result_column_order()
+    return {
+        col: row[col]
+        for col in ordered_cols
+        if col in row
+    } | {
+        col: value
+        for col, value in row.items()
+        if col not in ordered_cols
+    }
 
 
 def make_plot_specs(pair):
@@ -680,62 +772,83 @@ def benchmark_method(method_name, embedding, pair, output_dir, seed):
 # MAIN
 # =============================================================================
 def main():
-    validate_config()
-    pair = build_pair()
+    validate_datasets()
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    root_dir = RESULTS_ROOT / timestamp
+    root_dir = PROJECT_ROOT / "results_multimodal" / timestamp
     root_dir.mkdir(parents=True, exist_ok=True)
-    save_experiment_metadata(root_dir, timestamp)
-    save_pair_metadata(root_dir, pair)
-    results_csv = root_dir / f"results_{DATASET}.csv"
+    results_csv = root_dir / "results_multimodal.csv"
 
     all_rows = []
-    for seed in SEEDS:
-        print(f"\n### STARTING SEED: {seed} ###")
-        seed_dir = root_dir / f"seed_{seed}"
-        seed_dir.mkdir(parents=True, exist_ok=True)
+    for dataset in DATASETS:
+        set_active_dataset(dataset)
+        validate_config()
+        pair = build_pair()
 
-        for method_name in MODELS_TO_RUN:
-            start = time.perf_counter()
-            out_name = next(iter(FOSTA_CONFIGS)) if method_name == "FoSTA" else method_name
-            try:
-                print(f"Running {method_name}...")
-                seed_everything(seed)
-                out_name, embedding = run_method(method_name, pair, seed)
-                row = benchmark_method(out_name, embedding, pair, seed_dir, seed)
-                row.update(seed=seed, runtime_sec=float(time.perf_counter() - start), status="ok")
-            except Exception as exc:
-                row = {
-                    "method": out_name,
-                    "alignment_score": np.nan,
-                    "FOSCTTM": np.nan,
-                    "seed": seed,
-                    "runtime_sec": float(time.perf_counter() - start),
-                    "status": f"error: {exc}",
-                }
-                row.update({
-                    label_transfer_metric_name(top_k): np.nan
-                    for top_k in LABEL_TRANSFER_TOP_KS
-                })
+        dataset_dir = root_dir / dataset
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        save_experiment_metadata(dataset_dir, timestamp)
+        save_pair_metadata(dataset_dir, pair)
 
-            all_rows.append(row)
-            append_result_row(results_csv, row)
-            if row["status"] == "ok":
-                topk_text = " | ".join(
-                    f"Top{top_k}={row[label_transfer_metric_name(top_k)]:.4f}"
-                    for top_k in LABEL_TRANSFER_TOP_KS
-                )
-                print(
-                    f"  {topk_text} | "
-                    f"AS={row['alignment_score']:.4f} | "
-                    f"FOSCTTM={row['FOSCTTM']:.4f} | "
-                    f"{row['runtime_sec']:.1f}s"
-                )
-            else:
-                print(f"  FAILED: {row['status']}")
+        for seed in SEEDS:
+            print(f"\n### STARTING DATASET: {dataset} | SEED: {seed} ###")
+            seed_dir = dataset_dir / f"seed_{seed}"
+            seed_dir.mkdir(parents=True, exist_ok=True)
 
-    pd.DataFrame(all_rows).sort_values(["seed", "method"], kind="stable").to_csv(results_csv, index=False)
+            for method_name in MODELS_TO_RUN:
+                out_name = next(iter(FOSTA_CONFIGS)) if method_name == "FoSTA" else method_name
+                runtime_sec = np.nan
+                try:
+                    print(f"Running {method_name}...")
+                    seed_everything(seed)
+                    start = time.perf_counter()
+                    out_name, embedding = run_method(method_name, pair, seed)
+                    runtime_sec = float(time.perf_counter() - start)
+                    row = benchmark_method(out_name, embedding, pair, seed_dir, seed)
+                    row.update(
+                        dataset=dataset,
+                        seed=seed,
+                        runtime_sec=runtime_sec,
+                        status="ok",
+                    )
+                except Exception as exc:
+                    row = {
+                        "dataset": dataset,
+                        "method": out_name,
+                        "alignment_score": np.nan,
+                        "FOSCTTM": np.nan,
+                        "seed": seed,
+                        "runtime_sec": runtime_sec,
+                        "status": f"error: {exc}",
+                    }
+                    row.update({
+                        label_transfer_metric_name(top_k): np.nan
+                        for top_k in LABEL_TRANSFER_TOP_KS
+                    })
+
+                all_rows.append(row)
+                append_result_row(results_csv, order_result_row(row))
+                if row["status"] == "ok":
+                    topk_text = " | ".join(
+                        f"Top{top_k}={row[label_transfer_metric_name(top_k)]:.4f}"
+                        for top_k in LABEL_TRANSFER_TOP_KS
+                    )
+                    print(
+                        f"  {topk_text} | "
+                        f"AS={row['alignment_score']:.4f} | "
+                        f"FOSCTTM={row['FOSCTTM']:.4f} | "
+                        f"{row['runtime_sec']:.1f}s"
+                    )
+                else:
+                    print(f"  FAILED: {row['status']}")
+
+    results_df = pd.DataFrame(all_rows).sort_values(["dataset", "seed", "method"], kind="stable")
+    ordered_cols = result_column_order()
+    results_df = results_df[
+        [col for col in ordered_cols if col in results_df.columns]
+        + [col for col in results_df.columns if col not in ordered_cols]
+    ]
+    results_df.to_csv(results_csv, index=False)
     print(f"\nFinished. Results saved to: {root_dir}")
     print(f"Metrics CSV: {results_csv}")
 
