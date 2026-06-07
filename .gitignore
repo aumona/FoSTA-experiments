@@ -5,6 +5,7 @@ data_sc/
 data_sketchy/
 data_har/
 data_rgbd/
+data_ave/
 
 # nohup
 nohup.out
@@ -30,6 +31,7 @@ results_tree/
 results_sketchy/
 results_har/
 results_rgbd/
+results_ave/
 
 # figures
 figures/
