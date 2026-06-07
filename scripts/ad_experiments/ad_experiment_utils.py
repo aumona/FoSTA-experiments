@@ -23,10 +23,27 @@ def python_random_seed(seed):
 
 
 def append_result_row(results_csv, row):
-    pd.DataFrame([row]).to_csv(
+    results_csv = Path(results_csv)
+    row_df = pd.DataFrame([row])
+
+    if not results_csv.exists() or results_csv.stat().st_size == 0:
+        row_df.to_csv(results_csv, index=False)
+        return
+
+    existing_cols = pd.read_csv(results_csv, nrows=0).columns.tolist()
+    new_cols = [col for col in row_df.columns if col not in existing_cols]
+
+    if new_cols:
+        all_cols = existing_cols + new_cols
+        existing_df = pd.read_csv(results_csv).reindex(columns=all_cols)
+        row_df = row_df.reindex(columns=all_cols)
+        pd.concat([existing_df, row_df], ignore_index=True).to_csv(results_csv, index=False)
+        return
+
+    row_df.reindex(columns=existing_cols).to_csv(
         results_csv,
         mode="a",
-        header=not results_csv.exists(),
+        header=False,
         index=False,
     )
 

@@ -32,6 +32,7 @@ results_sketchy/
 results_har/
 results_rgbd/
 results_ave/
+results_multimodal/
 
 # figures
 figures/
