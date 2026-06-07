@@ -59,7 +59,7 @@ from ad_experiment_utils import (
 # =============================================================================
 # CONFIG
 # =============================================================================
-DATASET = "rgbd"  # "har" or "rgbd"
+DATASET = "rgbd_resnet18"  # "har", "rgbd_resnet18", or "rgbd_dinov2base"
 
 HAR_DATA_ROOT = PROJECT_ROOT / "data_har"
 HAR_ACC_TRAIN_PATH = HAR_DATA_ROOT / "har_acc_total_train.pkl"
@@ -68,13 +68,16 @@ HAR_GYRO_TRAIN_PATH = HAR_DATA_ROOT / "har_gyro_train.pkl"
 HAR_GYRO_TEST_PATH = HAR_DATA_ROOT / "har_gyro_test.pkl"
 
 RGBD_DATA_ROOT = PROJECT_ROOT / "data_rgbd"
-RGBD_PHOTO_PATH = RGBD_DATA_ROOT / "rgbd_photo_resnet18_embeddings.npy"
-RGBD_DEPTH_PATH = RGBD_DATA_ROOT / "rgbd_depth_resnet18_embeddings.npy"
+RGBD_RESNET18_PHOTO_PATH = RGBD_DATA_ROOT / "rgbd_photo_resnet18_embeddings.npy"
+RGBD_RESNET18_DEPTH_PATH = RGBD_DATA_ROOT / "rgbd_depth_resnet18_embeddings.npy"
+RGBD_DINOV2BASE_PHOTO_PATH = RGBD_DATA_ROOT / "rgbd_photo_dinov2base_embeddings.npy"
+RGBD_DINOV2BASE_DEPTH_PATH = RGBD_DATA_ROOT / "rgbd_depth_dinov2base_embeddings.npy"
 RGBD_LABEL_MAP_PATH = RGBD_DATA_ROOT / "rgbd_label_map.json"
-RGBD_TRAIN_FRACTION = 0.70
+RGBD_TRAIN_FRACTION = 0.50
+STD_NORMALIZE_RGBD = False   # True works well for DINO, but False is in accordance with MALI and common practice to visualize neural network features. Also, False better for ResNet18
 
 SEEDS = [39041, 56089, 79121]
-MAX_SAMPLE = 2000  # Set to an int for deterministic stratified subsampling per domain.
+MAX_SAMPLE = 10000  # Set to an int for deterministic stratified subsampling per domain.
 N_COMPONENTS = 2
 N_JOBS = -1
 
@@ -84,7 +87,7 @@ LABEL_TRANSFER_TOP_KS = (1, 5, 10)
 MODELS_TO_RUN = [
     # "Unintegrated",
     # "Unintegrated_PHATE",
-    # "FoSTA",
+    "FoSTA",
     "KEMAlin",
     "KEMArbf",
     "MALI",
@@ -111,11 +114,6 @@ FOSTA_CONFIGS = {
     # },
 }
 
-MALI_CONFIG = {
-    "t": 2,
-    "n_jobs": N_JOBS,
-}
-
 SUPERVISED_CLASSES = {
     "FoSTA": FoSTA,
     "KEMAlin": KEMAlin,
@@ -135,13 +133,23 @@ DATASET_CONFIGS = {
         "domain_b_test_path": HAR_GYRO_TEST_PATH,
         "results_dir": PROJECT_ROOT / "results_har",
     },
-    "rgbd": {
+    "rgbd_resnet18": {
         "domain_a_name": "rgbd_photo",
         "domain_b_name": "rgbd_depth",
+        "embedding_name": "resnet18",
         "kind": "npy_single_file",
-        "domain_a_path": RGBD_PHOTO_PATH,
-        "domain_b_path": RGBD_DEPTH_PATH,
-        "results_dir": PROJECT_ROOT / "results_rgbd",
+        "domain_a_path": RGBD_RESNET18_PHOTO_PATH,
+        "domain_b_path": RGBD_RESNET18_DEPTH_PATH,
+        "results_dir": PROJECT_ROOT / "results_rgbd" / "resnet18",
+    },
+    "rgbd_dinov2base": {
+        "domain_a_name": "rgbd_photo",
+        "domain_b_name": "rgbd_depth",
+        "embedding_name": "dinov2base",
+        "kind": "npy_single_file",
+        "domain_a_path": RGBD_DINOV2BASE_PHOTO_PATH,
+        "domain_b_path": RGBD_DINOV2BASE_DEPTH_PATH,
+        "results_dir": PROJECT_ROOT / "results_rgbd" / "dinov2base",
     },
 }
 
@@ -197,7 +205,6 @@ def save_experiment_metadata(output_dir, timestamp):
         "n_jobs": N_JOBS,
         "models_to_run": MODELS_TO_RUN,
         "fosta_configs": FOSTA_CONFIGS,
-        "mali_config": MALI_CONFIG,
     }
     if DATASET_CONFIG["kind"] == "har_pickle_train_test":
         metadata["domain_a"].update({
@@ -211,8 +218,10 @@ def save_experiment_metadata(output_dir, timestamp):
     else:
         metadata["domain_a"]["path"] = str(DATASET_CONFIG["domain_a_path"].relative_to(PROJECT_ROOT))
         metadata["domain_b"]["path"] = str(DATASET_CONFIG["domain_b_path"].relative_to(PROJECT_ROOT))
+        metadata["rgbd_embedding_name"] = DATASET_CONFIG["embedding_name"]
         metadata["rgbd_label_map_path"] = str(RGBD_LABEL_MAP_PATH.relative_to(PROJECT_ROOT))
         metadata["rgbd_train_fraction"] = RGBD_TRAIN_FRACTION
+        metadata["std_normalize_rgbd"] = STD_NORMALIZE_RGBD
         metadata["rgbd_split"] = "deterministic stratified by label in original row order"
     write_json(output_dir / "experiment_metadata.json", metadata)
 
@@ -338,6 +347,12 @@ def apply_subsample(x, y_raw, train_mask, indices):
 
 def standardize_domain(x):
     return StandardScaler().fit_transform(x)
+
+
+def preprocess_rgbd_domain(x):
+    if STD_NORMALIZE_RGBD:
+        return standardize_domain(x)
+    return x
 
 
 def make_pair_dict(
@@ -473,9 +488,8 @@ def build_rgbd_pair():
     if not np.array_equal(train_mask_a, train_mask_b):
         raise ValueError("RGBD label masking must be identical in both modalities.")
 
-    # Scale each modality after train/test union and optional subsampling.
-    x_a = standardize_domain(x_a)
-    x_b = standardize_domain(x_b)
+    x_a = preprocess_rgbd_domain(x_a)
+    x_b = preprocess_rgbd_domain(x_b)
 
     return make_pair_dict(
         x_a,
@@ -533,11 +547,7 @@ def run_supervised_method(method_name, pair, seed):
             )
             return out_name, embedding
 
-    if method_name == "MALI":
-        model = MALI(n_components=N_COMPONENTS, random_state=seed, **MALI_CONFIG)
-    else:
-        model = SUPERVISED_CLASSES[method_name](n_components=N_COMPONENTS, random_state=seed)
-
+    model = SUPERVISED_CLASSES[method_name](n_components=N_COMPONENTS, random_state=seed)
     embedding = model.fit_transform(pair["x_a"], pair["x_b"], pair["labels_a_model"], pair["labels_b_model"])
     return method_name, embedding
 
