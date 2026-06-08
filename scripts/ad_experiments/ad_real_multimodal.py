@@ -80,19 +80,19 @@ MAX_SAMPLE = None  # Set to an int for deterministic stratified subsampling per 
 N_COMPONENTS = 2
 N_JOBS = -1
 # Max seconds to allow a model `fit_transform` to run. Set to None to disable timeout.
-MAX_FIT_TRANSFORM_SEC = 1800  # 30 minutes
+MAX_FIT_TRANSFORM_SEC = 3600  # 60 minutes
 
 LABEL_TRANSFER_TOP_KS = (1, 5, 10)
 
 
 MODELS_TO_RUN = [
-    # "Unintegrated",
-    # "Unintegrated_PHATE",
+    "Unintegrated",
+    "Unintegrated_PHATE",
     "FoSTA",
     "KEMAlin",
     "KEMArbf",
-    # "MALI",
-    # "Pamona",
+    "MALI",
+    "Pamona",
 ]
 
 FOSTA_CONFIGS = {
@@ -640,11 +640,31 @@ def _run_method_worker(method_name, pair, seed, q):
     a status string: "ok" or "error". On "ok" it puts ("ok", out_name, embedding).
     On "error" it puts ("error", str(exception)).
     """
+    import resource
     try:
         out_name, embedding = run_method(method_name, pair, seed)
-        q.put(("ok", out_name, embedding))
+        # ru_maxrss: bytes on macOS (darwin), kilobytes on Linux
+        try:
+            r = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            if sys.platform == "darwin":
+                peak_bytes = int(r)
+            else:
+                peak_bytes = int(r) * 1024
+        except Exception:
+            peak_bytes = 0
+        peak_mb = float(peak_bytes) / (1024 ** 2) if peak_bytes else np.nan
+        q.put(("ok", out_name, embedding, peak_mb))
     except Exception as exc:
-        q.put(("error", str(exc)))
+        try:
+            r = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            if sys.platform == "darwin":
+                peak_bytes = int(r)
+            else:
+                peak_bytes = int(r) * 1024
+        except Exception:
+            peak_bytes = 0
+        peak_mb = float(peak_bytes) / (1024 ** 2) if peak_bytes else np.nan
+        q.put(("error", str(exc), peak_mb))
 
 
 # =============================================================================
@@ -658,7 +678,7 @@ def result_column_order():
     return (
         ["dataset", "method"]
         + [label_transfer_metric_name(top_k) for top_k in LABEL_TRANSFER_TOP_KS]
-        + ["alignment_score", "FOSCTTM", "seed", "runtime_sec", "status"]
+        + ["alignment_score", "FOSCTTM", "seed", "runtime_sec", "peak_mem_mb", "status"]
     )
 
 
@@ -818,32 +838,46 @@ def main():
                     print(f"Running {method_name}...")
                     seed_everything(seed)
                     start = time.perf_counter()
-                    if MAX_FIT_TRANSFORM_SEC is None:
-                        out_name, embedding = run_method(method_name, pair, seed)
-                    else:
-                        q = mp.Queue()
-                        p = mp.Process(target=_run_method_worker, args=(method_name, pair, seed, q))
-                        p.start()
-                        p.join(MAX_FIT_TRANSFORM_SEC)
+                    peak_mem_mb = np.nan
+                    q = mp.Queue()
+                    p = mp.Process(target=_run_method_worker, args=(method_name, pair, seed, q))
+                    p.start()
+                    # Read the worker result from the queue first. Putting large
+                    # embeddings into a multiprocessing.Queue can block the child
+                    # if the parent is waiting on join; reading first avoids a
+                    # deadlock.
+                    try:
+                        if MAX_FIT_TRANSFORM_SEC is None:
+                            msg = q.get()
+                        else:
+                            msg = q.get(timeout=MAX_FIT_TRANSFORM_SEC)
+                    except Exception:
+                        # timed out waiting for a result
                         if p.is_alive():
                             p.terminate()
                             p.join()
-                            raise TimeoutError(f"fit_transform timeout after {MAX_FIT_TRANSFORM_SEC} seconds")
-                        # retrieve worker result
-                        try:
-                            msg = q.get(timeout=1)
-                        except Exception:
-                            raise RuntimeError("Worker process finished without returning a result")
-                        if msg[0] == "ok":
-                            out_name, embedding = msg[1], msg[2]
-                        else:
-                            raise Exception(msg[1])
+                        raise TimeoutError(f"fit_transform timeout after {MAX_FIT_TRANSFORM_SEC} seconds")
+                    finally:
+                        # ensure process cleaned up
+                        if p.is_alive():
+                            p.join(1)
+                            if p.is_alive():
+                                p.terminate()
+                                p.join()
+                    if msg[0] == "ok":
+                        out_name, embedding, peak_mem_mb = msg[1], msg[2], msg[3]
+                    else:
+                        # error message, may include peak memory
+                        err_msg = msg[1]
+                        peak_mem_mb = msg[2] if len(msg) > 2 else np.nan
+                        raise Exception(err_msg)
                     runtime_sec = float(time.perf_counter() - start)
                     row = benchmark_method(out_name, embedding, pair, seed_dir, seed)
                     row.update(
                         dataset=dataset,
                         seed=seed,
                         runtime_sec=runtime_sec,
+                        peak_mem_mb=peak_mem_mb,
                         status="ok",
                     )
                 except Exception as exc:
@@ -858,6 +892,7 @@ def main():
                         "FOSCTTM": np.nan,
                         "seed": seed,
                         "runtime_sec": runtime_sec,
+                        "peak_mem_mb": peak_mem_mb if 'peak_mem_mb' in locals() else np.nan,
                         "status": status_text,
                     }
                     row.update({
