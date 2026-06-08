@@ -23,6 +23,7 @@ import numpy as np
 np.int = int
 import pandas as pd
 import phate
+import multiprocessing as mp
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 
@@ -78,6 +79,8 @@ SEEDS = [11784, 39041, 56089, 79121, 4386721]
 MAX_SAMPLE = None  # Set to an int for deterministic stratified subsampling per domain.
 N_COMPONENTS = 2
 N_JOBS = -1
+# Max seconds to allow a model `fit_transform` to run. Set to None to disable timeout.
+MAX_FIT_TRANSFORM_SEC = 1800  # 30 minutes
 
 LABEL_TRANSFER_TOP_KS = (1, 5, 10)
 
@@ -631,6 +634,19 @@ def run_method(method_name, pair, seed):
     return run_supervised_method(method_name, pair, seed)
 
 
+def _run_method_worker(method_name, pair, seed, q):
+    """Worker wrapper to run `run_method` inside a subprocess and return
+    results via a multiprocessing.Queue. Puts a tuple whose first element is
+    a status string: "ok" or "error". On "ok" it puts ("ok", out_name, embedding).
+    On "error" it puts ("error", str(exception)).
+    """
+    try:
+        out_name, embedding = run_method(method_name, pair, seed)
+        q.put(("ok", out_name, embedding))
+    except Exception as exc:
+        q.put(("error", str(exc)))
+
+
 # =============================================================================
 # METRICS AND OUTPUT
 # =============================================================================
@@ -802,7 +818,26 @@ def main():
                     print(f"Running {method_name}...")
                     seed_everything(seed)
                     start = time.perf_counter()
-                    out_name, embedding = run_method(method_name, pair, seed)
+                    if MAX_FIT_TRANSFORM_SEC is None:
+                        out_name, embedding = run_method(method_name, pair, seed)
+                    else:
+                        q = mp.Queue()
+                        p = mp.Process(target=_run_method_worker, args=(method_name, pair, seed, q))
+                        p.start()
+                        p.join(MAX_FIT_TRANSFORM_SEC)
+                        if p.is_alive():
+                            p.terminate()
+                            p.join()
+                            raise TimeoutError(f"fit_transform timeout after {MAX_FIT_TRANSFORM_SEC} seconds")
+                        # retrieve worker result
+                        try:
+                            msg = q.get(timeout=1)
+                        except Exception:
+                            raise RuntimeError("Worker process finished without returning a result")
+                        if msg[0] == "ok":
+                            out_name, embedding = msg[1], msg[2]
+                        else:
+                            raise Exception(msg[1])
                     runtime_sec = float(time.perf_counter() - start)
                     row = benchmark_method(out_name, embedding, pair, seed_dir, seed)
                     row.update(
@@ -812,6 +847,10 @@ def main():
                         status="ok",
                     )
                 except Exception as exc:
+                    if isinstance(exc, TimeoutError) or "fit_transform timeout" in str(exc):
+                        status_text = "Crash: timeout"
+                    else:
+                        status_text = f"error: {exc}"
                     row = {
                         "dataset": dataset,
                         "method": out_name,
@@ -819,7 +858,7 @@ def main():
                         "FOSCTTM": np.nan,
                         "seed": seed,
                         "runtime_sec": runtime_sec,
-                        "status": f"error: {exc}",
+                        "status": status_text,
                     }
                     row.update({
                         label_transfer_metric_name(top_k): np.nan
