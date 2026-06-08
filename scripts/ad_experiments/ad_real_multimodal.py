@@ -53,7 +53,12 @@ from ad_experiment_utils import (
 # =============================================================================
 # CONFIG
 # =============================================================================
-DATASETS = ["ave", "har", "rgbd_resnet18", "rgbd_dinov2base"]  # Any of: "har", "rgbd_resnet18", "rgbd_dinov2base", "ave"
+DATASETS = [
+    # "ave", 
+    # "har", 
+    "rgbd_resnet18",
+    "rgbd_dinov2base"
+      ]  # Any of: "har", "rgbd_resnet18", "rgbd_dinov2base", "ave"
 
 HAR_DATA_ROOT = PROJECT_ROOT / "data_har"
 HAR_ACC_TRAIN_PATH = HAR_DATA_ROOT / "har_acc_total_train.pkl"
@@ -77,7 +82,7 @@ AVE_VIDEO_TRAIN_PATH = AVE_DATA_ROOT / "train_visual_feature.npy"
 AVE_VIDEO_TEST_PATH = AVE_DATA_ROOT / "test_visual_feature.npy"
 
 SEEDS = [11784, 39041, 56089, 79121, 4386721]
-MAX_SAMPLE = None  # Set to an int for deterministic stratified subsampling per domain.
+MAX_SAMPLE = 20000  # Set to an int for deterministic stratified subsampling per domain.
 N_COMPONENTS = 2
 N_JOBS = -1
 # Max seconds to allow a model `fit_transform` to run. Set to None to disable timeout.
@@ -402,6 +407,7 @@ def make_pair_dict(
     train_mask_b,
     label_encoder,
     display_classes=None,
+    original_n_samples=None,
 ):
     y_a_true = label_encoder.transform(y_a_raw)
     y_b_true = label_encoder.transform(y_b_raw)
@@ -423,6 +429,7 @@ def make_pair_dict(
         "labels_b_model": y_b_model.astype(int),
         "train_mask_a": train_mask_a,
         "train_mask_b": train_mask_b,
+        "original_n_samples": int(original_n_samples if original_n_samples is not None else x_a.shape[0]),
         "classes": label_encoder.classes_,
         "display_classes": (
             np.asarray(display_classes).astype(str)
@@ -496,6 +503,7 @@ def build_har_pair():
         DATASET_CONFIG["domain_b_test_path"],
         split_xy_frame_path,
     )
+    original_n_samples = len(y_a_raw)
 
     subsample_idx = make_stratified_subsample_indices(y_a_raw, train_mask_a, MAX_SAMPLE)
     x_a, y_a_raw, train_mask_a = apply_subsample(x_a, y_a_raw, train_mask_a, subsample_idx)
@@ -505,7 +513,16 @@ def build_har_pair():
     x_a = standardize_domain(x_a)
     x_b = standardize_domain(x_b)
 
-    return make_pair_dict(x_a, y_a_raw, train_mask_a, x_b, y_b_raw, train_mask_b, label_encoder)
+    return make_pair_dict(
+        x_a,
+        y_a_raw,
+        train_mask_a,
+        x_b,
+        y_b_raw,
+        train_mask_b,
+        label_encoder,
+        original_n_samples=original_n_samples,
+    )
 
 
 def build_ave_pair():
@@ -529,12 +546,22 @@ def build_ave_pair():
         raise ValueError("Expected AVE audio/video labels to match in the same row order.")
 
     label_encoder = LabelEncoder().fit(np.concatenate([y_a_raw, y_b_raw]))
+    original_n_samples = len(y_a_raw)
 
     subsample_idx = make_stratified_subsample_indices(y_a_raw, train_mask_a, MAX_SAMPLE)
     x_a, y_a_raw, train_mask_a = apply_subsample(x_a, y_a_raw, train_mask_a, subsample_idx)
     x_b, y_b_raw, train_mask_b = apply_subsample(x_b, y_b_raw, train_mask_b, subsample_idx)
 
-    return make_pair_dict(x_a, y_a_raw, train_mask_a, x_b, y_b_raw, train_mask_b, label_encoder)
+    return make_pair_dict(
+        x_a,
+        y_a_raw,
+        train_mask_a,
+        x_b,
+        y_b_raw,
+        train_mask_b,
+        label_encoder,
+        original_n_samples=original_n_samples,
+    )
 
 
 def build_rgbd_pair():
@@ -573,6 +600,7 @@ def build_rgbd_pair():
         train_mask_b,
         label_encoder,
         display_classes=display_classes,
+        original_n_samples=len(labels_a),
     )
 
 
@@ -677,10 +705,28 @@ def label_transfer_metric_name(top_k):
 
 def result_column_order():
     return (
-        ["dataset", "method"]
+        [
+            "dataset",
+            "method",
+            "n_original_full_samples",
+            "n_train_samples",
+            "n_test_samples",
+            "n_unique_classes",
+        ]
         + [label_transfer_metric_name(top_k) for top_k in LABEL_TRANSFER_TOP_KS]
         + ["alignment_score", "FOSCTTM", "seed", "runtime_sec", "peak_mem_mb", "status"]
     )
+
+
+def pair_result_metadata(pair):
+    train_mask = np.asarray(pair["train_mask_a"], dtype=bool)
+    labels = np.concatenate([pair["labels_a_true"], pair["labels_b_true"]])
+    return {
+        "n_original_full_samples": int(pair["original_n_samples"]),
+        "n_train_samples": int(np.count_nonzero(train_mask)),
+        "n_test_samples": int(train_mask.size - np.count_nonzero(train_mask)),
+        "n_unique_classes": int(np.unique(labels).size),
+    }
 
 
 def order_result_row(row):
@@ -821,6 +867,7 @@ def main():
         set_active_dataset(dataset)
         validate_config()
         pair = build_pair()
+        pair_metadata = pair_result_metadata(pair)
 
         dataset_dir = root_dir / dataset
         dataset_dir.mkdir(parents=True, exist_ok=True)
@@ -842,6 +889,7 @@ def main():
                     row = {
                         "dataset": dataset,
                         "method": out_name,
+                        **pair_metadata,
                         "alignment_score": np.nan,
                         "FOSCTTM": np.nan,
                         "seed": seed,
@@ -906,6 +954,7 @@ def main():
                     row = benchmark_method(out_name, embedding, pair, seed_dir, seed)
                     row.update(
                         dataset=dataset,
+                        **pair_metadata,
                         seed=seed,
                         runtime_sec=runtime_sec,
                         peak_mem_mb=peak_mem_mb,
@@ -921,6 +970,7 @@ def main():
                     row = {
                         "dataset": dataset,
                         "method": out_name,
+                        **pair_metadata,
                         "alignment_score": np.nan,
                         "FOSCTTM": np.nan,
                         "seed": seed,
