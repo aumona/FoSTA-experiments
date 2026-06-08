@@ -24,6 +24,7 @@ np.int = int
 import pandas as pd
 import phate
 import multiprocessing as mp
+import psutil
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 
@@ -826,12 +827,35 @@ def main():
         save_experiment_metadata(dataset_dir, timestamp)
         save_pair_metadata(dataset_dir, pair)
 
+        # Track methods that have failed for this dataset; skip remaining seeds for them.
+        failed_methods = set()
+
         for seed in SEEDS:
             print(f"\n### STARTING DATASET: {dataset} | SEED: {seed} ###")
             seed_dir = dataset_dir / f"seed_{seed}"
             seed_dir.mkdir(parents=True, exist_ok=True)
 
             for method_name in MODELS_TO_RUN:
+                if method_name in failed_methods:
+                    out_name = next(iter(FOSTA_CONFIGS)) if method_name == "FoSTA" else method_name
+                    print(f"Skipping {method_name} for dataset {dataset} (previous failure)")
+                    row = {
+                        "dataset": dataset,
+                        "method": out_name,
+                        "alignment_score": np.nan,
+                        "FOSCTTM": np.nan,
+                        "seed": seed,
+                        "runtime_sec": np.nan,
+                        "peak_mem_mb": np.nan,
+                        "status": "skipped: previous failure",
+                    }
+                    row.update({
+                        label_transfer_metric_name(top_k): np.nan
+                        for top_k in LABEL_TRANSFER_TOP_KS
+                    })
+                    all_rows.append(row)
+                    append_result_row(results_csv, order_result_row(row))
+                    continue
                 out_name = next(iter(FOSTA_CONFIGS)) if method_name == "FoSTA" else method_name
                 runtime_sec = np.nan
                 try:
@@ -852,7 +876,14 @@ def main():
                         else:
                             msg = q.get(timeout=MAX_FIT_TRANSFORM_SEC)
                     except Exception:
-                        # timed out waiting for a result
+                        # timed out waiting for a result. attempt to capture
+                        # current memory usage of the child process if psutil
+                        # is available, then terminate it.
+                        if p.pid is not None:
+                            proc = psutil.Process(p.pid)
+                            peak_mem_mb = float(proc.memory_info().rss) / (1024 ** 2)
+                        else:
+                            peak_mem_mb = np.nan
                         if p.is_alive():
                             p.terminate()
                             p.join()
@@ -885,6 +916,8 @@ def main():
                         status_text = "Crash: timeout"
                     else:
                         status_text = f"error: {exc}"
+                    # mark this method as failed for this dataset so we skip remaining seeds
+                    failed_methods.add(method_name)
                     row = {
                         "dataset": dataset,
                         "method": out_name,

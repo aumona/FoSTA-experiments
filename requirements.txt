@@ -13,3 +13,4 @@ pandas
 ipykernel
 scanpy
 rpy2  # for splatter
+psutil
