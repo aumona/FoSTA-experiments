@@ -39,7 +39,7 @@ class KEMA(BaseEstimator, TransformerMixin):
         # Build manifold operator M (always), and optionally K
         # ---------------------------------------------------------
         if self.verbose:
-            print("Building Graphtools Kernels... (The skeleton of your data)")
+            print("Building Graphtools Kernels...")
 
         n_pca_a = min(self.n_pca, X1.shape[1]) if self.n_pca is not None else None
         if n_pca_a is not None and n_pca_a < 100:
@@ -70,7 +70,7 @@ class KEMA(BaseEstimator, TransformerMixin):
         D_M_vec = np.asarray(M.sum(axis=1)).ravel().astype(np.float64, copy=False)
         Sw = float(D_M_vec.sum())
 
-        # In rbf mode, K := M (your original meaning)
+        # In rbf mode, K := M
         if self.kernel == 'rbf':
             K = M
             D_K_vec = D_M_vec
