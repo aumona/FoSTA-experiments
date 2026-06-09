@@ -39,8 +39,12 @@ from scripts.ad_experiments.ad_experiment_utils import save_embedding_plots, sav
 # CONFIG
 # =============================================================================
 DATA_ROOT = ROOT / "data_sketchy"
-SOURCE_DATA_PATH = DATA_ROOT / "photo_resnet18_embeddings.npy"
-TARGET_DATA_PATH = DATA_ROOT / "sketch_resnet18_embeddings.npy"
+# SOURCE_DATA_PATH = DATA_ROOT / "photo_resnet18_embeddings.npy"
+SOURCE_DATA_PATH = DATA_ROOT / "photo_dinov2_embeddings.npy"
+
+# TARGET_DATA_PATH = DATA_ROOT / "sketch_resnet18_embeddings.npy"
+TARGET_DATA_PATH = DATA_ROOT / "sketch_dinov2_embeddings.npy"
+
 LABEL_DICT_PATH = DATA_ROOT / "label_dic"
 
 SEEDS = [39041, 56089, 79121]
