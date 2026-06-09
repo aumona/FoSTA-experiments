@@ -1,5 +1,5 @@
 """
-HAR/RGBD multimodal alignment benchmark.
+HAR/AVE/RGBD/Sketchy multimodal alignment benchmark.
 
 Each data table stores labels in the first column and modality features in the
 remaining columns. Train rows stay labeled; test rows are masked as -1.
@@ -54,11 +54,13 @@ from ad_experiment_utils import (
 # CONFIG
 # =============================================================================
 DATASETS = [
-    # "ave", 
-    # "har", 
+    "sketchy_resnet18",
+    "sketchy_dinov2base",
+    "ave", 
+    "har", 
     "rgbd_resnet18",
-    "rgbd_dinov2base"
-      ]  # Any of: "har", "rgbd_resnet18", "rgbd_dinov2base", "ave"
+    "rgbd_dinov2base",
+]  # Any of: "har", "ave", "rgbd_resnet18", "rgbd_dinov2base", "sketchy_resnet18", "sketchy_dinov2base"
 
 HAR_DATA_ROOT = PROJECT_ROOT / "data_har"
 HAR_ACC_TRAIN_PATH = HAR_DATA_ROOT / "har_acc_total_train.pkl"
@@ -74,6 +76,14 @@ RGBD_DINOV2BASE_DEPTH_PATH = RGBD_DATA_ROOT / "rgbd_depth_dinov2base_embeddings.
 RGBD_LABEL_MAP_PATH = RGBD_DATA_ROOT / "rgbd_label_map.json"
 RGBD_TRAIN_FRACTION = 0.50
 STD_NORMALIZE_RGBD = False   # True works well for DINO, but False is in accordance with MALI and common practice to visualize neural network features. Also, False better for ResNet18
+
+SKETCHY_DATA_ROOT = PROJECT_ROOT / "data_sketchy"
+SKETCHY_RESNET18_PHOTO_PATH = SKETCHY_DATA_ROOT / "photo_resnet18_embeddings.npy"
+SKETCHY_RESNET18_SKETCH_PATH = SKETCHY_DATA_ROOT / "sketch_resnet18_embeddings.npy"
+SKETCHY_DINOV2BASE_PHOTO_PATH = SKETCHY_DATA_ROOT / "photo_dinov2base_embeddings.npy"
+SKETCHY_DINOV2BASE_SKETCH_PATH = SKETCHY_DATA_ROOT / "sketch_dinov2base_embeddings.npy"
+SKETCHY_LABEL_DICT_PATH = SKETCHY_DATA_ROOT / "label_dic"
+LABEL_MASKING_SKETCH_TARGET = 0.50
 
 AVE_DATA_ROOT = PROJECT_ROOT / "data_ave"
 AVE_AUDIO_TRAIN_PATH = AVE_DATA_ROOT / "train_audio_feature.npy"
@@ -92,8 +102,8 @@ LABEL_TRANSFER_TOP_KS = (1, 5, 10)
 
 
 MODELS_TO_RUN = [
-    "Unintegrated",
-    "Unintegrated_PHATE",
+    # "Unintegrated",
+    # "Unintegrated_PHATE",
     "FoSTA",
     "KEMAlin",
     "KEMArbf",
@@ -156,6 +166,24 @@ DATASET_CONFIGS = {
         "domain_b_path": RGBD_DINOV2BASE_DEPTH_PATH,
         "results_dir": PROJECT_ROOT / "results_rgbd" / "dinov2base",
     },
+    "sketchy_resnet18": {
+        "domain_a_name": "sketchy_photo",
+        "domain_b_name": "sketchy_sketch",
+        "embedding_name": "resnet18",
+        "kind": "sketchy_npy_object_id",
+        "domain_a_path": SKETCHY_RESNET18_PHOTO_PATH,
+        "domain_b_path": SKETCHY_RESNET18_SKETCH_PATH,
+        "results_dir": PROJECT_ROOT / "results_sketchy" / "resnet18",
+    },
+    "sketchy_dinov2base": {
+        "domain_a_name": "sketchy_photo",
+        "domain_b_name": "sketchy_sketch",
+        "embedding_name": "dinov2base",
+        "kind": "sketchy_npy_object_id",
+        "domain_a_path": SKETCHY_DINOV2BASE_PHOTO_PATH,
+        "domain_b_path": SKETCHY_DINOV2BASE_SKETCH_PATH,
+        "results_dir": PROJECT_ROOT / "results_sketchy" / "dinov2base",
+    },
     "ave": {
         "domain_a_name": "ave_audio",
         "domain_b_name": "ave_video",
@@ -202,6 +230,12 @@ def validate_config():
             DATASET_CONFIG["domain_a_path"],
             DATASET_CONFIG["domain_b_path"],
             RGBD_LABEL_MAP_PATH,
+        ]
+    elif DATASET_CONFIG["kind"] == "sketchy_npy_object_id":
+        paths = [
+            DATASET_CONFIG["domain_a_path"],
+            DATASET_CONFIG["domain_b_path"],
+            SKETCHY_LABEL_DICT_PATH,
         ]
     else:
         raise ValueError(f"Unknown dataset kind: {DATASET_CONFIG['kind']}")
@@ -252,6 +286,18 @@ def save_experiment_metadata(output_dir, timestamp):
         metadata["rgbd_train_fraction"] = RGBD_TRAIN_FRACTION
         metadata["std_normalize_rgbd"] = STD_NORMALIZE_RGBD
         metadata["rgbd_split"] = "deterministic stratified by label in original row order"
+    elif DATASET_CONFIG["kind"] == "sketchy_npy_object_id":
+        metadata["domain_a"]["path"] = str(DATASET_CONFIG["domain_a_path"].relative_to(PROJECT_ROOT))
+        metadata["domain_b"]["path"] = str(DATASET_CONFIG["domain_b_path"].relative_to(PROJECT_ROOT))
+        metadata["sketchy_embedding_name"] = DATASET_CONFIG["embedding_name"]
+        metadata["sketchy_label_dict_path"] = str(SKETCHY_LABEL_DICT_PATH.relative_to(PROJECT_ROOT))
+        metadata["label_column"] = "-2"
+        metadata["feature_columns"] = ":-2"
+        metadata["object_id_column"] = "-1"
+        metadata["masked_rows"] = "target/sketch only"
+        metadata["label_masking_sketch_target"] = LABEL_MASKING_SKETCH_TARGET
+        metadata["sketchy_target_sampling"] = "one random target example per source object ID, ordered to match source"
+        metadata["normalization"] = "none"
     else:
         raise ValueError(f"Unknown dataset kind: {DATASET_CONFIG['kind']}")
     write_json(output_dir / "experiment_metadata.json", metadata)
@@ -315,6 +361,29 @@ def split_xy_pickled_array(path):
     return features, labels
 
 
+def coerce_integral_column(values, name):
+    values = np.asarray(values)
+    if not np.all(np.isfinite(values)):
+        raise ValueError(f"{name} contains non-finite values.")
+    rounded = np.rint(values)
+    if not np.allclose(values, rounded):
+        return values.astype(str)
+    return rounded.astype(int).astype(str)
+
+
+def split_xy_object_id_array(path):
+    arr = np.load(path)
+    if arr.ndim != 2 or arr.shape[1] < 3:
+        raise ValueError(f"Expected 2D array with at least 3 columns in {path}, got {arr.shape}")
+
+    features = np.asarray(arr[:, :-2], dtype=float)
+    labels = coerce_integral_column(arr[:, -2], f"{path.name} labels")
+    object_ids = coerce_integral_column(arr[:, -1], f"{path.name} object IDs")
+    if np.any(~np.isfinite(features)):
+        raise ValueError(f"{path.name} features contain non-finite values.")
+    return features, labels, object_ids
+
+
 def load_array_labels(path):
     arr = np.load(path, mmap_mode="r")
     if arr.ndim != 2 or arr.shape[1] < 2:
@@ -337,6 +406,62 @@ def make_stratified_train_mask(labels, train_fraction):
             n_train = 1
         train_mask[label_idx[:n_train]] = True
     return train_mask
+
+
+def make_source_object_mask(source_labels, source_object_ids, target_object_ids, frac, seed):
+    source_labels = np.asarray(source_labels).astype(str)
+    source_object_ids = np.asarray(source_object_ids).astype(str)
+    target_object_ids = np.asarray(target_object_ids).astype(str)
+    if not 0 <= frac <= 1:
+        raise ValueError(f"LABEL_MASKING_SKETCH_TARGET must be in [0, 1], got {frac}.")
+    if frac <= 0:
+        return np.zeros(target_object_ids.shape[0], dtype=bool)
+    if np.unique(source_object_ids).size != source_object_ids.size:
+        raise ValueError("Expected Sketchy source/photo object IDs to be unique.")
+
+    rng = np.random.default_rng(seed)
+    masked_object_ids = []
+    for label in np.unique(source_labels):
+        class_object_ids = source_object_ids[source_labels == label]
+        n_mask = int(np.floor(class_object_ids.size * frac))
+        if n_mask > 0:
+            masked_object_ids.extend(rng.choice(class_object_ids, size=n_mask, replace=False))
+
+    return np.isin(target_object_ids, masked_object_ids)
+
+
+def select_one_target_per_source_object(
+    x_target,
+    labels_target,
+    object_ids_target,
+    object_ids_source,
+    seed,
+):
+    object_ids_source_str = np.asarray(object_ids_source).astype(str)
+    object_ids_target_str = np.asarray(object_ids_target).astype(str)
+
+    if np.unique(object_ids_source_str).size != object_ids_source_str.size:
+        raise ValueError("Expected Sketchy source/photo object IDs to be unique.")
+
+    rng = np.random.default_rng(seed)
+    selected_indices = []
+    for object_id in object_ids_source_str:
+        candidates = np.flatnonzero(object_ids_target_str == object_id)
+        if candidates.size == 0:
+            raise ValueError(f"Sketchy target domain has no example for source object ID {object_id!r}.")
+        selected_indices.append(int(rng.choice(candidates)))
+
+    selected_indices = np.asarray(selected_indices, dtype=int)
+    selected_object_ids = np.asarray(object_ids_target)[selected_indices].astype(str)
+    if not np.array_equal(selected_object_ids, object_ids_source_str):
+        raise ValueError("Selected Sketchy target object IDs are not aligned with source object IDs.")
+
+    return (
+        x_target[selected_indices],
+        np.asarray(labels_target)[selected_indices],
+        selected_object_ids,
+        selected_indices,
+    )
 
 
 def validate_max_sample():
@@ -408,6 +533,9 @@ def make_pair_dict(
     label_encoder,
     display_classes=None,
     original_n_samples=None,
+    source_size=None,
+    target_size=None,
+    extra_metadata=None,
 ):
     y_a_true = label_encoder.transform(y_a_raw)
     y_b_true = label_encoder.transform(y_b_raw)
@@ -420,7 +548,7 @@ def make_pair_dict(
     if x_a.shape[0] != x_b.shape[0]:
         raise ValueError(f"Expected paired domains with equal rows, got {x_a.shape[0]} and {x_b.shape[0]}.")
 
-    return {
+    pair = {
         "x_a": x_a,
         "x_b": x_b,
         "labels_a_true": y_a_true.astype(int),
@@ -430,6 +558,10 @@ def make_pair_dict(
         "train_mask_a": train_mask_a,
         "train_mask_b": train_mask_b,
         "original_n_samples": int(original_n_samples if original_n_samples is not None else x_a.shape[0]),
+        "source_size": int(source_size if source_size is not None else x_a.shape[0]),
+        "target_size": int(target_size if target_size is not None else x_b.shape[0]),
+        "source_n_features": int(x_a.shape[1]),
+        "target_n_features": int(x_b.shape[1]),
         "classes": label_encoder.classes_,
         "display_classes": (
             np.asarray(display_classes).astype(str)
@@ -437,6 +569,9 @@ def make_pair_dict(
             else label_encoder.classes_.astype(str)
         ),
     }
+    if extra_metadata is not None:
+        pair.update(extra_metadata)
+    return pair
 
 
 def load_rgbd_label_names(classes):
@@ -455,6 +590,21 @@ def load_rgbd_label_names(classes):
             raise ValueError(f"RGBD label id {label_id} is missing from {RGBD_LABEL_MAP_PATH}.")
         display_names.append(id_to_name[label_id])
 
+    return np.asarray(display_names, dtype=str)
+
+
+def load_sketchy_label_names(classes):
+    with SKETCHY_LABEL_DICT_PATH.open("rb") as f:
+        raw_mapping = pickle.load(f)
+
+    code_to_name = {str(int(code)): str(name) for code, name in raw_mapping.items()}
+    display_names = []
+    for label in classes:
+        try:
+            label_key = str(int(float(label)))
+        except ValueError:
+            label_key = str(label)
+        display_names.append(code_to_name.get(label_key, str(label)))
     return np.asarray(display_names, dtype=str)
 
 
@@ -604,28 +754,99 @@ def build_rgbd_pair():
     )
 
 
-def build_pair():
+def build_sketchy_pair(seed):
+    validate_max_sample()
+    x_a, y_a_raw, object_ids_a = split_xy_object_id_array(DATASET_CONFIG["domain_a_path"])
+    x_b_full, y_b_raw_full, object_ids_b_full = split_xy_object_id_array(DATASET_CONFIG["domain_b_path"])
+    original_n_samples = len(y_a_raw)
+    source_size = x_a.shape[0]
+    target_size = x_b_full.shape[0]
+
+    x_b, y_b_raw, object_ids_b, target_selected_indices = select_one_target_per_source_object(
+        x_b_full,
+        y_b_raw_full,
+        object_ids_b_full,
+        object_ids_a,
+        seed + 11,
+    )
+
+    if x_a.shape[0] != x_b.shape[0]:
+        raise ValueError(f"Expected paired Sketchy domains with equal rows, got {x_a.shape[0]} and {x_b.shape[0]}.")
+
+    label_encoder = LabelEncoder().fit(np.concatenate([y_a_raw, y_b_raw]))
+    display_classes = load_sketchy_label_names(label_encoder.classes_)
+    train_mask_a = np.ones(len(y_a_raw), dtype=bool)
+    train_mask_b = ~make_source_object_mask(
+        y_a_raw,
+        object_ids_a,
+        object_ids_b,
+        LABEL_MASKING_SKETCH_TARGET,
+        seed + 17,
+    )
+
+    subsample_idx = make_stratified_subsample_indices(y_a_raw, train_mask_b, MAX_SAMPLE)
+    x_a, y_a_raw, train_mask_a = apply_subsample(x_a, y_a_raw, train_mask_a, subsample_idx)
+    x_b, y_b_raw, train_mask_b = apply_subsample(x_b, y_b_raw, train_mask_b, subsample_idx)
+    object_ids_a = np.asarray(object_ids_a).astype(str)[subsample_idx]
+    object_ids_b = np.asarray(object_ids_b).astype(str)[subsample_idx]
+    target_selected_indices = target_selected_indices[subsample_idx]
+
+    if not np.array_equal(object_ids_a, object_ids_b):
+        raise ValueError("Sketchy source and selected target object IDs are not aligned after subsampling.")
+
+    return make_pair_dict(
+        x_a,
+        y_a_raw,
+        train_mask_a,
+        x_b,
+        y_b_raw,
+        train_mask_b,
+        label_encoder,
+        display_classes=display_classes,
+        original_n_samples=original_n_samples,
+        source_size=source_size,
+        target_size=target_size,
+        extra_metadata={
+            "object_ids_a": object_ids_a,
+            "object_ids_b": object_ids_b,
+            "target_selected_indices": target_selected_indices,
+        },
+    )
+
+
+def build_pair(seed=None):
     if DATASET_CONFIG["kind"] == "har_pickle_train_test":
         return build_har_pair()
     if DATASET_CONFIG["kind"] == "npy_train_test":
         return build_ave_pair()
     if DATASET_CONFIG["kind"] == "npy_single_file":
         return build_rgbd_pair()
+    if DATASET_CONFIG["kind"] == "sketchy_npy_object_id":
+        if seed is None:
+            raise ValueError("Sketchy pair construction requires a seed.")
+        return build_sketchy_pair(seed)
     raise ValueError(f"Unknown dataset kind: {DATASET_CONFIG['kind']}")
 
 
 def save_pair_metadata(output_dir, pair):
-    np.savez_compressed(
-        output_dir / f"{DATASET}_labels.npz",
-        labels_a=pair["labels_a_true"],
-        labels_b=pair["labels_b_true"],
-        labels_a_obs=pair["labels_a_model"],
-        labels_b_obs=pair["labels_b_model"],
-        train_mask_a=pair["train_mask_a"],
-        train_mask_b=pair["train_mask_b"],
-        classes=pair["classes"],
-        display_classes=pair["display_classes"],
-    )
+    metadata = {
+        "labels_a": pair["labels_a_true"],
+        "labels_b": pair["labels_b_true"],
+        "labels_a_obs": pair["labels_a_model"],
+        "labels_b_obs": pair["labels_b_model"],
+        "train_mask_a": pair["train_mask_a"],
+        "train_mask_b": pair["train_mask_b"],
+        "classes": pair["classes"],
+        "display_classes": pair["display_classes"],
+        "source_size": pair["source_size"],
+        "target_size": pair["target_size"],
+        "source_n_features": pair["source_n_features"],
+        "target_n_features": pair["target_n_features"],
+    }
+    for key in ("object_ids_a", "object_ids_b", "target_selected_indices"):
+        if key in pair:
+            metadata[key] = pair[key]
+    np.savez_compressed(output_dir / f"{DATASET}_labels.npz", **metadata)
 
 
 # =============================================================================
@@ -709,6 +930,10 @@ def result_column_order():
             "dataset",
             "method",
             "n_original_full_samples",
+            "source_size",
+            "target_size",
+            "source_n_features",
+            "target_n_features",
             "n_train_samples",
             "n_test_samples",
             "n_unique_classes",
@@ -719,10 +944,15 @@ def result_column_order():
 
 
 def pair_result_metadata(pair):
-    train_mask = np.asarray(pair["train_mask_a"], dtype=bool)
+    train_mask_key = "train_mask_b" if DATASET_CONFIG["kind"] == "sketchy_npy_object_id" else "train_mask_a"
+    train_mask = np.asarray(pair[train_mask_key], dtype=bool)
     labels = np.concatenate([pair["labels_a_true"], pair["labels_b_true"]])
     return {
         "n_original_full_samples": int(pair["original_n_samples"]),
+        "source_size": int(pair["source_size"]),
+        "target_size": int(pair["target_size"]),
+        "source_n_features": int(pair["source_n_features"]),
+        "target_n_features": int(pair["target_n_features"]),
         "n_train_samples": int(np.count_nonzero(train_mask)),
         "n_test_samples": int(train_mask.size - np.count_nonzero(train_mask)),
         "n_unique_classes": int(np.unique(labels).size),
@@ -866,13 +1096,15 @@ def main():
     for dataset in DATASETS:
         set_active_dataset(dataset)
         validate_config()
-        pair = build_pair()
-        pair_metadata = pair_result_metadata(pair)
+        is_sketchy = DATASET_CONFIG["kind"] == "sketchy_npy_object_id"
+        pair = None if is_sketchy else build_pair()
+        pair_metadata = None if is_sketchy else pair_result_metadata(pair)
 
         dataset_dir = root_dir / dataset
         dataset_dir.mkdir(parents=True, exist_ok=True)
         save_experiment_metadata(dataset_dir, timestamp)
-        save_pair_metadata(dataset_dir, pair)
+        if not is_sketchy:
+            save_pair_metadata(dataset_dir, pair)
 
         # Track methods that have failed for this dataset; skip remaining seeds for them.
         failed_methods = set()
@@ -881,6 +1113,10 @@ def main():
             print(f"\n### STARTING DATASET: {dataset} | SEED: {seed} ###")
             seed_dir = dataset_dir / f"seed_{seed}"
             seed_dir.mkdir(parents=True, exist_ok=True)
+            if is_sketchy:
+                pair = build_pair(seed)
+                pair_metadata = pair_result_metadata(pair)
+                save_pair_metadata(seed_dir, pair)
 
             for method_name in MODELS_TO_RUN:
                 if method_name in failed_methods:
