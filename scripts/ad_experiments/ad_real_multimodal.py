@@ -92,7 +92,7 @@ AVE_VIDEO_TRAIN_PATH = AVE_DATA_ROOT / "train_visual_feature.npy"
 AVE_VIDEO_TEST_PATH = AVE_DATA_ROOT / "test_visual_feature.npy"
 
 SEEDS = [11784, 39041, 56089, 79121, 4386721]
-MAX_SAMPLE = 20000  # Set to an int for deterministic stratified subsampling per domain.
+MAX_SAMPLE = 15000  # Set to an int for deterministic stratified subsampling per domain.
 N_COMPONENTS = 2
 N_JOBS = -1
 # Max seconds to allow a model `fit_transform` to run. Set to None to disable timeout.
@@ -102,8 +102,8 @@ LABEL_TRANSFER_TOP_KS = (1, 5, 10)
 
 
 MODELS_TO_RUN = [
-    # "Unintegrated",
-    # "Unintegrated_PHATE",
+    "Unintegrated",
+    "Unintegrated_PHATE",
     "FoSTA",
     "KEMAlin",
     "KEMArbf",
@@ -116,16 +116,13 @@ FOSTA_CONFIGS = {
         "t": 2,
         "n_jobs": N_JOBS,
     },
-    # "FoSTA_tauto": {
-    #     "t": 'auto',
-    #     "n_estimators": 1000,
-    #     "n_jobs": N_JOBS,
-    # },
+    "FoSTA_tauto": {
+        "t": 'auto',
+        "n_jobs": N_JOBS,
+    },
     # "FoSTA_t2_kerf": {
-    #     "mu": 1,
     #     "kernel_method": "kerf",
     #     "t": 2,
-    #     "n_estimators": 1000,
     # },
 }
 
