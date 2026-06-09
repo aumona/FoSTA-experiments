@@ -96,7 +96,7 @@ MAX_SAMPLE = 15000  # Set to an int for deterministic stratified subsampling per
 N_COMPONENTS = 2
 N_JOBS = -1
 # Max seconds to allow a model `fit_transform` to run. Set to None to disable timeout.
-MAX_FIT_TRANSFORM_SEC = 3600  # 60 minutes
+MAX_FIT_TRANSFORM_SEC = None  # in seconds, set to None to disable
 
 LABEL_TRANSFER_TOP_KS = (1, 5, 10)
 
@@ -104,7 +104,8 @@ LABEL_TRANSFER_TOP_KS = (1, 5, 10)
 MODELS_TO_RUN = [
     "Unintegrated",
     "Unintegrated_PHATE",
-    "FoSTA",
+    "FoSTA_t2",
+    "FoSTA_tauto",
     "KEMAlin",
     "KEMArbf",
     "MALI",
@@ -860,13 +861,17 @@ def run_unintegrated_phate(pair, seed):
 
 
 def run_supervised_method(method_name, pair, seed):
-    if method_name == "FoSTA":
-        for out_name, params in FOSTA_CONFIGS.items():
-            model = FoSTA(n_components=N_COMPONENTS, random_state=seed, **params)
-            embedding = model.fit_transform(
-                pair["x_a"], pair["x_b"], pair["labels_a_model"], pair["labels_b_model"]
-            )
-            return out_name, embedding
+    if method_name.startswith("FoSTA"):
+        params = FOSTA_CONFIGS[method_name]
+        model = FoSTA(
+            n_components=N_COMPONENTS,
+            random_state=seed,
+            **params
+        )
+        embedding = model.fit_transform(
+            pair["x_a"], pair["x_b"], pair["labels_a_model"], pair["labels_b_model"]
+        )
+        return method_name, embedding
 
     model = SUPERVISED_CLASSES[method_name](n_components=N_COMPONENTS, random_state=seed)
     embedding = model.fit_transform(pair["x_a"], pair["x_b"], pair["labels_a_model"], pair["labels_b_model"])
