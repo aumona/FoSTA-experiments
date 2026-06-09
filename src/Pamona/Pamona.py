@@ -89,8 +89,21 @@ class Pamona(object):
 	===============================
 	"""
 
-	def __init__(self, n_shared=None, M=None, n_neighbors=10, epsilon=0.001, Lambda=1.0, virtual_cells=1, \
-		output_dim=30, max_iter=1000, tol=1e-9, manual_seed=666, mode="distance", metric="minkowski", verbose=True):
+	def __init__(self, 
+			  	n_shared=None,
+			  	M=None, 
+			  	n_neighbors=10,
+			    epsilon=0.1,  # We bump it for faster convergence, but 0.001 is the default in the repo
+				Lambda=1.0, 
+				virtual_cells=1,
+				output_dim=30,
+				max_iter=100,  # We decrease for faster results, but 1000 is the default in the repo
+				tol=1e-5,   # We increase for faster convergence, but 1e-9 is the default in the repo
+				manual_seed=666,
+				mode="distance",
+				metric="minkowski",
+				verbose=True
+					  ):
 
 		self.n_shared = n_shared
 		self.M = M
