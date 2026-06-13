@@ -92,7 +92,14 @@ AVE_VIDEO_TRAIN_PATH = AVE_DATA_ROOT / "train_visual_feature.npy"
 AVE_VIDEO_TEST_PATH = AVE_DATA_ROOT / "test_visual_feature.npy"
 
 SEEDS = [11784, 39041, 56089, 79121, 4386721]
-MAX_SAMPLE = 15000  # Set to an int for deterministic stratified subsampling per domain.
+MAX_SAMPLE_BY_DATASET = {
+    "sketchy_resnet18": None,
+    "sketchy_dinov2base": None,
+    "ave": None,
+    "har": None,
+    "rgbd_resnet18": 10000,
+    "rgbd_dinov2base": 10000,
+}  # Set a dataset value to None to disable deterministic stratified subsampling.
 N_COMPONENTS = 2
 N_JOBS = -1
 # Max seconds to allow a model `fit_transform` to run. Set to None to disable timeout.
@@ -217,6 +224,14 @@ def validate_datasets():
             raise ValueError(f"DATASETS entries must be in {sorted(DATASET_CONFIGS)}, got {dataset!r}.")
 
 
+def validate_max_samples():
+    unknown = sorted(set(MAX_SAMPLE_BY_DATASET).difference(DATASET_CONFIGS))
+    if unknown:
+        raise ValueError(f"MAX_SAMPLE_BY_DATASET contains unknown datasets: {unknown}.")
+    for dataset in DATASETS:
+        validate_max_sample(dataset)
+
+
 def validate_config():
     if DATASET_CONFIG["kind"] in {"har_pickle_train_test", "npy_train_test"}:
         paths = [
@@ -261,7 +276,8 @@ def save_experiment_metadata(output_dir, timestamp):
         "masked_rows": "test",
         "masked_label_value": -1,
         "seeds": SEEDS,
-        "max_sample": MAX_SAMPLE,
+        "max_sample": get_max_sample(),
+        "max_sample_by_dataset": MAX_SAMPLE_BY_DATASET,
         "n_components": N_COMPONENTS,
         "n_jobs": N_JOBS,
         "models_to_run": MODELS_TO_RUN,
@@ -464,11 +480,22 @@ def select_one_target_per_source_object(
     )
 
 
-def validate_max_sample():
-    if MAX_SAMPLE is None:
+def get_max_sample(dataset=None):
+    dataset = DATASET if dataset is None else dataset
+    if dataset not in MAX_SAMPLE_BY_DATASET:
+        raise ValueError(f"Missing max-sample entry for dataset {dataset!r}.")
+    return MAX_SAMPLE_BY_DATASET[dataset]
+
+
+def validate_max_sample(dataset=None):
+    dataset = DATASET if dataset is None else dataset
+    max_sample = get_max_sample(dataset)
+    if max_sample is None:
         return
-    if not isinstance(MAX_SAMPLE, int) or isinstance(MAX_SAMPLE, bool) or MAX_SAMPLE <= 0:
-        raise ValueError(f"MAX_SAMPLE must be None or a positive int, got {MAX_SAMPLE!r}.")
+    if not isinstance(max_sample, int) or isinstance(max_sample, bool) or max_sample <= 0:
+        raise ValueError(
+            f"MAX_SAMPLE_BY_DATASET[{dataset!r}] must be None or a positive int, got {max_sample!r}."
+        )
 
 
 def make_stratified_subsample_indices(labels, train_mask, max_sample):
@@ -630,6 +657,7 @@ def load_rgbd_domain(path, train_mask):
 
 def build_har_pair():
     validate_max_sample()
+    max_sample = get_max_sample()
     acc_train = load_frame(DATASET_CONFIG["domain_a_train_path"])
     acc_test = load_frame(DATASET_CONFIG["domain_a_test_path"])
     gyro_train = load_frame(DATASET_CONFIG["domain_b_train_path"])
@@ -655,7 +683,7 @@ def build_har_pair():
     )
     original_n_samples = len(y_a_raw)
 
-    subsample_idx = make_stratified_subsample_indices(y_a_raw, train_mask_a, MAX_SAMPLE)
+    subsample_idx = make_stratified_subsample_indices(y_a_raw, train_mask_a, max_sample)
     x_a, y_a_raw, train_mask_a = apply_subsample(x_a, y_a_raw, train_mask_a, subsample_idx)
     x_b, y_b_raw, train_mask_b = apply_subsample(x_b, y_b_raw, train_mask_b, subsample_idx)
 
@@ -677,6 +705,7 @@ def build_har_pair():
 
 def build_ave_pair():
     validate_max_sample()
+    max_sample = get_max_sample()
     x_a, y_a_raw, train_mask_a = load_train_test_domain(
         DATASET_CONFIG["domain_a_train_path"],
         DATASET_CONFIG["domain_a_test_path"],
@@ -698,7 +727,7 @@ def build_ave_pair():
     label_encoder = LabelEncoder().fit(np.concatenate([y_a_raw, y_b_raw]))
     original_n_samples = len(y_a_raw)
 
-    subsample_idx = make_stratified_subsample_indices(y_a_raw, train_mask_a, MAX_SAMPLE)
+    subsample_idx = make_stratified_subsample_indices(y_a_raw, train_mask_a, max_sample)
     x_a, y_a_raw, train_mask_a = apply_subsample(x_a, y_a_raw, train_mask_a, subsample_idx)
     x_b, y_b_raw, train_mask_b = apply_subsample(x_b, y_b_raw, train_mask_b, subsample_idx)
 
@@ -716,6 +745,7 @@ def build_ave_pair():
 
 def build_rgbd_pair():
     validate_max_sample()
+    max_sample = get_max_sample()
     labels_a = load_array_labels(DATASET_CONFIG["domain_a_path"])
     labels_b = load_array_labels(DATASET_CONFIG["domain_b_path"])
     if labels_a.shape[0] != labels_b.shape[0]:
@@ -732,7 +762,7 @@ def build_rgbd_pair():
     x_a, y_a_raw, train_mask_a = load_rgbd_domain(DATASET_CONFIG["domain_a_path"], train_mask)
     x_b, y_b_raw, train_mask_b = load_rgbd_domain(DATASET_CONFIG["domain_b_path"], train_mask)
 
-    subsample_idx = make_stratified_subsample_indices(y_a_raw, train_mask_a, MAX_SAMPLE)
+    subsample_idx = make_stratified_subsample_indices(y_a_raw, train_mask_a, max_sample)
     x_a, y_a_raw, train_mask_a = apply_subsample(x_a, y_a_raw, train_mask_a, subsample_idx)
     x_b, y_b_raw, train_mask_b = apply_subsample(x_b, y_b_raw, train_mask_b, subsample_idx)
     if not np.array_equal(train_mask_a, train_mask_b):
@@ -756,6 +786,7 @@ def build_rgbd_pair():
 
 def build_sketchy_pair(seed):
     validate_max_sample()
+    max_sample = get_max_sample()
     x_a, y_a_raw, object_ids_a = split_xy_object_id_array(DATASET_CONFIG["domain_a_path"])
     x_b_full, y_b_raw_full, object_ids_b_full = split_xy_object_id_array(DATASET_CONFIG["domain_b_path"])
     original_n_samples = len(y_a_raw)
@@ -784,7 +815,7 @@ def build_sketchy_pair(seed):
         seed + 17,
     )
 
-    subsample_idx = make_stratified_subsample_indices(y_a_raw, train_mask_b, MAX_SAMPLE)
+    subsample_idx = make_stratified_subsample_indices(y_a_raw, train_mask_b, max_sample)
     x_a, y_a_raw, train_mask_a = apply_subsample(x_a, y_a_raw, train_mask_a, subsample_idx)
     x_b, y_b_raw, train_mask_b = apply_subsample(x_b, y_b_raw, train_mask_b, subsample_idx)
     object_ids_a = np.asarray(object_ids_a).astype(str)[subsample_idx]
@@ -1097,6 +1128,7 @@ def benchmark_method(method_name, embedding, pair, output_dir, seed):
 # =============================================================================
 def main():
     validate_datasets()
+    validate_max_samples()
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     root_dir = PROJECT_ROOT / "results_multimodal" / timestamp
