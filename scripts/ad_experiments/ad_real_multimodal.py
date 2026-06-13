@@ -120,11 +120,13 @@ FOSTA_CONFIGS = {
     "FoSTA_tauto": {
         "t": 'auto',
         "n_jobs": N_JOBS,
-    },
-    # "FoSTA_t2_kerf": {
-    #     "kernel_method": "kerf",
-    #     "t": 2,
-    # },
+    }
+}
+
+PAMONA_CONFIG = {
+    "epsilon": 0.1,  # We bump it for faster convergence, but 0.001 is the default in the repo
+    "max_iter": 100,  # We decrease for faster results, but 1000 is the default in the repo
+    "tol": 1e-5,   # We increase for faster convergence, but 1e-9 is the default in the repo
 }
 
 SUPERVISED_CLASSES = {
@@ -873,7 +875,14 @@ def run_supervised_method(method_name, pair, seed):
         )
         return method_name, embedding
 
-    model = SUPERVISED_CLASSES[method_name](n_components=N_COMPONENTS, random_state=seed)
+    if method_name == "Pamona":
+        model = Pamona(
+            n_components=N_COMPONENTS,
+            random_state=seed,
+            **PAMONA_CONFIG,
+        )
+    else:
+        model = SUPERVISED_CLASSES[method_name](n_components=N_COMPONENTS, random_state=seed)
     embedding = model.fit_transform(pair["x_a"], pair["x_b"], pair["labels_a_model"], pair["labels_b_model"])
     return method_name, embedding
 
