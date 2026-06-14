@@ -54,10 +54,10 @@ from ad_experiment_utils import (
 # CONFIG
 # =============================================================================
 DATASETS = [
-    "sketchy_resnet18",
-    "sketchy_dinov2base",
-    "ave", 
-    "har", 
+    # "sketchy_resnet18",
+    # "sketchy_dinov2base",
+    # "ave", 
+    # "har", 
     "rgbd_resnet18",
     "rgbd_dinov2base",
 ]  # Any of: "har", "ave", "rgbd_resnet18", "rgbd_dinov2base", "sketchy_resnet18", "sketchy_dinov2base"
@@ -97,8 +97,8 @@ MAX_SAMPLE_BY_DATASET = {
     "sketchy_dinov2base": None,
     "ave": None,
     "har": None,
-    "rgbd_resnet18": 10000,
-    "rgbd_dinov2base": 10000,
+    "rgbd_resnet18": 15000,
+    "rgbd_dinov2base": 15000,
 }  # Set a dataset value to None to disable deterministic stratified subsampling.
 N_COMPONENTS = 2
 N_JOBS = -1
@@ -116,7 +116,7 @@ MODELS_TO_RUN = [
     "KEMAlin",
     "KEMArbf",
     "MALI",
-    "Pamona",
+    # "Pamona",  # Not running Pamona for RGB-D 15k due to exaggerated runtime; can be enabled if desired and resources allow
 ]
 
 FOSTA_CONFIGS = {
