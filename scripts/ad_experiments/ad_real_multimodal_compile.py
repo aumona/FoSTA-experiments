@@ -5,7 +5,7 @@ import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_ROOT = PROJECT_ROOT / "results_multimodal"
-TIMESTAMP = "20260609_105815"
+TIMESTAMP = "20260609_105815_all_merged"
 OUTPUT_FILENAME = "results_multimodal_table.tex"
 
 DESIRED_TOP = 3
@@ -13,8 +13,8 @@ TABLE_FONT_SIZE = r"\scriptsize"
 METHOD_CELL_WIDTH = "1.75cm"
 
 METHODS = [
-    "FoSTA_t2",
-    # "FoSTA_tauto",
+    # "FoSTA_t2",
+    "FoSTA_tauto",
     "KEMAlin",
     "KEMArbf",
     "MALI",
@@ -33,12 +33,12 @@ METHOD_DISPLAY_MAP = {
 }
 
 DATASET_DISPLAY_MAP = {
-    "ave": "AVE",
-    "har": "HAR",
-    "rgbd_resnet18": "RGB-D ResNet18",
-    "rgbd_dinov2base": "RGB-D DINOv2-B",
-    "sketchy_resnet18": "Sketchy ResNet18",
-    "sketchy_dinov2base": "Sketchy DINOv2-B",
+    "ave": r"\shortstack[l]{Audio $\leftrightarrow$ Video \\ (AVE)}",
+    "har": r"\shortstack[l]{Sensor 1 $\leftrightarrow$ Sensor 2 \\ (HAR)}",
+    "rgbd_resnet18": r"\shortstack[l]{Image $\leftrightarrow$ Depth crop \\ (RGB-D ResNet18)}",
+    "rgbd_dinov2base": r"\shortstack[l]{Image $\leftrightarrow$ Depth crop \\ (RGB-D DINOv2-B)}",
+    "sketchy_resnet18": r"\shortstack[l]{Image $\leftrightarrow$ Human sketch \\ (Sketchy ResNet18)}",
+    "sketchy_dinov2base": r"\shortstack[l]{Image $\leftrightarrow$ Human sketch \\ (Sketchy DINOv2-B)}",
 }
 
 METRICS = [
@@ -56,10 +56,10 @@ CAPTION = (
 )
 LABEL = "tab:real_multimodal"
 
-RANK_STYLES = {
-    1: (r"gold!25", r"\bfseries"),
-    2: (r"gray!18", r"\bfseries\color{gray}"),
-    3: (r"brown!14", r"\bfseries\color{brown}"),
+RANK_MACROS = {
+    1: r"\gold",
+    2: r"\silver",
+    3: r"\bronze",
 }
 
 
@@ -150,8 +150,8 @@ def highlighted_value(
 
 
 def format_ranked_value(formatted: str, rank: int) -> str:
-    fill_color, text_style = RANK_STYLES[rank]
-    return f"\\cellcolor{{{fill_color}}}\\makebox[{METHOD_CELL_WIDTH}][c]{{{text_style} {formatted}}}"
+    rank_macro = RANK_MACROS[rank]
+    return f"\\makebox[{METHOD_CELL_WIDTH}][c]{{{rank_macro}{{{formatted}}}}}"
 
 
 def format_plain_value(formatted: str) -> str:
@@ -163,7 +163,7 @@ def format_mean_std(mean: float, std: float) -> str:
 
 
 def make_column_spec(n_methods: int) -> str:
-    return "ll " + " ".join(["c"] * n_methods)
+    return "lr " + " ".join(["c"] * n_methods)
 
 
 def average_scores(
@@ -185,8 +185,14 @@ def average_scores(
                 for dataset in datasets
                 if (dataset, method) in stds.index and not pd.isna(stds.loc[(dataset, method), metric])
             ]
-            avg_means[metric][method] = pd.Series(mean_values).mean() if mean_values else float("nan")
-            avg_stds[metric][method] = pd.Series(std_values).mean() if std_values else float("nan")
+            has_complete_scores = len(mean_values) == len(datasets)
+            has_complete_stds = len(std_values) == len(datasets)
+            avg_means[metric][method] = (
+                pd.Series(mean_values).mean() if has_complete_scores else float("nan")
+            )
+            avg_stds[metric][method] = (
+                pd.Series(std_values).mean() if has_complete_stds else float("nan")
+            )
 
     return pd.DataFrame(avg_means), pd.DataFrame(avg_stds)
 
@@ -219,7 +225,7 @@ def highlighted_summary_value(
 def build_latex_table(
     means: pd.DataFrame, stds: pd.DataFrame, datasets: list[str], methods: list[str]
 ) -> str:
-    header = ["Dataset", "Metric"] + [
+    header = ["Alignment task", "Metric"] + [
         f"\\makebox[{METHOD_CELL_WIDTH}][c]{{{display_method(method)}}}" for method in methods
     ]
     avg_means, avg_stds = average_scores(means, stds, datasets, methods)
