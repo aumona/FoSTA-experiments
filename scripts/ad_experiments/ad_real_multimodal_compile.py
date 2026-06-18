@@ -9,12 +9,12 @@ TIMESTAMP = "20260609_105815_all_merged"
 OUTPUT_FILENAME = "results_multimodal_table.tex"
 
 DESIRED_TOP = 3
-TABLE_FONT_SIZE = r"\scriptsize"
-METHOD_CELL_WIDTH = "1.75cm"
+TABLE_FONT_SIZE = r"\small"
+METHOD_CELL_WIDTH = "1.5cm"
 
 METHODS = [
-    # "FoSTA_t2",
-    "FoSTA_tauto",
+    "FoSTA_t2",
+    # "FoSTA_tauto",
     "KEMAlin",
     "KEMArbf",
     "MALI",
@@ -33,12 +33,12 @@ METHOD_DISPLAY_MAP = {
 }
 
 DATASET_DISPLAY_MAP = {
-    "ave": r"\shortstack[l]{Audio $\leftrightarrow$ Video \\ (AVE)}",
-    "har": r"\shortstack[l]{Sensor 1 $\leftrightarrow$ Sensor 2 \\ (HAR)}",
-    "rgbd_resnet18": r"\shortstack[l]{Image $\leftrightarrow$ Depth crop \\ (RGB-D ResNet18)}",
-    "rgbd_dinov2base": r"\shortstack[l]{Image $\leftrightarrow$ Depth crop \\ (RGB-D DINOv2-B)}",
-    "sketchy_resnet18": r"\shortstack[l]{Image $\leftrightarrow$ Human sketch \\ (Sketchy ResNet18)}",
-    "sketchy_dinov2base": r"\shortstack[l]{Image $\leftrightarrow$ Human sketch \\ (Sketchy DINOv2-B)}",
+    "ave": (r"Audio $\leftrightarrow$ Video", "AVE"),
+    "har": (r"Sensor 1 $\leftrightarrow$ Sensor 2", "HAR"),
+    "rgbd_resnet18": (r"Image $\leftrightarrow$ Depth crop", "RGB-D ResNet18"),
+    "rgbd_dinov2base": (r"Image $\leftrightarrow$ Depth crop", "RGB-D DINOv2-B"),
+    "sketchy_resnet18": (r"Image $\leftrightarrow$ Human sketch", "Sketchy ResNet18"),
+    "sketchy_dinov2base": (r"Image $\leftrightarrow$ Human sketch", "Sketchy DINOv2-B"),
 }
 
 METRICS = [
@@ -72,12 +72,24 @@ def load_results(results_dir: Path) -> pd.DataFrame:
     if "status" in df.columns:
         df = df[df["status"] == "ok"].copy()
 
-    required_cols = {"dataset", "method", *[metric for metric, _, _ in METRICS]}
+    required_cols = {"dataset", "method", "n_unique_classes", *[metric for metric, _, _ in METRICS]}
     missing = sorted(required_cols.difference(df.columns))
     if missing:
         raise ValueError(f"Missing columns in {csv_path}: {missing}")
 
     return df
+
+
+def get_class_counts(df: pd.DataFrame) -> dict[str, int]:
+    class_counts = {}
+    for dataset, values in df.groupby("dataset", sort=False)["n_unique_classes"]:
+        unique_values = values.dropna().unique()
+        if len(unique_values) != 1:
+            raise ValueError(
+                f"Expected one n_unique_classes value for {dataset!r}, got {unique_values.tolist()}."
+            )
+        class_counts[dataset] = int(unique_values[0])
+    return class_counts
 
 
 def summarize(
@@ -90,7 +102,7 @@ def summarize(
 
     means = df.groupby(["dataset", "method"], sort=False)[metric_cols].mean()
     stds = df.groupby(["dataset", "method"], sort=False)[metric_cols].std().fillna(0.0)
-    datasets = list(dict.fromkeys(df["dataset"].tolist()))
+    datasets = sorted(dict.fromkeys(df["dataset"].tolist()), key=dataset_sort_key)
     present_methods = [method for method in methods if method in set(df["method"])]
     return means, stds, datasets, present_methods
 
@@ -115,8 +127,20 @@ def display_method(method: str) -> str:
     return METHOD_DISPLAY_MAP.get(method, latex_escape(method))
 
 
-def display_dataset(dataset: str) -> str:
-    return DATASET_DISPLAY_MAP.get(dataset, latex_escape(dataset))
+def display_dataset(dataset: str, class_count: int) -> str:
+    if dataset not in DATASET_DISPLAY_MAP:
+        return f"{latex_escape(dataset)} ({class_count} classes)"
+
+    alignment_task, dataset_name = DATASET_DISPLAY_MAP[dataset]
+    return rf"\shortstack[l]{{{alignment_task} \\ ({dataset_name}, {class_count} classes)}}"
+
+
+def dataset_sort_key(dataset: str) -> tuple[str, str]:
+    if dataset not in DATASET_DISPLAY_MAP:
+        return ("", dataset)
+
+    alignment_task, dataset_name = DATASET_DISPLAY_MAP[dataset]
+    return (alignment_task, dataset_name)
 
 
 def highlighted_value(
@@ -223,7 +247,11 @@ def highlighted_summary_value(
 
 
 def build_latex_table(
-    means: pd.DataFrame, stds: pd.DataFrame, datasets: list[str], methods: list[str]
+    means: pd.DataFrame,
+    stds: pd.DataFrame,
+    datasets: list[str],
+    methods: list[str],
+    class_counts: dict[str, int],
 ) -> str:
     header = ["Alignment task", "Metric"] + [
         f"\\makebox[{METHOD_CELL_WIDTH}][c]{{{display_method(method)}}}" for method in methods
@@ -232,7 +260,7 @@ def build_latex_table(
 
     lines = [
         r"\begin{table}[t]",
-        r"{\footnotesize",
+        r"{\small",
         f"\\caption{{{CAPTION}}}",
         r"}",
         f"\\label{{{LABEL}}}",
@@ -250,7 +278,7 @@ def build_latex_table(
     for dataset_idx, dataset in enumerate(datasets):
         for metric_idx, (metric, metric_label, lower_is_better) in enumerate(METRICS):
             dataset_cell = (
-                f"\\multirow{{{len(METRICS)}}}{{*}}{{{display_dataset(dataset)}}}"
+                f"\\multirow{{{len(METRICS)}}}{{*}}{{{display_dataset(dataset, class_counts[dataset])}}}"
                 if metric_idx == 0
                 else ""
             )
@@ -285,8 +313,9 @@ def build_latex_table(
 def main() -> None:
     results_dir = RESULTS_ROOT / TIMESTAMP
     df = load_results(results_dir)
+    class_counts = get_class_counts(df)
     means, stds, datasets, methods = summarize(df, METHODS)
-    latex_table = build_latex_table(means, stds, datasets, methods)
+    latex_table = build_latex_table(means, stds, datasets, methods, class_counts)
 
     output_path = results_dir / OUTPUT_FILENAME
     output_path.write_text(latex_table)
