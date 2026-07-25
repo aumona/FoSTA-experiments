@@ -7,6 +7,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_ROOT = PROJECT_ROOT / "results_multimodal"
 TIMESTAMP = "20260609_105815_all_merged"
 OUTPUT_FILENAME = "results_multimodal_table.tex"
+MARKDOWN_OUTPUT_FILENAME = "results_multimodal_table.md"
 
 DESIRED_TOP = 3
 TABLE_FONT_SIZE = r"\small"
@@ -41,18 +42,41 @@ DATASET_DISPLAY_MAP = {
     "sketchy_dinov2base": (r"Image $\leftrightarrow$ Human sketch", "Sketchy DINOv2-B"),
 }
 
+MARKDOWN_DATASET_DISPLAY_MAP = {
+    "ave": ("Audio ↔ Video", "AVE"),
+    "har": ("Sensor 1 ↔ Sensor 2", "HAR"),
+    "rgbd_resnet18": ("Image ↔ Depth crop", "RGB-D ResNet18"),
+    "rgbd_dinov2base": ("Image ↔ Depth crop", "RGB-D DINOv2-B"),
+    "sketchy_resnet18": ("Image ↔ Human sketch", "Sketchy ResNet18"),
+    "sketchy_dinov2base": ("Image ↔ Human sketch", "Sketchy DINOv2-B"),
+}
+
 METRICS = [
     ("label_transfer_top1", "Acc$\\uparrow$", False),
     ("alignment_score", "AS$\\uparrow$", False),
     ("FOSCTTM", "FOS$\\downarrow$", True),
 ]
+TOP10_METRIC = ("label_transfer_top10", "Acc@10$\\uparrow$", False)
+ALL_METRICS = [METRICS[0], TOP10_METRIC, *METRICS[1:]]
+TOP10_DATASET_PREFIXES = ("rgbd_", "sketchy_")
 
 CAPTION = (
     "Aggregated performance over real multimodal datasets and seeds. Results are "
-    "reported for label transfer accuracy (Acc), alignment score (AS), and "
+    "reported for label transfer accuracy (Acc and, where applicable, Acc@10), "
+    "alignment score (AS), and "
     "correspondence recovery measured by FOSCTTM. Higher is better for accuracy "
     "and AS, while lower is better for FOSCTTM. The top three results for each "
     "metric are highlighted in gold (1st), silver (2nd), and bronze (3rd)."
+    " Missing Pamona values correspond to runs with excessive runtimes."
+)
+MARKDOWN_CAPTION = (
+    "Aggregated performance over real multimodal datasets and seeds. Results are "
+    "reported for label transfer accuracy (Acc and, where applicable, Acc@10), "
+    "alignment score (AS), and "
+    "correspondence recovery measured by FOSCTTM. Higher is better for accuracy "
+    "and AS, while lower is better for FOSCTTM. The best result for each metric "
+    "is bold and italic, and the second-best result is bold."
+    " Missing Pamona values correspond to runs with excessive runtimes."
 )
 LABEL = "tab:real_multimodal"
 
@@ -61,7 +85,6 @@ RANK_MACROS = {
     2: r"\silver",
     3: r"\bronze",
 }
-
 
 def load_results(results_dir: Path) -> pd.DataFrame:
     csv_path = results_dir / "results_multimodal.csv"
@@ -72,7 +95,12 @@ def load_results(results_dir: Path) -> pd.DataFrame:
     if "status" in df.columns:
         df = df[df["status"] == "ok"].copy()
 
-    required_cols = {"dataset", "method", "n_unique_classes", *[metric for metric, _, _ in METRICS]}
+    required_cols = {
+        "dataset",
+        "method",
+        "n_unique_classes",
+        *[metric for metric, _, _ in ALL_METRICS],
+    }
     missing = sorted(required_cols.difference(df.columns))
     if missing:
         raise ValueError(f"Missing columns in {csv_path}: {missing}")
@@ -95,7 +123,7 @@ def get_class_counts(df: pd.DataFrame) -> dict[str, int]:
 def summarize(
     df: pd.DataFrame, methods: list[str]
 ) -> tuple[pd.DataFrame, pd.DataFrame, list[str], list[str]]:
-    metric_cols = [metric for metric, _, _ in METRICS]
+    metric_cols = [metric for metric, _, _ in ALL_METRICS]
     df = df[df["method"].isin(methods)].copy()
     if df.empty:
         raise ValueError("No rows remain after filtering to the requested methods.")
@@ -135,12 +163,37 @@ def display_dataset(dataset: str, class_count: int) -> str:
     return rf"\shortstack[l]{{{alignment_task} \\ ({dataset_name}, {class_count} classes)}}"
 
 
+def markdown_escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("|", "\\|")
+
+
+def display_method_markdown(method: str) -> str:
+    display_name = METHOD_DISPLAY_MAP.get(method, method)
+    return markdown_escape(
+        display_name.replace("$t=\\texttt{auto}$", "`t=auto`")
+    )
+
+
+def display_dataset_markdown(dataset: str, class_count: int) -> str:
+    if dataset not in MARKDOWN_DATASET_DISPLAY_MAP:
+        return f"{markdown_escape(dataset)} ({class_count} classes)"
+
+    alignment_task, dataset_name = MARKDOWN_DATASET_DISPLAY_MAP[dataset]
+    return f"{alignment_task} ({dataset_name}, {class_count} classes)"
+
+
 def dataset_sort_key(dataset: str) -> tuple[str, str]:
     if dataset not in DATASET_DISPLAY_MAP:
         return ("", dataset)
 
     alignment_task, dataset_name = DATASET_DISPLAY_MAP[dataset]
     return (alignment_task, dataset_name)
+
+
+def metrics_for_dataset(dataset: str) -> list[tuple[str, str, bool]]:
+    if dataset.startswith(TOP10_DATASET_PREFIXES):
+        return ALL_METRICS
+    return METRICS
 
 
 def highlighted_value(
@@ -184,6 +237,28 @@ def format_plain_value(formatted: str) -> str:
 
 def format_mean_std(mean: float, std: float) -> str:
     return f"{mean:.3f}{{\\tiny $\\pm${std:.2f}}}"
+
+
+def format_mean_std_markdown(mean: float, std: float) -> str:
+    return f"{mean:.3f} ± {std:.2f}"
+
+
+def markdown_value(
+    scores: pd.Series,
+    value: float,
+    std: float,
+    lower_is_better: bool,
+) -> str:
+    if pd.isna(value):
+        return "---"
+
+    formatted = format_mean_std_markdown(value, std)
+    unique_scores = sorted(scores.dropna().unique(), reverse=not lower_is_better)
+    if unique_scores and value == unique_scores[0]:
+        return f"***{formatted}***"
+    if len(unique_scores) > 1 and value == unique_scores[1]:
+        return f"**{formatted}**"
+    return formatted
 
 
 def make_column_spec(n_methods: int) -> str:
@@ -276,9 +351,10 @@ def build_latex_table(
     ]
 
     for dataset_idx, dataset in enumerate(datasets):
-        for metric_idx, (metric, metric_label, lower_is_better) in enumerate(METRICS):
+        dataset_metrics = metrics_for_dataset(dataset)
+        for metric_idx, (metric, metric_label, lower_is_better) in enumerate(dataset_metrics):
             dataset_cell = (
-                f"\\multirow{{{len(METRICS)}}}{{*}}{{{display_dataset(dataset, class_counts[dataset])}}}"
+                f"\\multirow{{{len(dataset_metrics)}}}{{*}}{{{display_dataset(dataset, class_counts[dataset])}}}"
                 if metric_idx == 0
                 else ""
             )
@@ -310,17 +386,87 @@ def build_latex_table(
     return "\n".join(lines) + "\n"
 
 
+def build_markdown_table(
+    means: pd.DataFrame,
+    stds: pd.DataFrame,
+    datasets: list[str],
+    methods: list[str],
+    class_counts: dict[str, int],
+) -> str:
+    header = ["Alignment task", "Metric"] + [
+        display_method_markdown(method) for method in methods
+    ]
+    lines = [
+        MARKDOWN_CAPTION,
+        "",
+        "| " + " | ".join(header) + " |",
+        "| " + " | ".join(["---"] * len(header)) + " |",
+    ]
+    avg_means, avg_stds = average_scores(means, stds, datasets, methods)
+
+    for dataset in datasets:
+        for metric_idx, (metric, metric_label, lower_is_better) in enumerate(
+            metrics_for_dataset(dataset)
+        ):
+            dataset_cell = (
+                display_dataset_markdown(dataset, class_counts[dataset])
+                if metric_idx == 0
+                else ""
+            )
+            row = [dataset_cell, metric_label.replace("$\\uparrow$", " ↑").replace("$\\downarrow$", " ↓")]
+            dataset_scores = means.xs(dataset, level="dataset")[metric]
+            for method in methods:
+                key = (dataset, method)
+                if key not in means.index:
+                    row.append("---")
+                    continue
+                row.append(
+                    markdown_value(
+                        dataset_scores,
+                        means.loc[key, metric],
+                        stds.loc[key, metric] if key in stds.index else 0.0,
+                        lower_is_better,
+                    )
+                )
+            lines.append("| " + " | ".join(row) + " |")
+
+    for metric_idx, (metric, metric_label, lower_is_better) in enumerate(METRICS):
+        row = [
+            "Average score" if metric_idx == 0 else "",
+            metric_label.replace("$\\uparrow$", " ↑").replace("$\\downarrow$", " ↓"),
+        ]
+        for method in methods:
+            if method not in avg_means.index:
+                row.append("---")
+                continue
+            row.append(
+                markdown_value(
+                    avg_means[metric],
+                    avg_means.loc[method, metric],
+                    avg_stds.loc[method, metric] if method in avg_stds.index else 0.0,
+                    lower_is_better,
+                )
+            )
+        lines.append("| " + " | ".join(row) + " |")
+
+    return "\n".join(lines) + "\n"
+
+
 def main() -> None:
     results_dir = RESULTS_ROOT / TIMESTAMP
     df = load_results(results_dir)
     class_counts = get_class_counts(df)
     means, stds, datasets, methods = summarize(df, METHODS)
     latex_table = build_latex_table(means, stds, datasets, methods, class_counts)
+    markdown_table = build_markdown_table(means, stds, datasets, methods, class_counts)
 
     output_path = results_dir / OUTPUT_FILENAME
-    output_path.write_text(latex_table)
+    markdown_output_path = results_dir / MARKDOWN_OUTPUT_FILENAME
+    output_path.write_text(latex_table, encoding="utf-8")
+    markdown_output_path.write_text(markdown_table, encoding="utf-8")
     print(latex_table)
     print(f"Saved {output_path}")
+    print(f"Saved {markdown_output_path}")
 
 
 if __name__ == "__main__":
