@@ -55,6 +55,7 @@ class FoSTA:
         entR=0,
         m=1,
         distance="cosine",
+        propagate: bool = True,
     ):
         self.random_state = random_state
         self.verbose = verbose
@@ -85,6 +86,7 @@ class FoSTA:
         self.l2_normalize = l2_normalize
 
         self.mu = mu
+        self.propagate = propagate
         self.t = t
         self.beta = beta
         self.embedder = embedder
@@ -260,14 +262,21 @@ class FoSTA:
 
     def _build_balanced_affinity(self, prox_a, prox_b, T):
         """
-        Constructs a joint affinity matrix using raw surjective T,
-        followed by optional nonzero-edge mean cross-block scaling.
+        Constructs a joint affinity matrix, optionally propagating the
+        cross-domain coupling through each domain's proximity matrix.
         """
-        W_ab = self.mu * prox_a.dot(T)
-        W_ba = self.mu * prox_b.dot(T.transpose())
+        if self.propagate:
+            W_ab = self.mu * prox_a.dot(T)
+            W_ba = self.mu * prox_b.dot(T.transpose())
+        else:
+            W_ab = T
+            W_ba = T.transpose()
     
         if self.verbose:
-            print("\nJOINT AFFINITY BLOCK STATISTICS (incl. cross-block scaling):")
+            print(
+                "\nJOINT AFFINITY BLOCK STATISTICS "
+                f"(cross-domain propagation={self.propagate}):"
+            )
             print("------------------------------")
             print_mat_stats("Within-domain A (W1)", prox_a)
             print_mat_stats("Within-domain B (W2)", prox_b)
