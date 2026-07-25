@@ -1,4 +1,5 @@
 import json
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -7,10 +8,7 @@ np.int = int
 
 import pandas as pd
 
-import sys
-from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -78,9 +76,13 @@ METHODS = [
     # "FoSTA_kerf_mauto_t2",
     # "FoSTA_kerf_mauto_auto",
 
-    "FoSTA_umap",
-    "FoSTA_dense",
-    "FoSTA_et",
+    # "FoSTA_umap",
+    # "FoSTA_dense",
+    # "FoSTA_et",
+    "FoSTA_spectral",
+    "FoSTA_dpt",
+    "FoSTA_rotf",
+    "FoSTA_no_propag",
 
     # "MALI",
     # "MALI_nodpt",
@@ -370,6 +372,42 @@ def build_model(method: str, seed: int):
         return FoSTA(
             n_components=N_COMPONENTS,
             model_type='et',
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
+        )
+
+    if m == "fosta_spectral":
+        return FoSTA(
+            n_components=N_COMPONENTS,
+            embedder="spectral",
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
+        )
+
+    if m == "fosta_dpt":
+        return FoSTA(
+            n_components=N_COMPONENTS,
+            dpt=True,
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
+        )
+
+    if m == "fosta_rotf":
+        return FoSTA(
+            n_components=N_COMPONENTS,
+            model_type="rotf",
+            random_state=seed,
+            n_jobs=N_JOBS,
+            verbose=VERBOSE,
+        )
+
+    if m == "fosta_no_propag":
+        return FoSTA(
+            n_components=N_COMPONENTS,
+            propagate=False,
             random_state=seed,
             n_jobs=N_JOBS,
             verbose=VERBOSE,
