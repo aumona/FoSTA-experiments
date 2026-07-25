@@ -1,5 +1,6 @@
 import numpy as np
 from sklearn import preprocessing
+from sklearn.manifold import SpectralEmbedding
 from scipy import sparse
 
 from .rfgap.forestkernel import ForestKernel
@@ -414,6 +415,15 @@ class FoSTA:
                 verbose=self.verbose,
                 n_jobs=self.n_jobs,
                 beta=self.beta,
+            )
+            self.embedding_ = embedder.fit_transform(W)
+
+        elif self.embedder == "spectral":
+            embedder = SpectralEmbedding(
+                n_components=self.n_components,
+                affinity="precomputed",
+                random_state=self.random_state,
+                n_jobs=self.n_jobs,
             )
             self.embedding_ = embedder.fit_transform(W)
 
