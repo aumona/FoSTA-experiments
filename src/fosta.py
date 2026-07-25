@@ -74,14 +74,19 @@ class FoSTA:
         self.kernel_params = {
             "random_state": random_state,
             "prediction_type": "classification",
-            "oob_score": True,
             "n_estimators": self.n_estimators,
-            "class_weight": self.class_weight,
             "kernel_method": self.kernel_method,
             "force_nonzero_diag": self.force_nonzero_diag,
             "model_type": self.model_type,
-            "bootstrap": self.bootstrap,
         }
+        if self.model_type != "rotf":
+            self.kernel_params.update(
+                {
+                    "oob_score": True,
+                    "class_weight": self.class_weight,
+                    "bootstrap": self.bootstrap,
+                }
+            )
 
         self.prior_correct = prior_correct
         self.l2_normalize = l2_normalize
