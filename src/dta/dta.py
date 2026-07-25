@@ -321,31 +321,39 @@ class DTA():
 
     def compute_dpt(self, ridge=1e-8):
         rng = np.random.default_rng(self.random_state)
+        self.M1 = self.dpt(
+            self.p1,
+            random_state=rng,
+            ridge=ridge,
+            normalize=self.normalize_M == 1,
+        )
+        self.M2 = self.dpt(
+            self.p2,
+            random_state=rng,
+            ridge=ridge,
+            normalize=self.normalize_M == 1,
+        )
 
-        # Domain 1
-        v0 = rng.random(self.p1.shape[0])
-        w, rv = scipy.sparse.linalg.eigs(self.p1, k=1, v0=v0)
-        w, lv = scipy.sparse.linalg.eigs(self.p1.transpose(), k=1, v0=v0)
-    
-        P = self.p1.toarray()
-        A1 = np.eye(P.shape[0]) - (P - np.outer(rv.real, lv.real))
-        A1 = A1 + ridge * np.eye(A1.shape[0])
-        self.M1 = np.linalg.solve(A1, np.eye(A1.shape[0])) - np.eye(A1.shape[0])
-    
-        # Domain 2
-        v0 = rng.random(self.p2.shape[0])
-        w, rv = scipy.sparse.linalg.eigs(self.p2, k=1, v0=v0)
-        w, lv = scipy.sparse.linalg.eigs(self.p2.transpose(), k=1, v0=v0)
-    
-        P = self.p2.toarray()
-        A2 = np.eye(P.shape[0]) - (P - np.outer(rv.real, lv.real))
-        A2 = A2 + ridge * np.eye(A2.shape[0])
-        self.M2 = np.linalg.solve(A2, np.eye(A2.shape[0])) - np.eye(A2.shape[0])
-    
-        if self.normalize_M == 1:
-            min_max_scaler = preprocessing.MinMaxScaler()
-            self.M1 = min_max_scaler.fit_transform(self.M1.transpose()).transpose()
-            self.M2 = min_max_scaler.fit_transform(self.M2.transpose()).transpose()
+    @staticmethod
+    def dpt(P, random_state=None, ridge=1e-8, normalize=True):
+        """Compute MALI's diffusion-pseudotime matrix for one diffusion operator."""
+        P = sparse.csr_matrix(P)
+        rng = np.random.default_rng(random_state)
+        v0 = rng.random(P.shape[0])
+        _, rv = scipy.sparse.linalg.eigs(P, k=1, v0=v0)
+        _, lv = scipy.sparse.linalg.eigs(P.transpose(), k=1, v0=v0)
+
+        P_dense = P.toarray()
+        identity = np.eye(P_dense.shape[0])
+        system = identity - (P_dense - np.outer(rv.real, lv.real))
+        system = system + ridge * identity
+        dpt_matrix = np.linalg.solve(system, identity) - identity
+
+        if normalize:
+            dpt_matrix = preprocessing.MinMaxScaler().fit_transform(
+                dpt_matrix.transpose()
+            ).transpose()
+        return dpt_matrix
 
    
     def optimal_transport(self):

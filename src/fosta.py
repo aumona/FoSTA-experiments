@@ -1,4 +1,5 @@
 import numpy as np
+import graphtools
 from sklearn import preprocessing
 from sklearn.manifold import SpectralEmbedding
 from scipy import sparse
@@ -11,6 +12,7 @@ from utils.utils import kernel2Dist, print_mat_stats
 from utils.labels import LabelUtils
 
 from .hiref.adaptive_HiRef import solve_surjection_hiref
+from .dta.dta import DTA
 
 # for dense OT solver (MALI-style)
 from scipy.spatial.distance import cdist
@@ -57,6 +59,7 @@ class FoSTA:
         m=1,
         distance="cosine",
         propagate: bool = True,
+        dpt: bool = False,
     ):
         self.random_state = random_state
         self.verbose = verbose
@@ -93,6 +96,7 @@ class FoSTA:
 
         self.mu = mu
         self.propagate = propagate
+        self.dpt = dpt
         self.t = t
         self.beta = beta
         self.embedder = embedder
@@ -139,6 +143,24 @@ class FoSTA:
         self._log(f"[Domain {domain_name}] Shapes: prox={prox.shape} | NNZ density={prox.nnz / (prox.shape[0] * prox.shape[1]):.6f}")
 
         return kernel, prox
+
+    def _compute_dpt_affinity(self, prox, domain_name="A"):
+        self._log(f"[Domain {domain_name}] Computing diffusion pseudotime...")
+        graph = graphtools.Graph(
+            prox,
+            precomputed="affinity",
+            n_jobs=self.n_jobs,
+            kernel_symm=None,
+            verbose=self.verbose,
+            random_state=self.random_state,
+        )
+        return sparse.csr_matrix(
+            DTA.dpt(
+                graph.diff_op,
+                random_state=self.random_state,
+                normalize=True,
+            )
+        )
 
     def _get_semantic_vectors_from_prox(self, prox, y, labels, domain_name="A"):
         y = np.asarray(y).ravel()
@@ -315,16 +337,23 @@ class FoSTA:
     
         kernel_a, prox_a = self._compute_domain_geometry(x_a, y_a, "A")
         kernel_b, prox_b = self._compute_domain_geometry(x_b, y_b, "B")
+
+        semantic_prox_a = (
+            self._compute_dpt_affinity(prox_a, "A") if self.dpt else prox_a
+        )
+        semantic_prox_b = (
+            self._compute_dpt_affinity(prox_b, "B") if self.dpt else prox_b
+        )
     
         post_a = self._get_semantic_vectors_from_prox(
-            prox_a,
+            semantic_prox_a,
             y_a,
             all_labels,
             domain_name="A",
         )
     
         post_b = self._get_semantic_vectors_from_prox(
-            prox_b,
+            semantic_prox_b,
             y_b,
             all_labels,
             domain_name="B",
