@@ -38,6 +38,9 @@ class ROTFAdapter(EnsembleAdapter):
         """
         X = np.asarray(X)
 
+        # aeon removes constant training features before storing its scaling
+        # statistics and fitting the per-tree PCA transforms.
+        X = X[:, self.estimator._useful_atts]
         ptp = np.where(self.estimator._ptp == 0, 1.0, self.estimator._ptp)
         X_norm = (X - self.estimator._min) / ptp
 

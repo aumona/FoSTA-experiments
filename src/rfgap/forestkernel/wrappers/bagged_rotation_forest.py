@@ -75,8 +75,11 @@ class BaggedRotationForest(RotationForestClassifier):
         """
         X = np.asarray(X)
 
-        # Match aeon's normalization step
-        X_norm = (X - self._min) / self._ptp
+        # Match aeon's preprocessing: remove constant training features before
+        # applying the scaling statistics and per-tree PCA transforms.
+        X = X[:, self._useful_atts]
+        ptp = np.where(self._ptp == 0, 1.0, self._ptp)
+        X_norm = (X - self._min) / ptp
 
         pcas_t = self._pcas[t_idx]
         groups_t = self._groups[t_idx]
