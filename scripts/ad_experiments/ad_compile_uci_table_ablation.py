@@ -1,21 +1,37 @@
 import numpy as np
 import pandas as pd
+from pathlib import Path
 
 # =========================================================
 # CONFIG
 # =========================================================
 
 # results_csv = "results_uci/results_20260503_015528_general.csv"
-results_csv = "results_uci/results_20260503_122708_general_distort05.csv"
+# results_csv = "results_uci/results_20260503_122708_general_distort05.csv"
 # results_csv = "results_uci/results_20260503_201720_other_ablation.csv"
+results_csv = "results_uci/results_20260725_203910.csv"
+
 
 desired_top = 3
 metrics = {"label_transfer": "Acc", "alignment_score": "AS", "foscttm": "FOS"}
 lower_is_better = ["foscttm"]
 
-# split_order = ["add_gaussian_noise_features", "alternate_importance", "distort", "importance", "random", "rotate"]
+latex_caption = (
+    "UCI ablation results averaged over datasets and seeds. First-, second-, "
+    "and third-place scores are highlighted relative to the reference baseline "
+    "results reported in Table~1."
+)
+markdown_caption = (
+    "UCI ablation results averaged over datasets and seeds. Each variant's "
+    "second row reports the mean within-dataset standard deviation. First-, "
+    "second-, and third-place scores are highlighted relative to the reference "
+    "baseline results reported in Table 1. First place is bold and italic, "
+    "second place is bold, and third place is italic."
+)
 
-split_order = ["distort"]
+split_order = ["add_gaussian_noise_features", "alternate_importance", "distort", "importance", "random", "rotate"]
+
+# split_order = ["rotate"]
 
 
 split_display_map = {
@@ -27,11 +43,25 @@ split_display_map = {
     "rotate": "Rotate"
 }
 
+markdown_split_display_map = {
+    "add_gaussian_noise_features": "Noise",
+    "alternate_importance": "Alt. Imp.",
+    "distort": "Distort",
+    "importance": "Imp.",
+    "random": "Random",
+    "rotate": "Rotate",
+}
+
 method_order = [
     # "FoSTA_et",
 
-    "FoSTA_gap_t2",
-    "FoSTA_kerf_auto",
+    # "FoSTA_gap_t2",
+    # "FoSTA_kerf_auto",
+
+    "FoSTA_spectral",
+    "FoSTA_dpt",
+    "FoSTA_rotf",
+    "FoSTA_no_propag",
 
     # "FoSTA_dense",
 
@@ -46,6 +76,10 @@ method_display_map = {
     "FoSTA_umap": "FoSTA-UMAP",
     "FoSTA_dense": "FoSTA-Dense",
     "FoSTA_et": "FoSTA-et",
+    "FoSTA_spectral": "Lap. Eig.",
+    "FoSTA_dpt": "DPT",
+    "FoSTA_rotf": "RotF",
+    "FoSTA_no_propag": "No Prop.",
 }
 
 # =========================================================
@@ -97,77 +131,164 @@ def get_highlighted_value(val, m_key, split_name):
     return formatted
 
 
+def get_markdown_value(val, m_key, split_name):
+    if pd.isna(val):
+        return "---"
+
+    baselines = ref_scores[m_key][split_name]
+    competition = np.array(baselines + [val])
+    is_lower = m_key in lower_is_better
+    sorted_unique = sorted(np.unique(competition), reverse=not is_lower)
+    formatted = f"{val:.3f}"
+
+    if val == sorted_unique[0]:
+        return f"***{formatted}***"
+    if desired_top >= 2 and len(sorted_unique) > 1 and val == sorted_unique[1]:
+        return f"**{formatted}**"
+    if desired_top >= 3 and len(sorted_unique) > 2 and val == sorted_unique[2]:
+        return f"*{formatted}*"
+    return formatted
+
+
+def markdown_method_name(method):
+    return (
+        method_display_map.get(method, method)
+        .replace("$t=2$", "`t=2`")
+        .replace("~", " ")
+    )
+
 
 # =========================================================
 # PROCESSING
 # =========================================================
-df = pd.read_csv(results_csv)
-if "status" in df.columns:
-    df = df[df["status"] == "ok"].copy()
+def summarize_results(df):
+    if "status" in df.columns:
+        df = df[df["status"] == "ok"].copy()
 
-all_summaries = {}
-all_stds = {} 
+    filtered = df[df["method"].isin(method_order)].copy()
+    all_summaries = {}
+    all_stds = {}
 
-for m_key in metrics.keys():
-    # Filter methods
-    x = df[df["method"].isin(method_order)].copy()
-    
-    # Calculate Mean (Global average for the top row)
-    all_summaries[m_key] = x.groupby(["split", "method"])[m_key].mean().unstack(level=0)
-    
-    # Calculate Mean of STDs per dataset (for the error row)
-    # 1. STD per dataset
-    stds_per_dataset = x.groupby(["split", "method", "dataset"])[m_key].std()
-    # 2. Mean of those STDs
-    mean_of_stds = stds_per_dataset.groupby(["split", "method"]).mean()
-    all_stds[m_key] = mean_of_stds.unstack(level=0)
+    for metric_key in metrics:
+        all_summaries[metric_key] = (
+            filtered.groupby(["split", "method"])[metric_key]
+            .mean()
+            .unstack(level=0)
+        )
+
+        stds_per_dataset = filtered.groupby(
+            ["split", "method", "dataset"]
+        )[metric_key].std()
+        all_stds[metric_key] = (
+            stds_per_dataset.groupby(["split", "method"])
+            .mean()
+            .unstack(level=0)
+        )
+
+    return all_summaries, all_stds
 
 # =========================================================
-# LATEX GENERATION
+# TABLE GENERATION
 # =========================================================
-print("\n" + "="*40)
-print("ABLATION TABLE (SCORES + MEAN-OF-STDS)")
-print("="*40 + "\n")
+def build_latex_table(all_summaries, all_stds):
+    header = "FoSTA variant "
+    sub_header = " "
+    for split in split_order:
+        header += fr"& \multicolumn{{3}}{{c}}{{{split_display_map[split]}}} "
+        sub_header += "& Acc & AS & FOS "
 
-header = "Model "
-sub_header = " "
-for s in split_order:
-    header += fr"& \multicolumn{{3}}{{c}}{{{split_display_map[s]}}} "
-    sub_header += "& Acc & AS & FOS "
+    lines = [
+        f"\\caption{{{latex_caption}}}",
+        header + r" \\",
+        sub_header + r" \\",
+        r"\midrule",
+    ]
 
-print(header + " \\\\")
-print(sub_header + " \\\\")
-print("\\midrule")
+    for method in method_order:
+        if method not in all_summaries["label_transfer"].index:
+            continue
 
-for m in method_order:
-    if m not in all_summaries["label_transfer"].index:
-        continue
-        
-    # --- ROW 1: MEANS ---
-    row_means = [method_display_map.get(m, m)]
-    for s in split_order:
-        acc_v = all_summaries["label_transfer"].loc[m, s]
-        as_v = all_summaries["alignment_score"].loc[m, s]
-        fos_v = all_summaries["foscttm"].loc[m, s]
-        
-        row_means.append(get_highlighted_value(acc_v, "label_transfer", s))
-        row_means.append(get_highlighted_value(as_v, "alignment_score", s))
-        row_means.append(get_highlighted_value(fos_v, "foscttm", s))
-    
-    print(" & ".join(row_means) + " \\\\")
+        row_means = [method_display_map.get(method, method)]
+        row_errors = [r"\scriptsize{$\pm$ std.}"]
+        for split in split_order:
+            for metric_key in metrics:
+                mean = all_summaries[metric_key].loc[method, split]
+                std = all_stds[metric_key].loc[method, split]
+                row_means.append(
+                    get_highlighted_value(mean, metric_key, split)
+                )
+                row_errors.append(
+                    fr"\scriptsize{{$\pm${std:.2f}}}"
+                    if not pd.isna(std)
+                    else " "
+                )
 
-    # --- ROW 2: ERRORS (Mean of STDs) ---
-    row_errs = [r"\scriptsize{$\pm$ std.}"]
-    for s in split_order:
-        acc_e = all_stds["label_transfer"].loc[m, s]
-        as_e = all_stds["alignment_score"].loc[m, s]
-        fos_e = all_stds["foscttm"].loc[m, s]
-        
-        # Formatting to 2 decimals with math-mode \pm
-        row_errs.append(fr"\scriptsize{{$\pm${acc_e:.2f}}}" if not pd.isna(acc_e) else " ")
-        row_errs.append(fr"\scriptsize{{$\pm${as_e:.2f}}}" if not pd.isna(as_e) else " ")
-        row_errs.append(fr"\scriptsize{{$\pm${fos_e:.2f}}}" if not pd.isna(fos_e) else " ")
-    
-    print(" & ".join(row_errs) + r" \\[0.5ex]")
+        lines.append(" & ".join(row_means) + r" \\")
+        lines.append(" & ".join(row_errors) + r" \\[0.5ex]")
 
-print("\\bottomrule")
+    lines.append(r"\bottomrule")
+    return "\n".join(lines) + "\n"
+
+
+def build_markdown_table(all_summaries, all_stds):
+    header = ["FoSTA variant"]
+    for split in split_order:
+        split_name = markdown_split_display_map[split]
+        header.extend(
+            f"{split_name} {metric_label}"
+            for metric_label in metrics.values()
+        )
+
+    lines = [
+        markdown_caption,
+        "",
+        "| " + " | ".join(header) + " |",
+        "| " + " | ".join(["---"] * len(header)) + " |",
+    ]
+
+    for method in method_order:
+        if method not in all_summaries["label_transfer"].index:
+            continue
+
+        row_means = [markdown_method_name(method)]
+        row_errors = ["± std."]
+        for split in split_order:
+            for metric_key in metrics:
+                mean = all_summaries[metric_key].loc[method, split]
+                std = all_stds[metric_key].loc[method, split]
+                row_means.append(
+                    get_markdown_value(mean, metric_key, split)
+                )
+                row_errors.append(
+                    f"± {std:.2f}" if not pd.isna(std) else ""
+                )
+
+        lines.append("| " + " | ".join(row_means) + " |")
+        lines.append("| " + " | ".join(row_errors) + " |")
+
+    return "\n".join(lines) + "\n"
+
+
+def main():
+    results_path = Path(results_csv)
+    df = pd.read_csv(results_path)
+    all_summaries, all_stds = summarize_results(df)
+    latex_table = build_latex_table(all_summaries, all_stds)
+    markdown_table = build_markdown_table(all_summaries, all_stds)
+
+    latex_output_path = results_path.with_name(
+        f"{results_path.stem}_ablation_table.tex"
+    )
+    markdown_output_path = results_path.with_name(
+        f"{results_path.stem}_ablation_table.md"
+    )
+    latex_output_path.write_text(latex_table, encoding="utf-8")
+    markdown_output_path.write_text(markdown_table, encoding="utf-8")
+
+    print(latex_table)
+    print(f"Saved {latex_output_path}")
+    print(f"Saved {markdown_output_path}")
+
+
+if __name__ == "__main__":
+    main()
