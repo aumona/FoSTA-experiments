@@ -38,8 +38,6 @@ METHOD_CONFIGS = {
         "t": 2,
     },
     "MALI": {
-        "embedder": "PHATE",
-        "t": 2,
     },
 }
 
