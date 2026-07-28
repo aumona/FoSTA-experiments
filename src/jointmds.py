@@ -8,6 +8,7 @@ class JointMDS(_JointMDS):
     """JointMDS wrapper with the same alignment API as FoSTA and MALI."""
 
     def __init__(self, random_state=None, **kwargs):
+        kwargs.setdefault("max_iter", 50)
         super().__init__(**kwargs)
         self.random_state = random_state
         self.embedding_ = None
