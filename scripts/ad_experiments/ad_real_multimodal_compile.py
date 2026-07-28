@@ -10,6 +10,7 @@ OUTPUT_FILENAME = "results_multimodal_table.tex"
 MARKDOWN_OUTPUT_FILENAME = "results_multimodal_table.md"
 
 DESIRED_TOP = 3
+INCLUDE_STDS = False
 TABLE_FONT_SIZE = r"\small"
 METHOD_CELL_WIDTH = "1.5cm"
 
@@ -56,13 +57,16 @@ METRICS = [
     ("alignment_score", "AS$\\uparrow$", False),
     ("FOSCTTM", "FOS$\\downarrow$", True),
 ]
+TOP5_METRIC = ("label_transfer_top5", "Acc@5$\\uparrow$", False)
 TOP10_METRIC = ("label_transfer_top10", "Acc@10$\\uparrow$", False)
-ALL_METRICS = [METRICS[0], TOP10_METRIC, *METRICS[1:]]
+ALL_METRICS = [METRICS[0], TOP5_METRIC, TOP10_METRIC, *METRICS[1:]]
+TOP5_DATASETS = ("ave",)
 TOP10_DATASET_PREFIXES = ("rgbd_", "sketchy_")
 
 CAPTION = (
     "Aggregated performance over real multimodal datasets and seeds. Results are "
-    "reported for label transfer accuracy (Acc and, where applicable, Acc@10), "
+    "reported for label transfer accuracy (Acc and, where applicable, Acc@5 or "
+    "Acc@10), "
     "alignment score (AS), and "
     "correspondence recovery measured by FOSCTTM. Higher is better for accuracy "
     "and AS, while lower is better for FOSCTTM. The top three results for each "
@@ -71,7 +75,8 @@ CAPTION = (
 )
 MARKDOWN_CAPTION = (
     "Aggregated performance over real multimodal datasets and seeds. Results are "
-    "reported for label transfer accuracy (Acc and, where applicable, Acc@10), "
+    "reported for label transfer accuracy (Acc and, where applicable, Acc@5 or "
+    "Acc@10), "
     "alignment score (AS), and "
     "correspondence recovery measured by FOSCTTM. Higher is better for accuracy "
     "and AS, while lower is better for FOSCTTM. The best result for each metric "
@@ -191,8 +196,10 @@ def dataset_sort_key(dataset: str) -> tuple[str, str]:
 
 
 def metrics_for_dataset(dataset: str) -> list[tuple[str, str, bool]]:
+    if dataset in TOP5_DATASETS:
+        return [METRICS[0], TOP5_METRIC, *METRICS[1:]]
     if dataset.startswith(TOP10_DATASET_PREFIXES):
-        return ALL_METRICS
+        return [METRICS[0], TOP10_METRIC, *METRICS[1:]]
     return METRICS
 
 
@@ -236,10 +243,14 @@ def format_plain_value(formatted: str) -> str:
 
 
 def format_mean_std(mean: float, std: float) -> str:
+    if not INCLUDE_STDS:
+        return f"{mean:.3f}"
     return f"{mean:.3f}{{\\tiny $\\pm${std:.2f}}}"
 
 
 def format_mean_std_markdown(mean: float, std: float) -> str:
+    if not INCLUDE_STDS:
+        return f"{mean:.3f}"
     return f"{mean:.3f} ± {std:.2f}"
 
 

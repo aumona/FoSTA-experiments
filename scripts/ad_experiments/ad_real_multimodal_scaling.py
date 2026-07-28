@@ -45,7 +45,9 @@ METHOD_CONFIGS = {
 # the total number of rows in each domain while retaining the deterministic
 # approximately 50/50 labeled/unlabeled composition. The roughly logarithmic
 # spacing is useful for distinguishing near-linear from quadratic scaling.
-SAMPLE_SIZES_PER_DOMAIN = [500, 1_000, 2_000, 4_000, 8_000, 15_000]
+# SAMPLE_SIZES_PER_DOMAIN = [500, 1_000, 2_000, 4_000, 8_000, 15_000]
+SAMPLE_SIZES_PER_DOMAIN = [3_500, 7_000, 14_000]
+
 SEEDS = benchmark.SEEDS
 MAX_FIT_TRANSFORM_SEC = benchmark.MAX_FIT_TRANSFORM_SEC
 # Short enough to observe transient native allocations while keeping the
