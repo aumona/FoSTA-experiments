@@ -33,6 +33,7 @@ results_har/
 results_rgbd/
 results_ave/
 results_multimodal/
+results_multimodal_scaling/
 
 # figures
 figures/
