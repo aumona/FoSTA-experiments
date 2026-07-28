@@ -48,6 +48,9 @@ METHOD_CONFIGS = {
 SAMPLE_SIZES_PER_DOMAIN = [500, 1_000, 2_000, 4_000, 8_000, 15_000]
 SEEDS = benchmark.SEEDS
 MAX_FIT_TRANSFORM_SEC = benchmark.MAX_FIT_TRANSFORM_SEC
+# Short enough to observe transient native allocations while keeping the
+# profiler overhead small relative to the methods being benchmarked.
+MEMORY_SAMPLE_INTERVAL_SEC = 0.02
 
 RESULTS_ROOT = PROJECT_ROOT / "results_multimodal_scaling"
 RESULTS_FILENAME = "results_multimodal_scaling.csv"
@@ -128,58 +131,111 @@ def _subsample_label_visibility_pools(
 
 
 def profile_fit_transform(method_name, pair, seed):
-    """Run fit_transform in a subprocess and return runtime and peak RSS."""
+    """Measure only ``fit_transform`` runtime and induced memory footprint.
+
+    The worker is fully initialized before the measurement boundary. The
+    parent then samples the worker and all of its descendants, which includes
+    process-based parallel workers created by a method.
+
+    Three process-tree measures are retained because no single operating-system
+    counter means "allocated memory" everywhere:
+
+    * VMS growth captures native dense allocations even after paging or memory
+      compression, and is the primary scaling metric.
+    * USS + swap growth measures private committed memory when the OS permits
+      access to it.
+    * RSS growth records the resident working-set peak for diagnostics.
+
+    The benchmark never silently substitutes RSS for USS.
+    """
     queue = mp.Queue()
+    start_event = mp.Event()
     process = mp.Process(
         target=_run_scaling_method_worker,
-        args=(method_name, pair, seed, queue),
+        args=(method_name, pair, seed, queue, start_event),
     )
 
-    start = time.perf_counter()
     process.start()
-    peak_mem_mb = np.nan
+    fit_started = False
+    fit_start = None
+    baseline_memory = None
+    peak_memory_increase = _empty_memory_profile()
     deadline = (
         None
         if MAX_FIT_TRANSFORM_SEC is None
-        else start + MAX_FIT_TRANSFORM_SEC
+        else float("inf")
     )
     try:
         while True:
-            if deadline is not None:
+            if fit_started and deadline is not None:
                 remaining = deadline - time.perf_counter()
                 if remaining <= 0:
                     raise TimeoutError(
                         f"fit_transform timeout after "
                         f"{MAX_FIT_TRANSFORM_SEC} seconds"
                     )
-                poll_seconds = min(0.5, remaining)
+                poll_seconds = min(MEMORY_SAMPLE_INTERVAL_SEC, remaining)
             else:
-                poll_seconds = 0.5
+                poll_seconds = MEMORY_SAMPLE_INTERVAL_SEC
 
             try:
                 message = queue.get(timeout=poll_seconds)
-                break
             except queue_module.Empty:
-                if not process.is_alive():
-                    process.join()
-                    raise RuntimeError(
-                        "fit_transform worker exited without returning a "
-                        f"result (exit code {process.exitcode})."
-                    )
-    except Exception as exc:
-        if process.pid is not None:
-            try:
-                peak_mem_mb = (
-                    float(psutil.Process(process.pid).memory_info().rss)
-                    / (1024 ** 2)
+                message = None
+
+            if fit_started:
+                peak_memory_increase = _update_memory_profile(
+                    peak_memory_increase,
+                    baseline_memory,
+                    _get_process_tree_memory_mb(process.pid),
                 )
-            except (psutil.Error, ProcessLookupError):
-                peak_mem_mb = np.nan
+
+            if message is not None and message[0] == "ready":
+                baseline_memory = _get_process_tree_memory_mb(
+                    process.pid
+                )
+                if not np.isfinite(baseline_memory["vms_mb"]):
+                    raise RuntimeError(
+                        "Unable to read worker memory counters before "
+                        "fit_transform."
+                    )
+                fit_started = True
+                fit_start = time.perf_counter()
+                deadline = (
+                    None
+                    if MAX_FIT_TRANSFORM_SEC is None
+                    else fit_start + MAX_FIT_TRANSFORM_SEC
+                )
+                start_event.set()
+                continue
+
+            if message is not None:
+                # Include the retained post-fit state in the peak before the
+                # worker exits and its address space disappears.
+                peak_memory_increase = _update_memory_profile(
+                    peak_memory_increase,
+                    baseline_memory,
+                    _get_process_tree_memory_mb(process.pid),
+                )
+                break
+
+            if not process.is_alive():
+                process.join()
+                raise RuntimeError(
+                    "fit_transform worker exited without returning a "
+                    f"result (exit code {process.exitcode})."
+                )
+    except Exception as exc:
         if process.is_alive():
             process.terminate()
             process.join()
-        exc.runtime_sec = float(time.perf_counter() - start)
-        exc.peak_mem_mb = peak_mem_mb
+        exc.runtime_sec = (
+            float(time.perf_counter() - fit_start)
+            if fit_start is not None
+            else np.nan
+        )
+        exc.memory_profile = peak_memory_increase
+        exc.peak_mem_mb = peak_memory_increase["peak_vms_delta_mb"]
         raise
     finally:
         if process.is_alive():
@@ -189,22 +245,19 @@ def profile_fit_transform(method_name, pair, seed):
                 process.join()
         queue.close()
 
-    runtime_sec = float(time.perf_counter() - start)
     if message[0] == "error":
-        peak_mem_mb = message[2]
         exc = RuntimeError(message[1])
-        exc.runtime_sec = runtime_sec
-        exc.peak_mem_mb = peak_mem_mb
+        exc.runtime_sec = float(message[2])
+        exc.memory_profile = peak_memory_increase
+        exc.peak_mem_mb = peak_memory_increase["peak_vms_delta_mb"]
         raise exc
 
-    peak_mem_mb = float(message[1])
-    return runtime_sec, peak_mem_mb
+    runtime_sec = float(message[1])
+    return runtime_sec, peak_memory_increase
 
 
-def _run_scaling_method_worker(method_name, pair, seed, queue):
-    """Fit one explicitly configured method and report its process peak RSS."""
-    import resource
-
+def _run_scaling_method_worker(method_name, pair, seed, queue, start_event):
+    """Initialize a method, then expose an exact fit-transform boundary."""
     try:
         common_params = {
             "n_components": benchmark.N_COMPONENTS,
@@ -221,32 +274,134 @@ def _run_scaling_method_worker(method_name, pair, seed, queue):
         else:
             raise ValueError(f"Unknown scaling method {method_name!r}.")
 
+        queue.put(("ready",))
+        start_event.wait()
+        start = time.perf_counter()
         model.fit_transform(
             pair["x_a"],
             pair["x_b"],
             pair["labels_a_model"],
             pair["labels_b_model"],
         )
-        queue.put(("ok", _get_process_peak_memory_mb(resource)))
+        queue.put(("ok", float(time.perf_counter() - start)))
     except Exception as exc:
-        queue.put(
-            (
-                "error",
-                str(exc),
-                _get_process_peak_memory_mb(resource),
-            )
+        runtime_sec = (
+            float(time.perf_counter() - start)
+            if "start" in locals()
+            else np.nan
         )
+        queue.put(("error", str(exc), runtime_sec))
 
 
-def _get_process_peak_memory_mb(resource_module):
+def _get_process_tree_memory_mb(root_pid):
+    """Sample VMS, RSS, and (when available) USS + swap for a process tree."""
+    unavailable = {
+        "vms_mb": np.nan,
+        "rss_mb": np.nan,
+        "private_mb": np.nan,
+        "private_available": False,
+        "tree_complete": False,
+    }
     try:
-        peak_rss = resource_module.getrusage(
-            resource_module.RUSAGE_SELF
-        ).ru_maxrss
-        peak_bytes = int(peak_rss) if sys.platform == "darwin" else int(peak_rss) * 1024
-        return float(peak_bytes) / (1024 ** 2)
-    except Exception:
-        return np.nan
+        root = psutil.Process(root_pid)
+    except (psutil.Error, ProcessLookupError, TypeError, OSError):
+        return unavailable
+    tree_complete = True
+    try:
+        processes = [root, *root.children(recursive=True)]
+    except (psutil.Error, ProcessLookupError, OSError):
+        # Process enumeration can be restricted in containers and hardened
+        # environments even when the benchmark worker itself is observable.
+        processes = [root]
+        tree_complete = False
+
+    total_vms_bytes = 0
+    total_rss_bytes = 0
+    total_private_bytes = 0
+    observed_process = False
+    private_available = True
+    for process in {proc.pid: proc for proc in processes}.values():
+        try:
+            memory_info = process.memory_info()
+        except (psutil.Error, ProcessLookupError, OSError):
+            tree_complete = False
+            continue
+        total_vms_bytes += int(memory_info.vms)
+        total_rss_bytes += int(memory_info.rss)
+        observed_process = True
+
+        try:
+            full_info = process.memory_full_info()
+            uss_bytes = getattr(full_info, "uss", None)
+            if uss_bytes is None:
+                private_available = False
+            else:
+                total_private_bytes += int(uss_bytes)
+                total_private_bytes += int(getattr(full_info, "swap", 0))
+        except (psutil.Error, ProcessLookupError, OSError):
+            private_available = False
+
+    if not observed_process:
+        return unavailable
+    mib = float(1024 ** 2)
+    return {
+        "vms_mb": total_vms_bytes / mib,
+        "rss_mb": total_rss_bytes / mib,
+        "private_mb": (
+            total_private_bytes / mib if private_available else np.nan
+        ),
+        "private_available": private_available,
+        "tree_complete": tree_complete,
+    }
+
+
+def _empty_memory_profile():
+    return {
+        "peak_vms_delta_mb": 0.0,
+        "peak_private_delta_mb": np.nan,
+        "peak_rss_delta_mb": 0.0,
+        "private_memory_available": True,
+        "process_tree_complete": True,
+    }
+
+
+def _update_memory_profile(profile, baseline, current):
+    if baseline is None:
+        return profile
+    updated = profile.copy()
+    for source_key, result_key in (
+        ("vms_mb", "peak_vms_delta_mb"),
+        ("rss_mb", "peak_rss_delta_mb"),
+    ):
+        if np.isfinite(baseline[source_key]) and np.isfinite(
+            current[source_key]
+        ):
+            updated[result_key] = max(
+                updated[result_key],
+                float(max(0.0, current[source_key] - baseline[source_key])),
+            )
+
+    private_available = (
+        baseline["private_available"] and current["private_available"]
+    )
+    updated["private_memory_available"] &= private_available
+    if private_available:
+        private_delta = float(
+            max(0.0, current["private_mb"] - baseline["private_mb"])
+        )
+        previous = updated["peak_private_delta_mb"]
+        updated["peak_private_delta_mb"] = (
+            private_delta
+            if not np.isfinite(previous)
+            else max(previous, private_delta)
+        )
+    else:
+        updated["peak_private_delta_mb"] = np.nan
+
+    updated["process_tree_complete"] &= bool(
+        baseline["tree_complete"] and current["tree_complete"]
+    )
+    return updated
 
 
 def validate_config(base_pair):
@@ -282,10 +437,11 @@ def result_row(
     requested_samples_per_domain,
     seed,
     runtime_sec,
-    peak_mem_mb,
+    memory_profile,
     status,
     error="",
 ):
+    memory_profile = memory_profile or _empty_memory_profile()
     labeled_mask = np.asarray(pair["train_mask_a"], dtype=bool)
     n_labeled = int(np.count_nonzero(labeled_mask))
     n_unlabeled = int(labeled_mask.size - n_labeled)
@@ -310,7 +466,10 @@ def result_row(
         ),
         "seed": seed,
         "runtime_sec": runtime_sec,
-        "peak_mem_mb": peak_mem_mb,
+        # Backward-compatible primary scaling column. This is deliberately VMS
+        # growth, not RSS, so dense native allocations remain visible when an
+        # OS compresses or evicts their pages.
+        "peak_mem_mb": memory_profile["peak_vms_delta_mb"],
         "status": status,
         "error": error,
     }
@@ -354,6 +513,20 @@ def save_metadata(output_dir, timestamp, base_pair):
             "n_components": benchmark.N_COMPONENTS,
             "n_jobs": benchmark.N_JOBS,
             "max_fit_transform_sec": MAX_FIT_TRANSFORM_SEC,
+            "runtime_measurement": (
+                "Wall-clock seconds measured inside the isolated worker, "
+                "starting immediately before fit_transform and ending "
+                "immediately after it returns."
+            ),
+            "peak_memory_measurement": (
+                "Peak increase, relative to the pre-fit_transform baseline, "
+                "sampled every "
+                f"{MEMORY_SAMPLE_INTERVAL_SEC} seconds for the method worker "
+                "and all observable descendants. peak_mem_mb is the peak "
+                "virtual-address-space increase induced by fit_transform. This "
+                "portable allocation/scaling metric remains visible through "
+                "operating-system compression and paging."
+            ),
             "metrics_computed": False,
         },
     )
@@ -392,9 +565,9 @@ def main():
                 print(f"Running {method_name} | seed={seed}...")
                 benchmark.seed_everything(seed)
                 runtime_sec = np.nan
-                peak_mem_mb = np.nan
+                memory_profile = _empty_memory_profile()
                 try:
-                    runtime_sec, peak_mem_mb = profile_fit_transform(
+                    runtime_sec, memory_profile = profile_fit_transform(
                         method_name,
                         pair,
                         seed,
@@ -405,15 +578,21 @@ def main():
                         requested_samples_per_domain,
                         seed,
                         runtime_sec,
-                        peak_mem_mb,
+                        memory_profile,
                         "ok",
                     )
                     print(
-                        f"  {runtime_sec:.2f}s | {peak_mem_mb:.2f} MB peak"
+                        f"  {runtime_sec:.2f}s | "
+                        f"{memory_profile['peak_vms_delta_mb']:.2f} MB "
+                        "peak memory"
                     )
                 except Exception as exc:
                     runtime_sec = getattr(exc, "runtime_sec", runtime_sec)
-                    peak_mem_mb = getattr(exc, "peak_mem_mb", peak_mem_mb)
+                    memory_profile = getattr(
+                        exc,
+                        "memory_profile",
+                        memory_profile,
+                    )
                     status = (
                         "timeout"
                         if isinstance(exc, TimeoutError)
@@ -425,7 +604,7 @@ def main():
                         requested_samples_per_domain,
                         seed,
                         runtime_sec,
-                        peak_mem_mb,
+                        memory_profile,
                         status,
                         error=str(exc),
                     )
