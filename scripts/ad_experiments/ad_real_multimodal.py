@@ -7,7 +7,6 @@ remaining columns. Train rows stay labeled; test rows are masked as -1.
 import json
 import pickle
 import sys
-import time
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -23,8 +22,6 @@ import numpy as np
 np.int = int
 import pandas as pd
 import phate
-import multiprocessing as mp
-import psutil
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 
@@ -41,8 +38,10 @@ from src.Pamona.eval import (
 )
 from src.pamona import Pamona
 from ad_experiment_utils import (
+    DEFAULT_MEMORY_SAMPLE_INTERVAL_SEC,
     append_result_row,
     coerce_embedding_array,
+    profile_fit_transform,
     save_embedding_plots,
     save_embeddings,
     seed_everything,
@@ -280,6 +279,17 @@ def save_experiment_metadata(output_dir, timestamp):
         "max_sample_by_dataset": MAX_SAMPLE_BY_DATASET,
         "n_components": N_COMPONENTS,
         "n_jobs": N_JOBS,
+        "max_fit_transform_sec": MAX_FIT_TRANSFORM_SEC,
+        "runtime_measurement": (
+            "Wall-clock seconds measured inside the isolated worker, starting "
+            "immediately before fit_transform and ending immediately after it "
+            "returns."
+        ),
+        "peak_memory_measurement": (
+            "Peak process-tree virtual-address-space increase relative to the "
+            "immediately pre-fit_transform baseline, sampled every "
+            f"{DEFAULT_MEMORY_SAMPLE_INTERVAL_SEC} seconds."
+        ),
         "models_to_run": MODELS_TO_RUN,
         "fosta_configs": FOSTA_CONFIGS,
     }
@@ -883,80 +893,42 @@ def save_pair_metadata(output_dir, pair):
 # =============================================================================
 # METHODS
 # =============================================================================
-def run_unintegrated_pca(pair, seed):
-    x = np.vstack([pair["x_a"], pair["x_b"]])
-    return PCA(n_components=N_COMPONENTS, random_state=seed).fit_transform(x)
+def prepare_method_fit(method_name, pair, seed):
+    """Construct one method and its fit arguments before profiling begins."""
+    if method_name == "Unintegrated":
+        x = np.vstack([pair["x_a"], pair["x_b"]])
+        model = PCA(n_components=N_COMPONENTS, random_state=seed)
+        return method_name, model, (x,)
 
+    if method_name == "Unintegrated_PHATE":
+        x = np.vstack([pair["x_a"], pair["x_b"]])
+        model = phate.PHATE(n_components=N_COMPONENTS, random_state=seed)
+        return method_name, model, (x,)
 
-def run_unintegrated_phate(pair, seed):
-    x = np.vstack([pair["x_a"], pair["x_b"]])
-    return phate.PHATE(n_components=N_COMPONENTS, random_state=seed).fit_transform(x)
-
-
-def run_supervised_method(method_name, pair, seed):
+    fit_args = (
+        pair["x_a"],
+        pair["x_b"],
+        pair["labels_a_model"],
+        pair["labels_b_model"],
+    )
     if method_name.startswith("FoSTA"):
-        params = FOSTA_CONFIGS[method_name]
         model = FoSTA(
             n_components=N_COMPONENTS,
             random_state=seed,
-            **params
+            **FOSTA_CONFIGS[method_name],
         )
-        embedding = model.fit_transform(
-            pair["x_a"], pair["x_b"], pair["labels_a_model"], pair["labels_b_model"]
-        )
-        return method_name, embedding
-
-    if method_name == "Pamona":
+    elif method_name == "Pamona":
         model = Pamona(
             n_components=N_COMPONENTS,
             random_state=seed,
             **PAMONA_CONFIG,
         )
     else:
-        model = SUPERVISED_CLASSES[method_name](n_components=N_COMPONENTS, random_state=seed)
-    embedding = model.fit_transform(pair["x_a"], pair["x_b"], pair["labels_a_model"], pair["labels_b_model"])
-    return method_name, embedding
-
-
-def run_method(method_name, pair, seed):
-    if method_name == "Unintegrated":
-        return method_name, run_unintegrated_pca(pair, seed)
-    if method_name == "Unintegrated_PHATE":
-        return method_name, run_unintegrated_phate(pair, seed)
-    return run_supervised_method(method_name, pair, seed)
-
-
-def _run_method_worker(method_name, pair, seed, q):
-    """Worker wrapper to run `run_method` inside a subprocess and return
-    results via a multiprocessing.Queue. Puts a tuple whose first element is
-    a status string: "ok" or "error". On "ok" it puts ("ok", out_name, embedding).
-    On "error" it puts ("error", str(exception)).
-    """
-    import resource
-    try:
-        out_name, embedding = run_method(method_name, pair, seed)
-        # ru_maxrss: bytes on macOS (darwin), kilobytes on Linux
-        try:
-            r = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-            if sys.platform == "darwin":
-                peak_bytes = int(r)
-            else:
-                peak_bytes = int(r) * 1024
-        except Exception:
-            peak_bytes = 0
-        peak_mb = float(peak_bytes) / (1024 ** 2) if peak_bytes else np.nan
-        q.put(("ok", out_name, embedding, peak_mb))
-    except Exception as exc:
-        try:
-            r = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-            if sys.platform == "darwin":
-                peak_bytes = int(r)
-            else:
-                peak_bytes = int(r) * 1024
-        except Exception:
-            peak_bytes = 0
-        peak_mb = float(peak_bytes) / (1024 ** 2) if peak_bytes else np.nan
-        q.put(("error", str(exc), peak_mb))
+        model = SUPERVISED_CLASSES[method_name](
+            n_components=N_COMPONENTS,
+            random_state=seed,
+        )
+    return method_name, model, fit_args
 
 
 # =============================================================================
@@ -1188,48 +1160,16 @@ def main():
                 try:
                     print(f"Running {method_name}...")
                     seed_everything(seed)
-                    start = time.perf_counter()
                     peak_mem_mb = np.nan
-                    q = mp.Queue()
-                    p = mp.Process(target=_run_method_worker, args=(method_name, pair, seed, q))
-                    p.start()
-                    # Read the worker result from the queue first. Putting large
-                    # embeddings into a multiprocessing.Queue can block the child
-                    # if the parent is waiting on join; reading first avoids a
-                    # deadlock.
-                    try:
-                        if MAX_FIT_TRANSFORM_SEC is None:
-                            msg = q.get()
-                        else:
-                            msg = q.get(timeout=MAX_FIT_TRANSFORM_SEC)
-                    except Exception:
-                        # timed out waiting for a result. attempt to capture
-                        # current memory usage of the child process if psutil
-                        # is available, then terminate it.
-                        if p.pid is not None:
-                            proc = psutil.Process(p.pid)
-                            peak_mem_mb = float(proc.memory_info().rss) / (1024 ** 2)
-                        else:
-                            peak_mem_mb = np.nan
-                        if p.is_alive():
-                            p.terminate()
-                            p.join()
-                        raise TimeoutError(f"fit_transform timeout after {MAX_FIT_TRANSFORM_SEC} seconds")
-                    finally:
-                        # ensure process cleaned up
-                        if p.is_alive():
-                            p.join(1)
-                            if p.is_alive():
-                                p.terminate()
-                                p.join()
-                    if msg[0] == "ok":
-                        out_name, embedding, peak_mem_mb = msg[1], msg[2], msg[3]
-                    else:
-                        # error message, may include peak memory
-                        err_msg = msg[1]
-                        peak_mem_mb = msg[2] if len(msg) > 2 else np.nan
-                        raise Exception(err_msg)
-                    runtime_sec = float(time.perf_counter() - start)
+                    (
+                        (out_name, embedding),
+                        runtime_sec,
+                        peak_mem_mb,
+                    ) = profile_fit_transform(
+                        prepare_method_fit,
+                        (method_name, pair, seed),
+                        timeout_sec=MAX_FIT_TRANSFORM_SEC,
+                    )
                     row = benchmark_method(out_name, embedding, pair, seed_dir, seed)
                     row.update(
                         dataset=dataset,
@@ -1240,6 +1180,8 @@ def main():
                         status="ok",
                     )
                 except Exception as exc:
+                    runtime_sec = getattr(exc, "runtime_sec", runtime_sec)
+                    peak_mem_mb = getattr(exc, "peak_mem_mb", peak_mem_mb)
                     if isinstance(exc, TimeoutError) or "fit_transform timeout" in str(exc):
                         status_text = "Crash: timeout"
                     else:
