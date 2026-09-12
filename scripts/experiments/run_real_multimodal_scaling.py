@@ -3,7 +3,7 @@ Runtime and peak-memory scaling benchmark for FoSTA and MALI on RGB-D DINOv2.
 
 This reuses the RGB-D loading, deterministic label masking, stratified
 subsampling, model construction, and subprocess peak-memory measurement from
-real_multimodal.py. No alignment metrics or embeddings are saved.
+run_real_multimodal.py. No alignment metrics or embeddings are saved.
 """
 
 import sys
@@ -21,7 +21,7 @@ if str(PROJECT_ROOT) not in sys.path:
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-import real_multimodal as benchmark
+import run_real_multimodal as benchmark
 from experiment_utils import (
     DEFAULT_MEMORY_SAMPLE_INTERVAL_SEC,
     profile_fit_transform,
@@ -238,12 +238,12 @@ def save_metadata(output_dir, timestamp, base_pair):
             "rgbd_train_fraction": benchmark.RGBD_TRAIN_FRACTION,
             "label_masking": (
                 "Deterministic stratified 50/50 train/test split in original "
-                "row order, inherited from real_multimodal.py."
+                "row order, inherited from run_real_multimodal.py."
             ),
             "subsampling": (
                 "Deterministic label-stratified subsampling within the labeled "
                 "and unlabeled pools using helpers from "
-                "real_multimodal.py. Smaller subsets preserve an exact "
+                "run_real_multimodal.py. Smaller subsets preserve an exact "
                 "50/50 visibility split; the 15k endpoint retains the original "
                 "7,472/7,528 split."
             ),
