@@ -37,7 +37,7 @@ from src.Pamona.eval import (
     test_transfer_accuracy,
 )
 from src.pamona import Pamona
-from ad_experiment_utils import (
+from experiment_utils import (
     DEFAULT_MEMORY_SAMPLE_INTERVAL_SEC,
     append_result_row,
     coerce_embedding_array,

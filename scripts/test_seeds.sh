@@ -1,11 +1,12 @@
 #!/bin/bash
-cd /home/lizottem/RF-MALI
+PROJECT_ROOT="${RF_MALI_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+cd "$PROJECT_ROOT" || exit 1
 source ../.profile
 source /opt/anaconda/anaconda3/etc/profile.d/conda.sh
 conda activate $ENV_FOSTA
 
 timestamp=${1:-$(date +%Y-%m-%d_%H-%M-%S)}
-log_dir=/NOBACKUP/lizottem/fosta/logs/test_seeds/$timestamp
+log_dir="${RF_MALI_LOG_DIR:-$PROJECT_ROOT/logs}/test_seeds/$timestamp"
 # create log directory
 mkdir -p "$log_dir"
 

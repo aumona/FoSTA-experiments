@@ -41,7 +41,7 @@ from src.mali import MALI
 from src.Pamona.eval import test_alignment_score, test_transfer_accuracy, calc_domainAveraged_FOSCTTM
 from src.pamona import Pamona
 from utils.tree_utils import gen_tree
-from ad_experiment_utils import (
+from experiment_utils import (
     append_result_row,
     coerce_embedding_array,
     save_embedding_plots,

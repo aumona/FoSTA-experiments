@@ -49,7 +49,7 @@ os.makedirs(save_path, exist_ok=True)
 
 
 # LOAD DATA 
-datasets_path = "/home/mila/m/myriam.lizotte/scratch/RF-MALI/data"
+datasets_path = "./data"
 # for these datasets, we assume the first column is the target (labels)
 
 df = pd.read_csv(f"{datasets_path}/{data_name}.csv")

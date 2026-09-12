@@ -17,8 +17,9 @@ import pyliger
 
 warnings.filterwarnings("ignore")
 
-# Assuming models are in the parent directory's src folder
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# Resolve the repository root when this script is launched by filename.
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+sys.path.insert(0, PROJECT_ROOT)
 from src.fosta import FoSTA
 from src.kemalin import KEMAlin
 from src.kemarbf import KEMArbf
@@ -28,13 +29,13 @@ from src.pamona import Pamona
 # =============================================================================
 # CONFIG
 # =============================================================================
-DATA_PATH = "/Users/aumona/Projects/RF-MALI/data_sc/lung_batches.h5ad"
-BASE_RESULT_DIR = "/Users/aumona/Projects/RF-MALI/results_sc_ad/"
+DATA_PATH = os.path.join(PROJECT_ROOT, "data_sc", "lung_batches.h5ad")
+BASE_RESULT_DIR = os.path.join(PROJECT_ROOT, "results_sc_experiments")
 
 BATCH_KEY = "batch"
 LABEL_KEY = "cell_type"
-# BATCH_LIST = ['B1', 'B2', 'B3', 'B4']
-BATCH_LIST = ['1', '2', '3', '4', '5', '6']
+BATCH_LIST = ['B1', 'B2', 'B3', 'B4']
+# BATCH_LIST = ['1', '2', '3', '4', '5', '6']
 
 SEEDS = [39041, 56089, 79121] 
 MASK = False 

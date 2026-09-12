@@ -8,7 +8,7 @@ import seaborn as sns
 
 
 # --- CONFIGURATION ---
-BASE_DIR = Path("/Users/aumona/Projects/RF-MALI/results_tree/20260528_202057")
+BASE_DIR = Path("./results_tree/20260528_202057")
 SEED = "56089"
 SELECTED_MODELS = ["FoSTA_tauto", "KEMArbf", "scANVI", "scVI", "MALI", "Unintegrated_PHATE"]
 

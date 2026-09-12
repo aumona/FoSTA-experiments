@@ -26,7 +26,7 @@ ideas/
 #results
 results_uci/
 results_sc/
-results_sc_ad/
+results_sc_*/
 results_tree/
 results_sketchy/
 results_har/

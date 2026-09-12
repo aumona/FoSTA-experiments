@@ -27,8 +27,8 @@ plt.rcParams.update({
     "legend.fontsize": GLOBAL_FONTSIZE,
 })
 
-RESULTS_CSV = Path("/NOBACKUP/aumona/projects/RF-MALI/results_uci/results_20260503_171832.csv")
-OUT_DIR = Path("/NOBACKUP/aumona/projects/RF-MALI/results_uci/mask_fraction_plots")
+RESULTS_CSV = Path("./results_uci/results_20260503_171832.csv")
+OUT_DIR = Path("./results_uci/mask_fraction_plots")
 
 SELECTED_METHODS = [
     "FoSTA_gap_auto",

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 1. Define the project root
-PROJECT_ROOT="/Users/aumona/Projects/RF-MALI"
+PROJECT_ROOT="${RF_MALI_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 cd "$PROJECT_ROOT" || exit # Exit if the directory doesn't exist
 
 # 2. Activate Virtual Environment
@@ -10,7 +10,7 @@ source "$PROJECT_ROOT/.venv/bin/activate"
 
 # 3. Handle Timestamp
 timestamp=${1:-$(date +%Y-%m-%d_%H-%M-%S)}
-log_dir="$PROJECT_ROOT/logs/real_batches_lung/$timestamp"
+log_dir="${RF_MALI_LOG_DIR:-$PROJECT_ROOT/logs}/real_batches_lung/$timestamp"
 mkdir -p "$log_dir"
 
 batches=("A1" "A2" "A3" "A4" "A5" "A6")

@@ -7,10 +7,10 @@ from matplotlib.legend_handler import HandlerTuple
 
 # --- CONFIGURATION ---
 SELECTED_TIMESTAMPS = [
-    # "/Users/aumona/Projects/RF-MALI/results_sc_ad/20260506_233231",
-    # "/Users/aumona/Projects/RF-MALI/results_sc_ad/20260507_013401"
+    # "./results_sc_experiments/20260506_233231",
+    # "./results_sc_experiments/20260507_013401"
 
-    "/Users/aumona/Projects/RF-MALI/results_sc_ad/20260507_025335",
+    "./results_sc_experiments/20260507_025335",
 ]
 
 EXACT_SYMBOL_MAP = {

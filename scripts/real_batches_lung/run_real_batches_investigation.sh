@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH --job-name=real_batches_investigation
-#SBATCH --output=/home/mila/m/myriam.lizotte/scratch/RF-MALI/logs/%x/%A/%a.out
-#SBATCH --error=/home/mila/m/myriam.lizotte/scratch/RF-MALI/logs/%x/%A/%a.err
+#SBATCH --output=slurm-%x-%A_%a.out
+#SBATCH --error=slurm-%x-%A_%a.err
 #SBATCH --time=00:30:00
 #SBATCH --mem=20Gb
-#SBATCH --mail-type=END,FAIL
 #SBATCH --array=0-15 
 
-cd /home/mila/m/myriam.lizotte/RF-MALI
+PROJECT_ROOT="${RF_MALI_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
+cd "$PROJECT_ROOT" || exit 1
 # source ~/envs/env_fosta/bin/activate
 source ~/envs/env_rfmali/bin/activate
 

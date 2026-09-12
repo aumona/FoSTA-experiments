@@ -23,9 +23,9 @@ original_methods = ["MALI", "RFMALI", "FoSTA", "Scanorama", "LIGER", "Harmony", 
 # dropout_probs = [0, 0.88]
 methods = original_methods.copy() # methods might be modified based on what is already run. but we still want to benchmark everything
 
-base_path = "/home/mila/m/myriam.lizotte/RF-MALI"
-mali_path = "/home/mila/m/myriam.lizotte/MALI"
-scratch_path = "/home/mila/m/myriam.lizotte/scratch/RF-MALI"
+base_path = "."
+mali_path = "./../MALI"
+scratch_path = "."
 
 
 parser = argparse.ArgumentParser()

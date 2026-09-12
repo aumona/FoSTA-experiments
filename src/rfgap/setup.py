@@ -7,8 +7,6 @@ setup(
     name="forestkernel",
     version="0.1.2",
     description="Forest kernel package",
-    author="Jake Rhodes, Adrien Aumon",
-    author_email="jakerhodes8@gmail.com, adrien.aumon@umontreal.ca",
     url="https://github.com/jakerhodes/RF-GAP-Python",
     packages=find_packages(include=["forestkernel", "forestkernel.*"]),
     install_requires=['scikit-learn', 'numpy', 'pandas', 'scipy', 'packaging', 'aeon', 'lightgbm', 'xgboost',
