@@ -27,7 +27,7 @@ import umap
 class DTA():
     def __init__(self,
              n_components=2,
-             embedder = "spectral",
+             embedder = "PHATE",
              rfgap=False,
              n_estimators=1000,
              knn=5,
