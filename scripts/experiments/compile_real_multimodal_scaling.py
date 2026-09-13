@@ -9,7 +9,7 @@ import pandas as pd
 # CONFIG
 # =========================================================
 
-timestamp_folder = "results_multimodal_scaling/20260727_223521"
+timestamp_folder = "results_multimodal_scaling/20260913_105928"
 
 METHODS = ("FoSTA", "MALI")
 RESULTS_FILENAME = "results_multimodal_scaling.csv"
@@ -79,26 +79,33 @@ def compile_tables(results_csv):
             + ", ".join(sorted(missing))
         )
 
-    results = results[
-        results["method"].isin(METHODS) & results["status"].eq("ok")
-    ]
-    if results.empty:
-        raise ValueError("No successful FoSTA or MALI rows were found.")
-
-    # The median gives one robust scaling value per method and sample count
-    # while retaining all seed repetitions in the source CSV.
-    summary = (
-        results.groupby(["combined_samples", "method"], as_index=False)[
-            ["runtime_sec", "peak_mem_mb"]
-        ]
-        .median()
-        .sort_values(["combined_samples", "method"])
-    )
+    # Older single-dataset exports may not include a dataset column.
+    if "dataset" not in results.columns:
+        results["dataset"] = "Dataset"
+    else:
+        results["dataset"] = results["dataset"].fillna("Unknown dataset")
 
     print(f"# Scaling results: {results_csv.parent.name}\n")
     print("Values are medians across successful seed repetitions.\n")
-    print("## Runtime and memory scaling\n")
-    print(markdown_table(summary))
+    for dataset, dataset_results in results.groupby("dataset", sort=True):
+        print(f"## {dataset}: runtime and memory scaling\n")
+        successful = dataset_results[
+            dataset_results["method"].isin(METHODS)
+            & dataset_results["status"].eq("ok")
+        ]
+        if successful.empty:
+            print("No successful FoSTA or MALI rows were found.\n")
+            continue
+        # Aggregate seeds only within the current dataset.
+        summary = (
+            successful.groupby(["combined_samples", "method"], as_index=False)[
+                ["runtime_sec", "peak_mem_mb"]
+            ]
+            .median()
+            .sort_values(["combined_samples", "method"])
+        )
+        print(markdown_table(summary))
+        print()
 
 
 def main():

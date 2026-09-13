@@ -1,7 +1,7 @@
 """
-Runtime and peak-memory scaling benchmark for FoSTA and MALI on RGB-D DINOv2.
+Runtime and peak-memory scaling benchmark for FoSTA and MALI across datasets.
 
-This reuses the RGB-D loading, deterministic label masking, stratified
+This reuses the dataset loading, label masking, stratified
 subsampling, model construction, and subprocess peak-memory measurement from
 run_real_multimodal.py. No alignment metrics or embeddings are saved.
 """
@@ -31,11 +31,14 @@ from experiment_utils import (
 # =============================================================================
 # CONFIG
 # =============================================================================
-DATASET = "rgbd_dinov2base"
+DATASETS = [
+    "sketchy_resnet18",
+    "rgbd_dinov2base",
+]  # Names from benchmark.DATASET_CONFIGS
 METHOD_CONFIGS = {
     "FoSTA": {
-        "embedder": "PHATE",
-        "t": 2,
+        # "embedder": "PHATE",
+        # "t": 2,
     },
     "MALI": {
     },
@@ -43,10 +46,10 @@ METHOD_CONFIGS = {
 
 # Every row, whether labeled or masked, participates in fit_transform(). Sweep
 # the total number of rows in each domain while retaining the deterministic
-# approximately 50/50 labeled/unlabeled composition. The roughly logarithmic
+# dataset-specific labeled/unlabeled composition. The roughly logarithmic
 # spacing is useful for distinguishing near-linear from quadratic scaling.
 # SAMPLE_SIZES_PER_DOMAIN = [500, 1_000, 2_000, 4_000, 8_000, 15_000]
-SAMPLE_SIZES_PER_DOMAIN = [3_500, 7_000, 14_000]
+SAMPLE_SIZES_PER_DOMAIN = [3_000, 6_000, 12_000]
 
 SEEDS = benchmark.SEEDS
 MAX_FIT_TRANSFORM_SEC = benchmark.MAX_FIT_TRANSFORM_SEC
@@ -68,12 +71,17 @@ def make_scaling_pair(base_pair, requested_samples_per_domain):
         n_labeled = int(
             round(
                 requested_samples_per_domain
-                * benchmark.RGBD_TRAIN_FRACTION
+                * train_mask.mean()
             )
         )
         n_unlabeled = requested_samples_per_domain - n_labeled
         indices = _subsample_label_visibility_pools(
-            labels,
+            np.asarray([
+                f"{a}|{b}|{int(visible)}"
+                for a, b, visible in zip(
+                    labels, base_pair["labels_b_true"], base_pair["train_mask_b"]
+                )
+            ]),
             train_mask,
             n_labeled,
             n_unlabeled,
@@ -185,6 +193,7 @@ def validate_config(base_pair):
 
 
 def result_row(
+    dataset,
     method_name,
     pair,
     requested_samples_per_domain,
@@ -197,16 +206,20 @@ def result_row(
     labeled_mask = np.asarray(pair["train_mask_a"], dtype=bool)
     n_labeled = int(np.count_nonzero(labeled_mask))
     n_unlabeled = int(labeled_mask.size - n_labeled)
+    target_labeled = int(np.count_nonzero(pair["train_mask_b"]))
+    target_unlabeled = int(pair["target_size"] - target_labeled)
     return {
-        "dataset": DATASET,
+        "dataset": dataset,
         "method": method_name,
         "requested_samples_per_domain": requested_samples_per_domain,
         "samples_per_domain": int(pair["source_size"]),
         "combined_samples": int(pair["source_size"] + pair["target_size"]),
         "labeled_samples_per_domain": n_labeled,
         "unlabeled_samples_per_domain": n_unlabeled,
-        "combined_labeled_samples": int(2 * n_labeled),
-        "combined_unlabeled_samples": int(2 * n_unlabeled),
+        "target_labeled_samples": target_labeled,
+        "target_unlabeled_samples": target_unlabeled,
+        "combined_labeled_samples": n_labeled + target_labeled,
+        "combined_unlabeled_samples": n_unlabeled + target_unlabeled,
         "source_n_features": int(pair["source_n_features"]),
         "target_n_features": int(pair["target_n_features"]),
         "n_unique_classes": int(
@@ -224,34 +237,34 @@ def result_row(
     }
 
 
-def save_metadata(output_dir, timestamp, base_pair):
+def save_metadata(output_dir, timestamp, dataset, base_pair):
     benchmark.write_json(
         output_dir / METADATA_FILENAME,
         {
             "script": str(Path(__file__).relative_to(PROJECT_ROOT)),
             "timestamp": timestamp,
-            "dataset": DATASET,
+            "dataset": dataset,
             "methods": list(METHOD_CONFIGS),
             "method_configs": METHOD_CONFIGS,
             "sample_sizes_per_domain": SAMPLE_SIZES_PER_DOMAIN,
             "seeds": SEEDS,
             "rgbd_train_fraction": benchmark.RGBD_TRAIN_FRACTION,
             "label_masking": (
-                "Deterministic stratified 50/50 train/test split in original "
-                "row order, inherited from run_real_multimodal.py."
+                "Inherited from each dataset loader in run_real_multimodal.py; "
+                "Sketchy masking is rebuilt for each seed."
             ),
             "subsampling": (
-                "Deterministic label-stratified subsampling within the labeled "
-                "and unlabeled pools using helpers from "
-                "run_real_multimodal.py. Smaller subsets preserve an exact "
-                "50/50 visibility split; the 15k endpoint retains the original "
-                "7,472/7,528 split."
+                "Deterministic stratification by both domains' labels and "
+                "label visibility. Source visibility proportions follow the "
+                "loaded pair; full-size points retain all rows."
             ),
             "sample_count_definition": (
                 "samples_per_domain is the number of rows passed to "
                 "fit_transform in each modality. Both labeled and unlabeled "
                 "rows participate. Labeled/unlabeled columns describe only "
-                "label visibility, not inclusion in model fitting."
+                "label visibility, not inclusion in model fitting. Legacy "
+                "labeled_samples_per_domain and unlabeled_samples_per_domain "
+                "columns describe the source domain; target counts are explicit."
             ),
             "original_n_samples_per_modality": int(
                 base_pair["original_n_samples"]
@@ -282,94 +295,121 @@ def save_metadata(output_dir, timestamp, base_pair):
 
 
 def main():
-    benchmark.set_active_dataset(DATASET)
-    benchmark.validate_config()
-
-    # Load the 15k benchmark pair once, then derive every smaller size from it
-    # using the same deterministic stratification helper.
-    base_pair = benchmark.build_pair()
-    validate_config(base_pair)
+    if not isinstance(DATASETS, (list, tuple)) or not DATASETS:
+        raise ValueError("DATASETS must be a non-empty list of dataset names.")
+    if any(not isinstance(dataset, str) for dataset in DATASETS):
+        raise ValueError("DATASETS must contain only dataset names.")
+    if len(set(DATASETS)) != len(DATASETS):
+        raise ValueError("DATASETS must not contain duplicates.")
+    if not SEEDS:
+        raise ValueError("SEEDS must contain at least one seed.")
+    for dataset in DATASETS:
+        benchmark.set_active_dataset(dataset)
+        benchmark.validate_config()
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir = RESULTS_ROOT / timestamp
     output_dir.mkdir(parents=True, exist_ok=True)
     results_csv = output_dir / RESULTS_FILENAME
-    save_metadata(output_dir, timestamp, base_pair)
+    benchmark.write_json(output_dir / METADATA_FILENAME, {
+        "datasets": list(DATASETS),
+        "timestamp": timestamp,
+        "sample_sizes_per_domain": SAMPLE_SIZES_PER_DOMAIN,
+        "dataset_metadata": {
+            dataset: f"{dataset}/{METADATA_FILENAME}" for dataset in DATASETS
+        },
+    })
 
     rows = []
-    for requested_samples_per_domain in SAMPLE_SIZES_PER_DOMAIN:
-        pair = make_scaling_pair(
-            base_pair,
-            requested_samples_per_domain,
-        )
-        n_labeled = int(np.count_nonzero(pair["train_mask_a"]))
-        n_unlabeled = int(pair["train_mask_a"].size - n_labeled)
-        print(
-            f"\n### {pair['source_size']} samples per modality "
-            f"({n_labeled} labeled, {n_unlabeled} unlabeled) ###"
-        )
-
+    for dataset in DATASETS:
+        benchmark.set_active_dataset(dataset)
+        base_pair = benchmark.build_pair(seed=SEEDS[0])
+        try:
+            validate_config(base_pair)
+        except ValueError as exc:
+            raise ValueError(f"{dataset}: {exc}") from exc
+        dataset_dir = output_dir / dataset
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+        save_metadata(dataset_dir, timestamp, dataset, base_pair)
+        seed_dependent = benchmark.DATASET_CONFIG["kind"] == "sketchy_npy_object_id"
         for seed in SEEDS:
-            for method_name in METHOD_CONFIGS:
-                print(f"Running {method_name} | seed={seed}...")
-                benchmark.seed_everything(seed)
-                runtime_sec = np.nan
-                peak_mem_mb = np.nan
-                try:
-                    (
-                        _,
-                        runtime_sec,
-                        peak_mem_mb,
-                    ) = profile_fit_transform(
-                        prepare_scaling_method_fit,
-                        (method_name, pair, seed),
-                        timeout_sec=MAX_FIT_TRANSFORM_SEC,
-                        memory_sample_interval_sec=(
-                            MEMORY_SAMPLE_INTERVAL_SEC
-                        ),
-                        return_result=False,
-                    )
-                    row = result_row(
-                        method_name,
-                        pair,
-                        requested_samples_per_domain,
-                        seed,
-                        runtime_sec,
-                        peak_mem_mb,
-                        "ok",
-                    )
-                    print(
-                        f"  {runtime_sec:.2f}s | "
-                        f"{peak_mem_mb:.2f} MB "
-                        "peak memory"
-                    )
-                except Exception as exc:
-                    runtime_sec = getattr(exc, "runtime_sec", runtime_sec)
-                    peak_mem_mb = getattr(
-                        exc, "peak_mem_mb", peak_mem_mb
-                    )
-                    status = (
-                        "timeout"
-                        if isinstance(exc, TimeoutError)
-                        else "error"
-                    )
-                    row = result_row(
-                        method_name,
-                        pair,
-                        requested_samples_per_domain,
-                        seed,
-                        runtime_sec,
-                        peak_mem_mb,
-                        status,
-                        error=str(exc),
-                    )
-                    print(f"  FAILED: {status}: {exc}")
+            if seed_dependent and seed != SEEDS[0]:
+                base_pair = benchmark.build_pair(seed=seed)
+                validate_config(base_pair)
+            for requested_samples_per_domain in SAMPLE_SIZES_PER_DOMAIN:
+                pair = make_scaling_pair(
+                    base_pair,
+                    requested_samples_per_domain,
+                )
+                n_labeled = int(np.count_nonzero(pair["train_mask_a"]))
+                n_unlabeled = int(pair["train_mask_a"].size - n_labeled)
+                print(
+                    f"\n### {dataset} | seed={seed} | {pair['source_size']} samples per modality "
+                    f"({n_labeled} labeled, {n_unlabeled} unlabeled) ###"
+                )
 
-                rows.append(row)
-                benchmark.append_result_row(results_csv, row)
+                for method_name in METHOD_CONFIGS:
+                    print(f"Running {method_name} | seed={seed}...")
+                    benchmark.seed_everything(seed)
+                    runtime_sec = np.nan
+                    peak_mem_mb = np.nan
+                    try:
+                        (
+                            _,
+                            runtime_sec,
+                            peak_mem_mb,
+                        ) = profile_fit_transform(
+                            prepare_scaling_method_fit,
+                            (method_name, pair, seed),
+                            timeout_sec=MAX_FIT_TRANSFORM_SEC,
+                            memory_sample_interval_sec=(
+                                MEMORY_SAMPLE_INTERVAL_SEC
+                            ),
+                            return_result=False,
+                        )
+                        row = result_row(
+                            dataset,
+                            method_name,
+                            pair,
+                            requested_samples_per_domain,
+                            seed,
+                            runtime_sec,
+                            peak_mem_mb,
+                            "ok",
+                        )
+                        print(
+                            f"  {runtime_sec:.2f}s | "
+                            f"{peak_mem_mb:.2f} MB "
+                            "peak memory"
+                        )
+                    except Exception as exc:
+                        runtime_sec = getattr(exc, "runtime_sec", runtime_sec)
+                        peak_mem_mb = getattr(
+                            exc, "peak_mem_mb", peak_mem_mb
+                        )
+                        status = (
+                            "timeout"
+                            if isinstance(exc, TimeoutError)
+                            else "error"
+                        )
+                        row = result_row(
+                            dataset,
+                            method_name,
+                            pair,
+                            requested_samples_per_domain,
+                            seed,
+                            runtime_sec,
+                            peak_mem_mb,
+                            status,
+                            error=str(exc),
+                        )
+                        print(f"  FAILED: {status}: {exc}")
+
+                    rows.append(row)
+                    benchmark.append_result_row(results_csv, row)
 
     results_df = pd.DataFrame(rows).sort_values(
-        ["samples_per_domain", "seed", "method"],
+        ["dataset", "samples_per_domain", "seed", "method"],
         kind="stable",
     )
     results_df.to_csv(results_csv, index=False)
