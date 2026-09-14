@@ -53,10 +53,10 @@ from experiment_utils import (
 # CONFIG
 # =============================================================================
 DATASETS = [
-    # "sketchy_resnet18",
-    # "sketchy_dinov2base",
-    # "ave", 
-    # "har", 
+    "sketchy_resnet18",
+    "sketchy_dinov2base",
+    "ave", 
+    "har", 
     "rgbd_resnet18",
     "rgbd_dinov2base",
 ]  # Any of: "har", "ave", "rgbd_resnet18", "rgbd_dinov2base", "sketchy_resnet18", "sketchy_dinov2base"
@@ -109,7 +109,7 @@ LABEL_TRANSFER_TOP_KS = (1, 5, 10)
 
 MODELS_TO_RUN = [
     "Unintegrated",
-    "Unintegrated_PHATE",
+    # "Unintegrated_PHATE",
     "FoSTA_t2",
     "FoSTA_tauto",
     "KEMAlin",
