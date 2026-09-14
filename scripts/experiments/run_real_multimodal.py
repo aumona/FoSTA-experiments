@@ -53,10 +53,10 @@ from experiment_utils import (
 # CONFIG
 # =============================================================================
 DATASETS = [
+    "har", 
     "sketchy_resnet18",
     "sketchy_dinov2base",
     "ave", 
-    "har", 
     "rgbd_resnet18",
     "rgbd_dinov2base",
 ]  # Any of: "har", "ave", "rgbd_resnet18", "rgbd_dinov2base", "sketchy_resnet18", "sketchy_dinov2base"
@@ -108,12 +108,12 @@ LABEL_TRANSFER_TOP_KS = (1, 5, 10)
 
 
 MODELS_TO_RUN = [
-    "Unintegrated",
-    # "Unintegrated_PHATE",
-    "FoSTA_t2",
-    "FoSTA_tauto",
-    "KEMAlin",
-    "KEMArbf",
+    # "Unintegrated",
+    # # "Unintegrated_PHATE",
+    # "FoSTA_t2",
+    # "FoSTA_tauto",
+    # "KEMAlin",
+    # "KEMArbf",
     "MALI_t2",
     "MALI_tauto",
     # "Pamona",  # Not running Pamona for RGB-D 15k due to exaggerated runtime; can be enabled if desired and resources allow
@@ -304,6 +304,7 @@ def save_experiment_metadata(output_dir, timestamp):
         ),
         "models_to_run": MODELS_TO_RUN,
         "fosta_configs": FOSTA_CONFIGS,
+        "mali_configs": MALI_CONFIGS,
     }
     if DATASET_CONFIG["kind"] in {"har_pickle_train_test", "npy_train_test"}:
         metadata["domain_a"].update({
@@ -928,6 +929,12 @@ def prepare_method_fit(method_name, pair, seed):
             n_components=N_COMPONENTS,
             random_state=seed,
             **FOSTA_CONFIGS[method_name],
+        )
+    elif method_name in MALI_CONFIGS:
+        model = MALI(
+            n_components=N_COMPONENTS,
+            random_state=seed,
+            **MALI_CONFIGS[method_name],
         )
     elif method_name == "Pamona":
         model = Pamona(
