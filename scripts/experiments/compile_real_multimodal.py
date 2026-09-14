@@ -19,7 +19,8 @@ METHODS = [
     "FoSTA_tauto",
     "KEMAlin",
     "KEMArbf",
-    "MALI",
+    "MALI_tauto",
+    "MALI_t2",
     "Pamona",
 ]
 
@@ -28,7 +29,8 @@ METHOD_DISPLAY_MAP = {
     "FoSTA_tauto": "FoSTA (auto $t$)",
     "KEMAlin": "KEMAlin",
     "KEMArbf": "KEMArbf",
-    "MALI": "MALI",
+    "MALI_t2": "MALI ($t=2$)",
+    "MALI_tauto": "MALI (auto $t$)",
     "Pamona": "Pamona",
     "Unintegrated": "Unintegrated",
     "Unintegrated_PHATE": "Unintegrated PHATE",

@@ -114,7 +114,8 @@ MODELS_TO_RUN = [
     "FoSTA_tauto",
     "KEMAlin",
     "KEMArbf",
-    "MALI",
+    "MALI_t2",
+    "MALI_tauto",
     # "Pamona",  # Not running Pamona for RGB-D 15k due to exaggerated runtime; can be enabled if desired and resources allow
 ]
 
@@ -124,6 +125,17 @@ FOSTA_CONFIGS = {
         "n_jobs": N_JOBS,
     },
     "FoSTA_tauto": {
+        "t": 'auto',
+        "n_jobs": N_JOBS,
+    }
+}
+
+MALI_CONFIGS = {
+    "MALI_t2": {
+        "t": 2,
+        "n_jobs": N_JOBS,
+    },
+    "MALI_tauto": {
         "t": 'auto',
         "n_jobs": N_JOBS,
     }
