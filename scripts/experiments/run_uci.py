@@ -63,35 +63,30 @@ DATASETS = [
 
 METHODS = [
 
-    # "FoSTA_ICML_t2",
-    # "FoSTA_ICML_auto",
 
-    # "FoSTA_gap_t2",
-    # "FoSTA_gap_auto",
-    # "FoSTA_gap_mauto_t2",
-    # "FoSTA_gap_mauto_auto",
+    "FoSTA_gap_auto",  # Default
 
-    # "FoSTA_kerf_t2",
-    # "FoSTA_kerf_auto",
-    # "FoSTA_kerf_mauto_t2",
-    # "FoSTA_kerf_mauto_auto",
 
-    # "FoSTA_umap",
-    # "FoSTA_dense",
-    # "FoSTA_et",
+    "FoSTA_gap_t2",
+    "FoSTA_kerf_auto",
+    "FoSTA_umap",
+    "FoSTA_dense",
+    "FoSTA_et",
     "FoSTA_spectral",
     "FoSTA_dpt",
     "FoSTA_rotf",
     "FoSTA_no_propag",
 
-    # "MALI",
+
+
+
+    "MALI",
     # "MALI_nodpt",
 
+    "Pamona",
 
-    # "Pamona",
-
-    # "KEMAlin",
-    # "KEMArbf",
+    "KEMAlin",
+    "KEMArbf",
 ]
 
 SPLITS = [
