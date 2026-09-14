@@ -5,18 +5,18 @@ import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_ROOT = PROJECT_ROOT / "results_multimodal"
-TIMESTAMP = "20260609_105815_all_merged"
+TIMESTAMP = "20260914_151523"
 OUTPUT_FILENAME = "results_multimodal_table.tex"
 MARKDOWN_OUTPUT_FILENAME = "results_multimodal_table.md"
 
 DESIRED_TOP = 3
-INCLUDE_STDS = False
+INCLUDE_STDS = True
 TABLE_FONT_SIZE = r"\small"
 METHOD_CELL_WIDTH = "1.5cm"
 
 METHODS = [
-    "FoSTA_t2",
-    # "FoSTA_tauto",
+    # "FoSTA_t2",
+    "FoSTA_tauto",
     "KEMAlin",
     "KEMArbf",
     "MALI",
@@ -24,8 +24,8 @@ METHODS = [
 ]
 
 METHOD_DISPLAY_MAP = {
-    "FoSTA_t2": "FoSTA",
-    "FoSTA_tauto": "FoSTA ($t=\\texttt{auto}$)",
+    "FoSTA_t2": "FoSTA ($t=2$)",
+    "FoSTA_tauto": "FoSTA (auto $t$)",
     "KEMAlin": "KEMAlin",
     "KEMArbf": "KEMArbf",
     "MALI": "MALI",
@@ -70,7 +70,8 @@ CAPTION = (
     "alignment score (AS), and "
     "correspondence recovery measured by FOSCTTM. Higher is better for accuracy "
     "and AS, while lower is better for FOSCTTM. The top three results for each "
-    "metric are highlighted in gold (1st), silver (2nd), and bronze (3rd)."
+    "metric are highlighted with filled gold (1st) and silver (2nd) boxes, "
+    "and bronze text (3rd)."
     " Missing Pamona values correspond to runs with excessive runtimes."
 )
 MARKDOWN_CAPTION = (
@@ -235,7 +236,17 @@ def highlighted_value(
 
 def format_ranked_value(formatted: str, rank: int) -> str:
     rank_macro = RANK_MACROS[rank]
-    return f"\\makebox[{METHOD_CELL_WIDTH}][c]{{{rank_macro}{{{formatted}}}}}"
+    highlighted = f"{rank_macro}{{{formatted}}}"
+    if rank in (1, 2):
+        # Share geometry instead of relying on differently sized external macros.
+        fill = "[rgb]{1,0.95,0.8}" if rank == 1 else "[gray]{0.85}"
+        highlighted = (
+            f"\\colorbox{fill}{{"
+            f"\\makebox[\\dimexpr {METHOD_CELL_WIDTH}-2\\fboxsep\\relax][c]"
+            r"{\raisebox{0pt}[\ht\strutbox][\dp\strutbox]{"
+            f"\\textcolor{{black}}{{\\textbf{{{formatted}}}}}}}}}}}"
+        )
+    return f"\\makebox[{METHOD_CELL_WIDTH}][c]{{{highlighted}}}"
 
 
 def format_plain_value(formatted: str) -> str:
