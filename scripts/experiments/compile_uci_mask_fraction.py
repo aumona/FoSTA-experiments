@@ -32,7 +32,8 @@ OUT_DIR = Path("./results_uci/mask_fraction_plots")
 
 SELECTED_METHODS = [
     "FoSTA_gap_auto",
-    "MALI",
+    "MALI_auto",
+    "MALI_t2",
     "Pamona",
     "KEMAlin",
     "KEMArbf",
@@ -40,7 +41,8 @@ SELECTED_METHODS = [
 
 METHOD_DISPLAY_NAMES = {
     "FoSTA_gap_auto": "FoSTA",
-    "MALI": "MALI",
+    "MALI_auto": "MALI (auto)",
+    "MALI_t2": "MALI (t=2)",
     "Pamona": "Pamona",
     "KEMAlin": "KEMAlin",
     "KEMArbf": "KEMArbf",
@@ -48,12 +50,14 @@ METHOD_DISPLAY_NAMES = {
 
 METHOD_COLORS = {
     "FoSTA_gap_auto": "#E69F00",  # orange
-    "MALI": "#7F7F7F",            # gray
+    "MALI_auto": "#7F7F7F",
+    "MALI_t2": "#4C78A8",            # gray
 }
 
 METHOD_STYLES = {
     "FoSTA_gap_auto": dict(linestyle="-", linewidth=3.2, alpha=1.0),
-    "MALI": dict(linestyle="--", linewidth=1.9, alpha=0.70),
+    "MALI_auto": dict(linestyle="--", linewidth=1.9, alpha=0.70),
+    "MALI_t2": dict(linestyle=":", linewidth=1.9, alpha=0.85),
     "Pamona": dict(linestyle="--", linewidth=1.9, alpha=0.70),
     "KEMAlin": dict(linestyle="--", linewidth=1.9, alpha=0.70),
     "KEMArbf": dict(linestyle="--", linewidth=1.9, alpha=0.70),
@@ -95,6 +99,8 @@ SPLIT_DISPLAY_NAMES = {
 
 def load_results(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path)
+    # Historical MALI runs used the automatic diffusion-time setting.
+    df["method"] = df["method"].replace({"MALI": "MALI_auto", "mali_auto": "MALI_auto", "mali_t2": "MALI_t2"})
     missing = REQUIRED_COLUMNS - set(df.columns)
     if missing:
         raise ValueError(f"Missing required columns: {sorted(missing)}")

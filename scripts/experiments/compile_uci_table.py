@@ -63,7 +63,8 @@ method_order = [
 
 
 
-    "MALI", 
+    "MALI_auto",
+    "MALI_t2",
     # "MALI_nodpt",
     "Pamona", 
     "KEMAlin", 
@@ -79,7 +80,8 @@ method_display_map = {
     "FoSTA_kerf_t2": "FoSTA-KeRF ($t=2$)",
     "FoSTA_kerf_auto": "FoSTA-KeRF ($t=\\texttt{auto}$)",
     "FoSTA_kerf_mauto_t2": "FoSTA-KeRF (mauto, $t=2$)",
-    "MALI": "MALI", 
+    "MALI_auto": "MALI (auto)",
+    "MALI_t2": "MALI (t=2)",
     "MALI_nodpt": "MALI (w/o DPT)",
     "Pamona": "Pamona", 
     "KEMAlin": "KEMAlin", 
@@ -263,6 +265,8 @@ def build_markdown_table(all_summaries, all_stds):
 def main():
     results_path = Path(results_csv)
     df = pd.read_csv(results_path)
+    # Historical MALI runs used the automatic diffusion-time setting.
+    df["method"] = df["method"].replace({"MALI": "MALI_auto", "mali_auto": "MALI_auto", "mali_t2": "MALI_t2"})
     all_summaries, all_stds = summarize_results(df)
     latex_table = build_latex_table(all_summaries, all_stds)
     markdown_table = build_markdown_table(all_summaries, all_stds)

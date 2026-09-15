@@ -12,6 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from utils.label_protocol import make_supervision_masks, validate_label_mask_perc
 from utils.utils import dataprep
 from utils.simulation_utils import (
     add_noise,
@@ -20,7 +21,6 @@ from utils.simulation_utils import (
     importance_split,
     alternating_importance_split,
     add_gaussian_noise_features_split,
-    mask_labels_stratified,
 )
 from src.Pamona.eval import (
     test_transfer_accuracy,
@@ -80,7 +80,8 @@ METHODS = [
 
 
 
-    "MALI",
+    "MALI_auto",
+    "MALI_t2",
     # "MALI_nodpt",
 
     "Pamona",
@@ -101,8 +102,15 @@ SPLITS = [
 SEEDS = list(range(5))
 
 TRANSFORM = "standardize"
-# MASK_FRACTIONS = [0.1, 0.3, 0.5, 0.7, 0.9]  # fraction of target labels to mask (set to -1) for label transfer evaluation
-MASK_FRACTIONS = [0.5]  # fraction of target labels to mask (set to -1) for label transfer evaluation
+TEST_PERC = 0.2  # Fixed, shared held-out test pairs within each dataset/seed.
+
+# Fraction masked within the remaining 80% training pool, not the full dataset.
+# Masks are shared across modalities and nested across proportions. Test labels
+# are always hidden, while all features remain available to alignment methods.
+# LABEL_MASK_PERC = [0.2, 0.4, 0.6, 0.8]  # Reasonable range of masking levels to explore.
+LABEL_MASK_PERC = [0]
+
+
 
 NOISE_SIGMA = 0.5  # reasonable amount of noise
 SIGNAL_TO_NOISE_RATIO = 0.1
@@ -147,7 +155,7 @@ def aggregate_results(df: pd.DataFrame) -> pd.DataFrame:
 
     long_rows = []
     for metric in value_cols:
-        tmp = df[["dataset", "split", "method", metric]].copy()
+        tmp = df[["dataset", "split", "mask_fraction", "method", metric]].copy()
         tmp = tmp.rename(columns={metric: "value"})
         tmp["metric"] = metric
         long_rows.append(tmp)
@@ -191,11 +199,12 @@ def sanitize_embedding(embedding: np.ndarray, tol: float = 1000) -> np.ndarray:
 
 def compute_alignment_metrics(
     embedding: np.ndarray,
-    y_source: np.ndarray,
+    y_source_true: np.ndarray,
     y_target_true: np.ndarray,
-    mask_missing_target: np.ndarray,
+    visible_training: np.ndarray,
+    test_mask: np.ndarray,
 ):
-    n_source = len(y_source)
+    n_source = len(y_source_true)
     n_target = len(y_target_true)
 
     if embedding.shape[0] != n_source + n_target:
@@ -206,13 +215,20 @@ def compute_alignment_metrics(
     emb_source = np.asarray(embedding[:n_source], dtype=float)
     emb_target = np.asarray(embedding[n_source:], dtype=float)
 
-    if np.any(mask_missing_target):
-        label_transfer = test_transfer_accuracy(
-            data1=emb_target[mask_missing_target],
-            data2=emb_source,
-            type1=y_target_true[mask_missing_target],
-            type2=y_source,
+    if np.any(visible_training) and np.any(test_mask):
+        a_to_b = test_transfer_accuracy(
+            data1=emb_target[test_mask],
+            data2=emb_source[visible_training],
+            type1=y_target_true[test_mask],
+            type2=y_source_true[visible_training],
         )
+        b_to_a = test_transfer_accuracy(
+            data1=emb_source[test_mask],
+            data2=emb_target[visible_training],
+            type1=y_source_true[test_mask],
+            type2=y_target_true[visible_training],
+        )
+        label_transfer = (a_to_b + b_to_a) / 2
     else:
         label_transfer = np.nan
 
@@ -273,14 +289,12 @@ def build_domains(df, labels, split, seed):
     return x_source, x_target
 
 
-def mask_target_labels(y_true, mask_fraction, seed):
-    y_masked = mask_labels_stratified(
-        y_true.copy(),
-        mask_fraction=mask_fraction,
-        random_state=seed,
-    )
-    mask_missing = y_masked == -1
-    return y_masked.astype(int), mask_missing.astype(bool)
+def mask_pair_labels(y_true, mask_fraction, seed):
+    """Hide test labels and jointly mask a nested subset of training pairs."""
+    visible, test_mask = make_supervision_masks(y_true, mask_fraction, seed, TEST_PERC)
+    observed = np.asarray(y_true, dtype=int).copy()
+    observed[~visible] = -1
+    return observed.copy(), observed.copy(), visible, test_mask
 
 
 # =============================================================================
@@ -408,8 +422,9 @@ def build_model(method: str, seed: int):
             verbose=VERBOSE,
         )
    
-    if m == "mali":
+    if m in {"mali_auto", "mali_t2"}:
         return MALI(
+            t="auto" if m == "mali_auto" else 2,
             n_components=N_COMPONENTS,
             random_state=seed,
             verbose=VERBOSE,
@@ -458,6 +473,10 @@ def fit_transform_model(model, x_source, x_target, y_source, y_target):
 # =============================================================================
 
 def run_experiment():
+    validate_label_mask_perc(LABEL_MASK_PERC)
+    validate_label_mask_perc([TEST_PERC])
+    if not 0 < TEST_PERC < 1:
+        raise ValueError("TEST_PERC must be strictly between 0 and 1.")
     ensure_dir(RESULTS_DIR)
     results_csv, config_json = make_run_paths(RESULTS_DIR)
 
@@ -468,7 +487,14 @@ def run_experiment():
         "methods": METHODS,
         "splits": SPLITS,
         "seeds": SEEDS,
-        "mask_fractions": MASK_FRACTIONS,
+        "mask_fractions": LABEL_MASK_PERC,
+        "test_perc": TEST_PERC,
+        "test_split": "seeded stratified shared pairs, fixed across masking levels and domain splits within a seed",
+        "mask_count": "floor(p * number of training pairs), with the same mask shared across domains",
+        "training_masks": "nested prefixes of one seeded stratified ordering",
+        "test_labels": "always hidden in both domains; test features remain available for alignment",
+        "label_transfer": "average of A-labeled-training to B-test and B-labeled-training to A-test",
+        "alignment_metrics": "Alignment Score and FOSCTTM on all embedded observations",
         "noise_sigma": NOISE_SIGMA,
         "signal_to_noise_ratio": SIGNAL_TO_NOISE_RATIO,
         "n_components": N_COMPONENTS,
@@ -492,7 +518,7 @@ def run_experiment():
         
                 try:
                     x_source, x_target = build_domains(df, labels, split, seed)
-                    y_source = np.array(labels)
+                    y_source_true = labels.copy()
                     y_target_true = labels.copy()
         
                 except Exception as e:
@@ -513,11 +539,11 @@ def run_experiment():
                     print(f"      Data error: {e}")
                     continue
         
-                for mask_fraction in MASK_FRACTIONS:
+                for mask_fraction in LABEL_MASK_PERC:
                     print(f"      Mask fraction: {mask_fraction}")
         
                     try:
-                        y_target, mask_missing_target = mask_target_labels(
+                        y_source, y_target, visible_training, test_mask = mask_pair_labels(
                             y_true=y_target_true,
                             mask_fraction=mask_fraction,
                             seed=seed,
@@ -576,9 +602,10 @@ def run_experiment():
                         try:
                             metrics = compute_alignment_metrics(
                                 embedding=embedding,
-                                y_source=y_source,
+                                y_source_true=y_source_true,
                                 y_target_true=y_target_true,
-                                mask_missing_target=mask_missing_target,
+                                visible_training=visible_training,
+                                test_mask=test_mask,
                             )
         
                             row = {
@@ -629,7 +656,7 @@ def run_experiment():
     summary_df.to_csv(summary_path, index=False)
 
     print("\n=== Summary ===")
-    print(summary_df[["dataset", "split", "method", "metric", "summary"]].to_string(index=False))
+    print(summary_df[["dataset", "split", "mask_fraction", "method", "metric", "summary"]].to_string(index=False))
     print(f"\nRaw results saved to: {results_csv}")
     print(f"Summary saved to: {summary_path}")
 

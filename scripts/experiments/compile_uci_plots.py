@@ -50,7 +50,8 @@ method_order = [
     "FoSTA_kerf_auto",
     "FoSTA_kerf_mauto_t2",
 
-    "MALI",
+    "MALI_auto",
+    "MALI_t2",
     "MALI_nodpt",
     "Pamona",
     "KEMAlin",
@@ -70,7 +71,8 @@ method_display_map = {
     "FoSTA_gap_t2": "FoSTA gap t2",
     "FoSTA_gap_mauto_t2": "FoSTA gap mauto t2",
 
-    "MALI": "MALI",
+    "MALI_auto": "MALI (auto)",
+    "MALI_t2": "MALI (t=2)",
     "MALI_nodpt": "MALI no dpt",
     "Pamona": "Pamona",
     "KEMAlin": "KEMA lin",
@@ -183,10 +185,16 @@ method_style = {
 
 
 
-    "MALI": {
+    "MALI_auto": {
         "facecolor": "#F58518",
         "edgecolor": "black",
         "hatch": "",
+        "linewidth": 1.0,
+    },
+    "MALI_t2": {
+        "facecolor": "#F58518",
+        "edgecolor": "black",
+        "hatch": "//",
         "linewidth": 1.0,
     },
     "MALI_nodpt": {
@@ -257,6 +265,8 @@ def compute_fair_summary(df: pd.DataFrame, metric: str) -> pd.DataFrame:
 # LOAD RESULTS
 # =========================================================
 df = pd.read_csv(results_csv)
+# Historical MALI runs used the automatic diffusion-time setting.
+df["method"] = df["method"].replace({"MALI": "MALI_auto", "mali_auto": "MALI_auto", "mali_t2": "MALI_t2"})
 
 if "status" in df.columns:
     df = df[df["status"] == "ok"].copy()
