@@ -5,7 +5,7 @@ import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_ROOT = PROJECT_ROOT / "results_multimodal"
-TIMESTAMP = "20260914_151523"
+TIMESTAMP = "20260915_103715"
 OUTPUT_FILENAME = "results_multimodal_table.tex"
 MARKDOWN_OUTPUT_FILENAME = "results_multimodal_table.md"
 
@@ -15,11 +15,11 @@ TABLE_FONT_SIZE = r"\small"
 METHOD_CELL_WIDTH = "1.5cm"
 
 METHODS = [
-    # "FoSTA_t2",
-    "FoSTA_tauto",
+    "FoSTA_t2",
+    # "FoSTA_tauto",
     "KEMAlin",
     "KEMArbf",
-    "MALI_tauto",
+    # "MALI_tauto",
     "MALI_t2",
     "Pamona",
 ]
