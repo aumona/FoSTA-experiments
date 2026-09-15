@@ -38,7 +38,7 @@ class FoSTA:
         class_weight=None,
         bootstrap=True,
 
-        t="auto",
+        t=2,
         beta=0.7,
         prior_correct=True,
         l2_normalize=True,

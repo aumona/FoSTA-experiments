@@ -33,7 +33,7 @@ class DTA():
              knn=5,
              decay=40,
              t_dpt=1,   # we set this to 1 to compare diffusion (DPT, distances='DPT') VS no diffusion (distances='none')
-             t = 'auto',
+             t = 2,
              beta = 0.7,
              lamb = 1,
              gamma = 1,
