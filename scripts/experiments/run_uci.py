@@ -101,8 +101,8 @@ SEEDS = list(range(5))
 
 TRANSFORM = "standardize"
 
-# Fraction masked across all pairs. Masks are shared across modalities and
-# nested across proportions; label transfer evaluates all masked pairs.
+# Fraction of target labels masked; source labels always remain visible.
+# Target masks are nested; source-to-target transfer evaluates masked targets.
 # All features remain available to alignment methods.
 # LABEL_MASK_PERC = [0.2, 0.4, 0.6, 0.8]  # Reasonable range of masking levels to explore.
 LABEL_MASK_PERC = [0.5]
@@ -219,13 +219,7 @@ def compute_alignment_metrics(
             type1=y_target_true[evaluation_mask],
             type2=y_source_true[visible_training],
         )
-        b_to_a = test_transfer_accuracy(
-            data1=emb_source[evaluation_mask],
-            data2=emb_target[visible_training],
-            type1=y_source_true[evaluation_mask],
-            type2=y_target_true[visible_training],
-        )
-        label_transfer = (a_to_b + b_to_a) / 2
+        label_transfer = a_to_b
     else:
         label_transfer = np.nan
 
@@ -281,17 +275,18 @@ def build_domains(df, labels, split, seed):
     else:
         raise ValueError(f"Unknown split type: {split}")
 
-    x_source = np.array(df2)
-    x_target = np.array(df1)
+    # df2 is the transformed/noisy view, or the second feature partition.
+    x_source = np.array(df1)
+    x_target = np.array(df2)
     return x_source, x_target
 
 
 def mask_pair_labels(y_true, mask_fraction, seed):
-    """Jointly mask a nested subset of all pairs for label-transfer evaluation."""
+    """Keep source labels visible and mask only the transformed target view."""
     visible, evaluation_mask = make_supervision_masks(y_true, mask_fraction, seed)
     observed = np.asarray(y_true, dtype=int).copy()
     observed[~visible] = -1
-    return observed.copy(), observed.copy(), visible, evaluation_mask
+    return np.asarray(y_true, dtype=int).copy(), observed, np.ones(len(y_true), dtype=bool), evaluation_mask
 
 
 # =============================================================================
@@ -482,10 +477,10 @@ def run_experiment():
         "splits": SPLITS,
         "seeds": SEEDS,
         "mask_fractions": LABEL_MASK_PERC,
-        "mask_count": "floor(p * number of loaded pairs), with the same mask shared across domains",
+        "mask_count": "floor(p * number of target rows); source labels are never masked",
         "label_masks": "nested prefixes of one seeded stratified ordering",
-        "evaluation": "all masked pairs; no separate held-out test set",
-        "label_transfer": "average of A-visible to B-masked and B-visible to A-masked",
+        "evaluation": "all masked target points; no separate held-out test set",
+        "label_transfer": "source-visible to transformed-target-masked only",
         "alignment_metrics": "Alignment Score and FOSCTTM on all embedded observations",
         "noise_sigma": NOISE_SIGMA,
         "signal_to_noise_ratio": SIGNAL_TO_NOISE_RATIO,

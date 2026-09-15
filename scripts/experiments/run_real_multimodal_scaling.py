@@ -52,8 +52,6 @@ METHOD_CONFIGS = {
 SAMPLE_SIZES_PER_DOMAIN = [3_000, 6_000, 12_000]
 
 SEEDS = benchmark.SEEDS
-# Scaling holds masking fixed; use the first configured protocol proportion.
-LABEL_MASK_PROPORTION = benchmark.LABEL_MASK_PERC[0]
 MAX_FIT_TRANSFORM_SEC = benchmark.MAX_FIT_TRANSFORM_SEC
 # Short enough to observe transient native allocations while keeping the
 # profiler overhead small relative to the methods being benchmarked.
@@ -99,7 +97,6 @@ def make_scaling_pair(base_pair, requested_samples_per_domain):
         "labels_b_model",
         "train_mask_a",
         "train_mask_b",
-        "evaluation_mask",
     ):
         pair[key] = np.asarray(base_pair[key])[indices]
 
@@ -213,7 +210,6 @@ def result_row(
     target_unlabeled = int(pair["target_size"] - target_labeled)
     return {
         "dataset": dataset,
-        "label_mask_perc": pair["label_mask_perc"],
         "method": method_name,
         "requested_samples_per_domain": requested_samples_per_domain,
         "samples_per_domain": int(pair["source_size"]),
@@ -252,10 +248,9 @@ def save_metadata(output_dir, timestamp, dataset, base_pair):
             "method_configs": METHOD_CONFIGS,
             "sample_sizes_per_domain": SAMPLE_SIZES_PER_DOMAIN,
             "seeds": SEEDS,
-            "label_mask_perc": LABEL_MASK_PROPORTION,
             "label_masking": (
-                "One seeded label mask shared by all matched rows from run_real_multimodal.py; "
-                "rebuilt for every seed."
+                "Dataset-specific protocol from run_real_multimodal.py (60b4c49); "
+                "Sketchy target masks are rebuilt for every seed."
             ),
             "subsampling": (
                 "Deterministic stratification by both domains' labels and "
@@ -327,8 +322,7 @@ def main():
     rows = []
     for dataset in DATASETS:
         benchmark.set_active_dataset(dataset)
-        base_data = benchmark.load_dataset_pair(seed=SEEDS[0])
-        base_pair = benchmark.apply_label_masking(base_data, LABEL_MASK_PROPORTION, SEEDS[0])
+        base_pair = benchmark.build_pair(seed=SEEDS[0])
         try:
             validate_config(base_pair)
         except ValueError as exc:
@@ -338,10 +332,8 @@ def main():
         save_metadata(dataset_dir, timestamp, dataset, base_pair)
         seed_dependent = benchmark.DATASET_CONFIG["kind"] == "sketchy_npy_object_id"
         for seed in SEEDS:
-            if seed != SEEDS[0]:
-                if seed_dependent:
-                    base_data = benchmark.load_dataset_pair(seed=seed)
-                base_pair = benchmark.apply_label_masking(base_data, LABEL_MASK_PROPORTION, seed)
+            if seed_dependent and seed != SEEDS[0]:
+                base_pair = benchmark.build_pair(seed=seed)
                 validate_config(base_pair)
             for requested_samples_per_domain in SAMPLE_SIZES_PER_DOMAIN:
                 pair = make_scaling_pair(
