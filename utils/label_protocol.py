@@ -1,4 +1,4 @@
-"""Shared seeded, stratified test splitting and nested paired-label masking."""
+"""Shared seeded, stratified and nested paired-label masking."""
 import numpy as np
 
 
@@ -82,18 +82,7 @@ def make_stratified_subsample_indices(labels, train_mask, max_sample, *, seed=No
 
 
 
-def make_supervision_masks(labels, proportion, seed, test_perc):
-    """Return visible-training and held-out-test masks for matched pair rows."""
-    labels = np.asarray(labels)
-    validate_label_mask_perc([test_perc])
-    if not 0 < test_perc < 1:
-        raise ValueError("TEST_PERC must be strictly between 0 and 1.")
-    test_mask = ~make_label_visibility_mask(labels, test_perc, seed + 7)
-    if not test_mask.any() or test_mask.all():
-        raise ValueError("The loaded pair must contain both training and held-out test rows.")
-    training_pool = ~test_mask
-    visible = np.zeros(len(labels), dtype=bool)
-    visible[training_pool] = make_label_visibility_mask(
-        labels[training_pool], proportion, seed + 17, nested=True
-    )
-    return visible, test_mask
+def make_supervision_masks(labels, proportion, seed):
+    """Return visible and evaluation masks over all matched pairs."""
+    visible = make_label_visibility_mask(labels, proportion, seed + 17, nested=True)
+    return visible, ~visible

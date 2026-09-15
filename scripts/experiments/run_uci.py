@@ -100,13 +100,12 @@ SPLITS = [
 SEEDS = list(range(5))
 
 TRANSFORM = "standardize"
-TEST_PERC = 0.2  # Fixed, shared held-out test pairs within each dataset/seed.
 
-# Fraction masked within the remaining 80% training pool, not the full dataset.
-# Masks are shared across modalities and nested across proportions. Test labels
-# are always hidden, while all features remain available to alignment methods.
+# Fraction masked across all pairs. Masks are shared across modalities and
+# nested across proportions; label transfer evaluates all masked pairs.
+# All features remain available to alignment methods.
 # LABEL_MASK_PERC = [0.2, 0.4, 0.6, 0.8]  # Reasonable range of masking levels to explore.
-LABEL_MASK_PERC = [0]
+LABEL_MASK_PERC = [0.5]
 
 
 
@@ -200,7 +199,7 @@ def compute_alignment_metrics(
     y_source_true: np.ndarray,
     y_target_true: np.ndarray,
     visible_training: np.ndarray,
-    test_mask: np.ndarray,
+    evaluation_mask: np.ndarray,
 ):
     n_source = len(y_source_true)
     n_target = len(y_target_true)
@@ -213,17 +212,17 @@ def compute_alignment_metrics(
     emb_source = np.asarray(embedding[:n_source], dtype=float)
     emb_target = np.asarray(embedding[n_source:], dtype=float)
 
-    if np.any(visible_training) and np.any(test_mask):
+    if np.any(visible_training) and np.any(evaluation_mask):
         a_to_b = test_transfer_accuracy(
-            data1=emb_target[test_mask],
+            data1=emb_target[evaluation_mask],
             data2=emb_source[visible_training],
-            type1=y_target_true[test_mask],
+            type1=y_target_true[evaluation_mask],
             type2=y_source_true[visible_training],
         )
         b_to_a = test_transfer_accuracy(
-            data1=emb_source[test_mask],
+            data1=emb_source[evaluation_mask],
             data2=emb_target[visible_training],
-            type1=y_source_true[test_mask],
+            type1=y_source_true[evaluation_mask],
             type2=y_target_true[visible_training],
         )
         label_transfer = (a_to_b + b_to_a) / 2
@@ -288,11 +287,11 @@ def build_domains(df, labels, split, seed):
 
 
 def mask_pair_labels(y_true, mask_fraction, seed):
-    """Hide test labels and jointly mask a nested subset of training pairs."""
-    visible, test_mask = make_supervision_masks(y_true, mask_fraction, seed, TEST_PERC)
+    """Jointly mask a nested subset of all pairs for label-transfer evaluation."""
+    visible, evaluation_mask = make_supervision_masks(y_true, mask_fraction, seed)
     observed = np.asarray(y_true, dtype=int).copy()
     observed[~visible] = -1
-    return observed.copy(), observed.copy(), visible, test_mask
+    return observed.copy(), observed.copy(), visible, evaluation_mask
 
 
 # =============================================================================
@@ -472,9 +471,6 @@ def fit_transform_model(model, x_source, x_target, y_source, y_target):
 
 def run_experiment():
     validate_label_mask_perc(LABEL_MASK_PERC)
-    validate_label_mask_perc([TEST_PERC])
-    if not 0 < TEST_PERC < 1:
-        raise ValueError("TEST_PERC must be strictly between 0 and 1.")
     ensure_dir(RESULTS_DIR)
     results_csv, config_json = make_run_paths(RESULTS_DIR)
 
@@ -486,12 +482,10 @@ def run_experiment():
         "splits": SPLITS,
         "seeds": SEEDS,
         "mask_fractions": LABEL_MASK_PERC,
-        "test_perc": TEST_PERC,
-        "test_split": "seeded stratified shared pairs, fixed across masking levels and domain splits within a seed",
-        "mask_count": "floor(p * number of training pairs), with the same mask shared across domains",
-        "training_masks": "nested prefixes of one seeded stratified ordering",
-        "test_labels": "always hidden in both domains; test features remain available for alignment",
-        "label_transfer": "average of A-labeled-training to B-test and B-labeled-training to A-test",
+        "mask_count": "floor(p * number of loaded pairs), with the same mask shared across domains",
+        "label_masks": "nested prefixes of one seeded stratified ordering",
+        "evaluation": "all masked pairs; no separate held-out test set",
+        "label_transfer": "average of A-visible to B-masked and B-visible to A-masked",
         "alignment_metrics": "Alignment Score and FOSCTTM on all embedded observations",
         "noise_sigma": NOISE_SIGMA,
         "signal_to_noise_ratio": SIGNAL_TO_NOISE_RATIO,
@@ -541,7 +535,7 @@ def run_experiment():
                     print(f"      Mask fraction: {mask_fraction}")
         
                     try:
-                        y_source, y_target, visible_training, test_mask = mask_pair_labels(
+                        y_source, y_target, visible_training, evaluation_mask = mask_pair_labels(
                             y_true=y_target_true,
                             mask_fraction=mask_fraction,
                             seed=seed,
@@ -603,7 +597,7 @@ def run_experiment():
                                 y_source_true=y_source_true,
                                 y_target_true=y_target_true,
                                 visible_training=visible_training,
-                                test_mask=test_mask,
+                                evaluation_mask=evaluation_mask,
                             )
         
                             row = {

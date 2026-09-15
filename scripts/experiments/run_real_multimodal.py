@@ -3,9 +3,9 @@ HAR/AVE/RGBD/Sketchy multimodal alignment benchmark.
 
 Each data table stores labels in the first column and modality features in the
 remaining columns (Sketchy stores labels/object IDs in the last two columns).
-Existing splits are concatenated and ignored; a seeded test split is created
-using TEST_PERC for every dataset. Training pairs share label masks across domains. Label transfer
-scores average both directions on test pairs; alignment metrics use all rows.
+Existing splits are concatenated and ignored. Nested label masks are shared
+across matched rows in both domains. Label transfer scores average both
+directions on all masked pairs; alignment metrics use all rows.
 """
 import json
 import pickle
@@ -112,12 +112,9 @@ N_JOBS = -1
 # Max seconds to allow a model `fit_transform` to run. Set to None to disable timeout.
 MAX_FIT_TRANSFORM_SEC = None  # in seconds, set to None to disable
 LABEL_TRANSFER_TOP_KS = (1, 5, 10)
-TEST_PERC = 0.2  # Shared held-out pair fraction for label transfer in every dataset.
-# Fractions of labels masked within the 80% supervision/training pool, not
-# the full dataset (pool size is 1 - TEST_PERC). The 20% test pairs are fixed
-# within each seed and always unlabeled. Training masks are shared across
-# paired modalities and nested across masking levels.
-LABEL_MASK_PERC = [0]
+# Fractions masked across all loaded pairs, shared across paired modalities
+# and nested across levels. All masked pairs are used for label transfer.
+LABEL_MASK_PERC = [0.5]
 # LABEL_MASK_PERC = [0.2,0.4,0.6,0.8]
 
 
@@ -300,11 +297,10 @@ def save_experiment_metadata(output_dir, timestamp):
         "feature_columns": "1:",
         "label_mask_perc": LABEL_MASK_PERC,
         "predefined_splits": "concatenated; original split membership ignored",
-        "test_perc": TEST_PERC,
-        "test_split": "seeded stratified shared split for every dataset",
-        "masked_rows": "test labels always hidden; training mask shared by matching rows in both domains",
-        "mask_count": "floor(p * number of training pairs), with the same mask shared across domains",
-        "label_transfer": "equal average of A-labeled-training to B-test and B-labeled-training to A-test",
+        "masked_rows": "same nested mask shared by matching rows in both domains",
+        "evaluation": "all masked pairs; no separate held-out test set",
+        "mask_count": "floor(p * number of loaded pairs), with the same mask shared across domains",
+        "label_transfer": "equal average of A-visible to B-masked and B-visible to A-masked",
         "normalization": "StandardScaler per complete modality" if DATASET == "har" else "none",
         "masked_label_value": -1,
         "seeds": SEEDS,
@@ -312,7 +308,7 @@ def save_experiment_metadata(output_dir, timestamp):
         "max_sample_by_dataset": MAX_SAMPLE_BY_DATASET,
         "subsample_seed": SUBSAMPLE_SEED,
         "subsampling": "seeded-random within label strata; fixed across experimental seeds",
-        "training_masks": "prefixes of one seeded stratified ordering, nested across masking levels",
+        "label_masks": "prefixes of one seeded stratified ordering, nested across masking levels",
         "n_components": N_COMPONENTS,
         "n_jobs": N_JOBS,
         "max_fit_transform_sec": MAX_FIT_TRANSFORM_SEC,
@@ -440,13 +436,13 @@ def split_xy_object_id_array(path):
 
 
 def apply_label_masking(base_pair, proportion, seed):
-    """Reserve shared test pairs, then mask labels only within training pairs."""
+    """Apply a shared mask to all pairs; evaluate on those masked pairs."""
     labels = base_pair["labels_a_true"]
     if not np.array_equal(labels, base_pair["labels_b_true"]):
         raise ValueError("Joint masking requires matching labels in paired row order.")
-    visible, test_mask = make_supervision_masks(labels, proportion, seed, TEST_PERC)
+    visible, evaluation_mask = make_supervision_masks(labels, proportion, seed)
     pair = base_pair.copy()
-    pair["test_mask"] = test_mask
+    pair["evaluation_mask"] = evaluation_mask
     for domain in ("a", "b"):
         observed = pair[f"labels_{domain}_true"].copy()
         observed[~visible] = -1
@@ -675,7 +671,7 @@ def save_pair_metadata(output_dir, pair):
         "labels_b_obs": pair["labels_b_model"],
         "train_mask_a": pair["train_mask_a"],
         "train_mask_b": pair["train_mask_b"],
-        "test_mask": pair["test_mask"],
+        "evaluation_mask": pair["evaluation_mask"],
         "classes": pair["classes"],
         "display_classes": pair["display_classes"],
         "source_size": pair["source_size"],
@@ -759,7 +755,7 @@ def result_column_order():
             "n_train_samples_b",
             "n_test_samples_b",
             "n_labeled_train_samples",
-            "n_masked_train_samples",
+            "n_masked_samples",
             "n_unique_classes",
         ]
         + [label_transfer_metric_name(top_k) for top_k in LABEL_TRANSFER_TOP_KS]
@@ -769,9 +765,9 @@ def result_column_order():
 
 def pair_result_metadata(pair):
     train_mask = np.asarray(pair["train_mask_a"], dtype=bool)
-    test_mask = np.asarray(pair["test_mask"], dtype=bool)
-    n_test = int(test_mask.sum())
-    n_train = int((~test_mask).sum())
+    evaluation_mask = np.asarray(pair["evaluation_mask"], dtype=bool)
+    n_test = int(evaluation_mask.sum())
+    n_train = int((~evaluation_mask).sum())
     labels = np.concatenate([pair["labels_a_true"], pair["labels_b_true"]])
     return {
         "label_mask_perc": pair["label_mask_perc"],
@@ -785,7 +781,7 @@ def pair_result_metadata(pair):
         "n_train_samples_b": n_train,
         "n_test_samples_b": n_test,
         "n_labeled_train_samples": int(train_mask.sum()),
-        "n_masked_train_samples": n_train - int(train_mask.sum()),
+        "n_masked_samples": n_test,
         "n_unique_classes": int(np.unique(labels).size),
     }
 
@@ -853,15 +849,15 @@ def bidirectional_label_transfer_topk(emb_a, emb_b, pair, top_ks=LABEL_TRANSFER_
     directional_scores = []
     for source, target, train_x, test_x in (("a", "b", emb_a, emb_b), ("b", "a", emb_b, emb_a)):
         train_mask = pair[f"train_mask_{source}"]
-        test_mask = pair["test_mask"]
+        evaluation_mask = pair["evaluation_mask"]
         # Never substitute a one-direction score for the bidirectional average.
-        if not np.any(train_mask) or not np.any(test_mask):
+        if not np.any(train_mask) or not np.any(evaluation_mask):
             return {top_k: np.nan for top_k in top_ks}
         directional_scores.append(_directional_topk_label_transfer(
             train_x=train_x[train_mask],
             train_y=pair[f"labels_{source}_true"][train_mask],
-            test_x=test_x[test_mask],
-            test_y=pair[f"labels_{target}_true"][test_mask],
+            test_x=test_x[evaluation_mask],
+            test_y=pair[f"labels_{target}_true"][evaluation_mask],
             top_ks=top_ks,
         ))
     return {

@@ -99,7 +99,7 @@ def make_scaling_pair(base_pair, requested_samples_per_domain):
         "labels_b_model",
         "train_mask_a",
         "train_mask_b",
-        "test_mask",
+        "evaluation_mask",
     ):
         pair[key] = np.asarray(base_pair[key])[indices]
 
@@ -254,7 +254,7 @@ def save_metadata(output_dir, timestamp, dataset, base_pair):
             "seeds": SEEDS,
             "label_mask_perc": LABEL_MASK_PROPORTION,
             "label_masking": (
-                "Held-out test labels hidden; one seeded training-label mask shared by matched rows from run_real_multimodal.py; "
+                "One seeded label mask shared by all matched rows from run_real_multimodal.py; "
                 "rebuilt for every seed."
             ),
             "subsampling": (
