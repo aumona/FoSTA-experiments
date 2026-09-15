@@ -110,19 +110,19 @@ TEST_PERC = 0.2  # Shared held-out pair fraction for label transfer in every dat
 # the full dataset (pool size is 1 - TEST_PERC). The 20% test pairs are fixed
 # within each seed and always unlabeled. Training masks are shared across
 # paired modalities and nested across masking levels.
-# LABEL_MASK_PERC = [0.5]
-LABEL_MASK_PERC = [0.1,0.3,0.5,0.7,0.9]
+LABEL_MASK_PERC = [0]
+# LABEL_MASK_PERC = [0.2,0.4,0.6,0.8]
 
 
 MODELS_TO_RUN = [
-    # "Unintegrated",
-    # # "Unintegrated_PHATE",
-    # "FoSTA_t2",
-    # "FoSTA_tauto",
+    "Unintegrated",
+    # "Unintegrated_PHATE",
+    "FoSTA_t2",
+    "FoSTA_tauto",
     "KEMAlin",
     "KEMArbf",
-    # "MALI_t2",
-    # "MALI_tauto",
+    "MALI_t2",
+    "MALI_tauto",
     # "Pamona",  # Not running Pamona for RGB-D 15k due to exaggerated runtime; can be enabled if desired and resources allow
 ]
 
