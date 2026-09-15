@@ -10,6 +10,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 from itertools import combinations
 from sklearn.model_selection import train_test_split
+from scipy.sparse import issparse
 
 from scib_metrics.benchmark import Benchmarker
 import scvi
@@ -42,8 +43,10 @@ MASK = False
 MASK_FRACTION = 0.20 
 MIN_CELLS_FOR_MASKING = 10 
 
-FOSTA_USE_PCA = True 
-FOSTA_PCA_COMPONENTS = 30
+PCA_COMPONENTS = 30
+# Apply PCA inputs to FoSTA, KEMAlin, KEMArbf, MALI, and Pamona.
+# False uses the selected highly variable gene expression directly.
+USE_PCA_FOR_SUPERVISED = True
 N_DIM = 2
 
 # Set to [] to run Unintegrated only
@@ -61,9 +64,7 @@ MODELS_TO_RUN = [
 
 FOSTA_CONFIGS = {
     "FoSTA_t2": {
-        "unlabeled_coupling": "predict_shared", 
         "t": 2,
-        "class_weight": "balanced_subsample"
     }
 }
 
@@ -103,14 +104,10 @@ def add_custom_aggregates(df_res):
     return pd.concat([score_df, metric_type_ext.to_frame().T.rename(index={0: "Metric Type"})])
 
 def benchmark_method_and_update_csv(adata, method_key, metrics_csv, seed):
-    if MASK and adata.obs["is_masked"].any():
-        print(f"Benchmarking {method_key} (Seed {seed}) - MASKED CELLS ONLY...")
-        eval_adata = adata[adata.obs["is_masked"]].copy()
-    else:
-        print(f"Benchmarking {method_key} (Seed {seed}) - FULL DATASET...")
-        eval_adata = adata
+    # Label masking affects training; evaluation always includes all cells.
+    print(f"Benchmarking {method_key} (Seed {seed}) - FULL DATASET...")
     
-    bm = Benchmarker(eval_adata, batch_key=BATCH_KEY, label_key="ground_truth_labels", 
+    bm = Benchmarker(adata, batch_key=BATCH_KEY, label_key="ground_truth_labels", 
                     embedding_obsm_keys=[method_key], n_jobs=-1)
     bm.benchmark()
     df_res = add_custom_aggregates(bm.get_results(min_max_scale=False))
@@ -171,12 +168,12 @@ for CURRENT_SEED in SEEDS:
         sc.pp.highly_variable_genes(adata, n_top_genes=2000, flavor="cell_ranger", batch_key=BATCH_KEY)
         adata = adata[:, adata.var.highly_variable].copy()
         
-        # scIB standard baseline: PCA 30
+        # Shared 30D PCA input for supervised models
         sc.tl.pca(adata, n_comps=30)
         
         # 0. Unintegrated
-        # Evaluate on full PCA 30D, Plotting function will automatically slice to first 2 PCs
-        adata.obsm["Unintegrated"] = adata.obsm["X_pca"].copy()
+        # Evaluate in N_DIM dimensions to match the integrated embeddings
+        adata.obsm["Unintegrated"] = adata.obsm["X_pca"][:, :N_DIM].copy()
         benchmark_method_and_update_csv(adata, "Unintegrated", METRICS_CSV, CURRENT_SEED)
         save_method_plot(adata, "Unintegrated", RESULT_DIR)
 
@@ -243,7 +240,12 @@ for CURRENT_SEED in SEEDS:
         active_supervised = [m for m in MODELS_TO_RUN if m in SUPERVISED_CLASSES]
         if active_supervised:
             idx_a, idx_b = (adata.obs[BATCH_KEY] == BATCH_1), (adata.obs[BATCH_KEY] == BATCH_2)
-            x_a, x_b = adata[idx_a].obsm["X_pca"][:, :FOSTA_PCA_COMPONENTS], adata[idx_b].obsm["X_pca"][:, :FOSTA_PCA_COMPONENTS]
+            if USE_PCA_FOR_SUPERVISED:
+                x_a, x_b = adata[idx_a].obsm["X_pca"][:, :PCA_COMPONENTS], adata[idx_b].obsm["X_pca"][:, :PCA_COMPONENTS]
+            else:
+                x_a, x_b = adata[idx_a].X, adata[idx_b].X
+                x_a = x_a.toarray() if issparse(x_a) else np.asarray(x_a)
+                x_b = x_b.toarray() if issparse(x_b) else np.asarray(x_b)
             y_a_f, y_b_f = prepare_fosta_labels(adata[idx_a].obs[LABEL_KEY]), prepare_fosta_labels(adata[idx_b].obs[LABEL_KEY])
 
             for m_name in active_supervised:
