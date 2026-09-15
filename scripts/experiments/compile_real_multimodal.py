@@ -131,6 +131,8 @@ def get_class_counts(df: pd.DataFrame) -> dict[str, int]:
 def summarize(
     df: pd.DataFrame, methods: list[str]
 ) -> tuple[pd.DataFrame, pd.DataFrame, list[str], list[str]]:
+    if "label_mask_perc" in df and df["label_mask_perc"].nunique(dropna=False) > 1:
+        raise ValueError("Summarize one label_mask_perc at a time; do not pool masking levels.")
     metric_cols = [metric for metric, _, _ in ALL_METRICS]
     df = df[df["method"].isin(methods)].copy()
     if df.empty:
@@ -479,18 +481,25 @@ def build_markdown_table(
 def main() -> None:
     results_dir = RESULTS_ROOT / TIMESTAMP
     df = load_results(results_dir)
-    class_counts = get_class_counts(df)
-    means, stds, datasets, methods = summarize(df, METHODS)
-    latex_table = build_latex_table(means, stds, datasets, methods, class_counts)
-    markdown_table = build_markdown_table(means, stds, datasets, methods, class_counts)
-
-    output_path = results_dir / OUTPUT_FILENAME
-    markdown_output_path = results_dir / MARKDOWN_OUTPUT_FILENAME
-    output_path.write_text(latex_table, encoding="utf-8")
-    markdown_output_path.write_text(markdown_table, encoding="utf-8")
-    print(latex_table)
-    print(f"Saved {output_path}")
-    print(f"Saved {markdown_output_path}")
+    groups = list(df.groupby("label_mask_perc", dropna=False)) if "label_mask_perc" in df else [(None, df)]
+    for proportion, group in groups:
+        class_counts = get_class_counts(group)
+        means, stds, datasets, methods = summarize(group, METHODS)
+        latex_table = build_latex_table(means, stds, datasets, methods, class_counts)
+        markdown_table = build_markdown_table(means, stds, datasets, methods, class_counts)
+        if proportion is not None:
+            note = f" Label masking proportion: {proportion} in each domain."
+            latex_table = latex_table.replace(CAPTION, CAPTION + note)
+            markdown_table = markdown_table.replace(MARKDOWN_CAPTION, MARKDOWN_CAPTION + note)
+        suffix = f"_mask_{proportion}" if len(groups) > 1 else ""
+        tex_name = Path(OUTPUT_FILENAME)
+        md_name = Path(MARKDOWN_OUTPUT_FILENAME)
+        output_path = results_dir / f"{tex_name.stem}{suffix}{tex_name.suffix}"
+        markdown_output_path = results_dir / f"{md_name.stem}{suffix}{md_name.suffix}"
+        output_path.write_text(latex_table, encoding="utf-8")
+        markdown_output_path.write_text(markdown_table, encoding="utf-8")
+        print(latex_table)
+        print(f"Saved tables to {output_path} and {markdown_output_path}")
 
 
 if __name__ == "__main__":

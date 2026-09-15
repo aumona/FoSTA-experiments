@@ -2,7 +2,10 @@
 HAR/AVE/RGBD/Sketchy multimodal alignment benchmark.
 
 Each data table stores labels in the first column and modality features in the
-remaining columns. Train rows stay labeled; test rows are masked as -1.
+remaining columns (Sketchy stores labels/object IDs in the last two columns).
+Existing splits are concatenated and ignored; a seeded test split is created
+using TEST_PERC for every dataset. Training pairs share label masks across domains. Label transfer
+scores average both directions on test pairs; alignment metrics use all rows.
 """
 import json
 import pickle
@@ -73,8 +76,6 @@ RGBD_RESNET18_DEPTH_PATH = RGBD_DATA_ROOT / "rgbd_depth_resnet18_embeddings.npy"
 RGBD_DINOV2BASE_PHOTO_PATH = RGBD_DATA_ROOT / "rgbd_photo_dinov2base_embeddings.npy"
 RGBD_DINOV2BASE_DEPTH_PATH = RGBD_DATA_ROOT / "rgbd_depth_dinov2base_embeddings.npy"
 RGBD_LABEL_MAP_PATH = RGBD_DATA_ROOT / "rgbd_label_map.json"
-RGBD_TRAIN_FRACTION = 0.50
-STD_NORMALIZE_RGBD = False   # True works well for DINO, but False is in accordance with MALI and common practice to visualize neural network features. Also, False better for ResNet18
 
 SKETCHY_DATA_ROOT = PROJECT_ROOT / "data_sketchy"
 SKETCHY_RESNET18_PHOTO_PATH = SKETCHY_DATA_ROOT / "photo_resnet18_embeddings.npy"
@@ -82,7 +83,6 @@ SKETCHY_RESNET18_SKETCH_PATH = SKETCHY_DATA_ROOT / "sketch_resnet18_embeddings.n
 SKETCHY_DINOV2BASE_PHOTO_PATH = SKETCHY_DATA_ROOT / "photo_dinov2base_embeddings.npy"
 SKETCHY_DINOV2BASE_SKETCH_PATH = SKETCHY_DATA_ROOT / "sketch_dinov2base_embeddings.npy"
 SKETCHY_LABEL_DICT_PATH = SKETCHY_DATA_ROOT / "label_dic"
-LABEL_MASKING_SKETCH_TARGET = 0.50
 
 AVE_DATA_ROOT = PROJECT_ROOT / "data_ave"
 AVE_AUDIO_TRAIN_PATH = AVE_DATA_ROOT / "train_audio_feature.npy"
@@ -98,13 +98,20 @@ MAX_SAMPLE_BY_DATASET = {
     "har": None,
     "rgbd_resnet18": 15000,
     "rgbd_dinov2base": 15000,
-}  # Set a dataset value to None to disable deterministic stratified subsampling.
+}  # Set a dataset value to None to keep every observation.
+SUBSAMPLE_SEED = 2026  # Fixed selection, independent of experimental seeds.
 N_COMPONENTS = 2
 N_JOBS = -1
 # Max seconds to allow a model `fit_transform` to run. Set to None to disable timeout.
 MAX_FIT_TRANSFORM_SEC = None  # in seconds, set to None to disable
-
 LABEL_TRANSFER_TOP_KS = (1, 5, 10)
+TEST_PERC = 0.2  # Shared held-out pair fraction for label transfer in every dataset.
+# Fractions of labels masked within the 80% supervision/training pool, not
+# the full dataset (pool size is 1 - TEST_PERC). The 20% test pairs are fixed
+# within each seed and always unlabeled. Training masks are shared across
+# paired modalities and nested across masking levels.
+# LABEL_MASK_PERC = [0.5]
+LABEL_MASK_PERC = [0.1,0.3,0.5,0.7,0.9]
 
 
 MODELS_TO_RUN = [
@@ -112,10 +119,10 @@ MODELS_TO_RUN = [
     # # "Unintegrated_PHATE",
     # "FoSTA_t2",
     # "FoSTA_tauto",
-    # "KEMAlin",
-    # "KEMArbf",
-    "MALI_t2",
-    "MALI_tauto",
+    "KEMAlin",
+    "KEMArbf",
+    # "MALI_t2",
+    # "MALI_tauto",
     # "Pamona",  # Not running Pamona for RGB-D 15k due to exaggerated runtime; can be enabled if desired and resources allow
 ]
 
@@ -284,11 +291,21 @@ def save_experiment_metadata(output_dir, timestamp):
         },
         "label_column": 0,
         "feature_columns": "1:",
-        "masked_rows": "test",
+        "label_mask_perc": LABEL_MASK_PERC,
+        "predefined_splits": "concatenated; original split membership ignored",
+        "test_perc": TEST_PERC,
+        "test_split": "seeded stratified shared split for every dataset",
+        "masked_rows": "test labels always hidden; training mask shared by matching rows in both domains",
+        "mask_count": "floor(p * number of training pairs), with the same mask shared across domains",
+        "label_transfer": "equal average of A-labeled-training to B-test and B-labeled-training to A-test",
+        "normalization": "StandardScaler per complete modality" if DATASET == "har" else "none",
         "masked_label_value": -1,
         "seeds": SEEDS,
         "max_sample": get_max_sample(),
         "max_sample_by_dataset": MAX_SAMPLE_BY_DATASET,
+        "subsample_seed": SUBSAMPLE_SEED,
+        "subsampling": "seeded-random within label strata; fixed across experimental seeds",
+        "training_masks": "prefixes of one seeded stratified ordering, nested across masking levels",
         "n_components": N_COMPONENTS,
         "n_jobs": N_JOBS,
         "max_fit_transform_sec": MAX_FIT_TRANSFORM_SEC,
@@ -315,16 +332,11 @@ def save_experiment_metadata(output_dir, timestamp):
             "train_path": str(DATASET_CONFIG["domain_b_train_path"].relative_to(PROJECT_ROOT)),
             "test_path": str(DATASET_CONFIG["domain_b_test_path"].relative_to(PROJECT_ROOT)),
         })
-        if DATASET_CONFIG["kind"] == "npy_train_test":
-            metadata["normalization"] = "none"
     elif DATASET_CONFIG["kind"] == "npy_single_file":
         metadata["domain_a"]["path"] = str(DATASET_CONFIG["domain_a_path"].relative_to(PROJECT_ROOT))
         metadata["domain_b"]["path"] = str(DATASET_CONFIG["domain_b_path"].relative_to(PROJECT_ROOT))
         metadata["rgbd_embedding_name"] = DATASET_CONFIG["embedding_name"]
         metadata["rgbd_label_map_path"] = str(RGBD_LABEL_MAP_PATH.relative_to(PROJECT_ROOT))
-        metadata["rgbd_train_fraction"] = RGBD_TRAIN_FRACTION
-        metadata["std_normalize_rgbd"] = STD_NORMALIZE_RGBD
-        metadata["rgbd_split"] = "deterministic stratified by label in original row order"
     elif DATASET_CONFIG["kind"] == "sketchy_npy_object_id":
         metadata["domain_a"]["path"] = str(DATASET_CONFIG["domain_a_path"].relative_to(PROJECT_ROOT))
         metadata["domain_b"]["path"] = str(DATASET_CONFIG["domain_b_path"].relative_to(PROJECT_ROOT))
@@ -333,10 +345,7 @@ def save_experiment_metadata(output_dir, timestamp):
         metadata["label_column"] = "-2"
         metadata["feature_columns"] = ":-2"
         metadata["object_id_column"] = "-1"
-        metadata["masked_rows"] = "target/sketch only"
-        metadata["label_masking_sketch_target"] = LABEL_MASKING_SKETCH_TARGET
         metadata["sketchy_target_sampling"] = "one random target example per source object ID, ordered to match source"
-        metadata["normalization"] = "none"
     else:
         raise ValueError(f"Unknown dataset kind: {DATASET_CONFIG['kind']}")
     write_json(output_dir / "experiment_metadata.json", metadata)
@@ -423,50 +432,68 @@ def split_xy_object_id_array(path):
     return features, labels, object_ids
 
 
-def load_array_labels(path):
-    arr = np.load(path, mmap_mode="r")
-    if arr.ndim != 2 or arr.shape[1] < 2:
-        raise ValueError(f"Expected 2D array with at least 2 columns in {path}, got {arr.shape}")
-    return np.asarray(arr[:, 0]).astype(str)
+def validate_label_mask_perc(values):
+    if not isinstance(values, (list, tuple)) or not values:
+        raise ValueError("LABEL_MASK_PERC must be a non-empty list of proportions.")
+    if any(
+        isinstance(p, (bool, np.bool_)) or not isinstance(p, (int, float, np.integer, np.floating))
+        or not np.isfinite(p) or not 0 <= p <= 1
+        for p in values
+    ):
+        raise ValueError("LABEL_MASK_PERC values must be finite numbers in [0, 1].")
+    if len(set(values)) != len(values):
+        raise ValueError("LABEL_MASK_PERC must not contain duplicates.")
 
 
-def make_stratified_train_mask(labels, train_fraction):
-    if not 0 < train_fraction < 1:
-        raise ValueError(f"RGBD_TRAIN_FRACTION must be in (0, 1), got {train_fraction}.")
+def make_label_visibility_mask(labels, proportion, seed, *, nested=False):
+    """Mask floor(p * n) rows, stratified by label with seeded row selection."""
+    validate_label_mask_perc([proportion])
+    labels = np.asarray(labels)
+    order = np.random.default_rng(seed).permutation(len(labels))
+    n_masked = int(np.floor(len(labels) * proportion))
+    if nested:
+        # Interleave randomly ordered class members by their within-class
+        # quantiles. Every masking level takes a prefix of this same ordering.
+        priorities = np.empty(len(labels))
+        shuffled_labels = labels[order]
+        for label in np.unique(labels):
+            positions = np.flatnonzero(shuffled_labels == label)
+            priorities[positions] = (np.arange(len(positions)) + 0.5) / len(positions)
+        masked = np.argsort(priorities, kind="stable")[:n_masked]
+    else:
+        masked = make_stratified_subsample_indices(
+            labels[order], np.ones(len(labels), dtype=bool), n_masked
+        )
+    visible = np.ones(len(labels), dtype=bool)
+    visible[order[masked]] = False
+    return visible
 
-    labels = np.asarray(labels).astype(str)
-    train_mask = np.zeros(labels.shape[0], dtype=bool)
-    for label in np.unique(labels):
-        label_idx = np.flatnonzero(labels == label)
-        n_train = int(np.floor(label_idx.size * train_fraction))
-        if label_idx.size > 1:
-            n_train = min(max(n_train, 1), label_idx.size - 1)
-        else:
-            n_train = 1
-        train_mask[label_idx[:n_train]] = True
-    return train_mask
 
-
-def make_source_object_mask(source_labels, source_object_ids, target_object_ids, frac, seed):
-    source_labels = np.asarray(source_labels).astype(str)
-    source_object_ids = np.asarray(source_object_ids).astype(str)
-    target_object_ids = np.asarray(target_object_ids).astype(str)
-    if not 0 <= frac <= 1:
-        raise ValueError(f"LABEL_MASKING_SKETCH_TARGET must be in [0, 1], got {frac}.")
-    if frac <= 0:
-        return np.zeros(target_object_ids.shape[0], dtype=bool)
-    if np.unique(source_object_ids).size != source_object_ids.size:
-        raise ValueError("Expected Sketchy source/photo object IDs to be unique.")
-
-    rng = np.random.default_rng(seed)
-    masked_object_ids = []
-    for label in np.unique(source_labels):
-        class_object_ids = source_object_ids[source_labels == label]
-        n_mask = int(np.floor(class_object_ids.size * frac))
-        if n_mask > 0:
-            masked_object_ids.extend(rng.choice(class_object_ids, size=n_mask, replace=False))
-
-    return np.isin(target_object_ids, masked_object_ids)
+def apply_label_masking(base_pair, proportion, seed):
+    """Reserve shared test pairs, then mask labels only within training pairs."""
+    labels = base_pair["labels_a_true"]
+    if not np.array_equal(labels, base_pair["labels_b_true"]):
+        raise ValueError("Joint masking requires matching labels in paired row order.")
+    validate_label_mask_perc([TEST_PERC])
+    if not 0 < TEST_PERC < 1:
+        raise ValueError("TEST_PERC must be strictly between 0 and 1.")
+    test_mask = ~make_label_visibility_mask(labels, TEST_PERC, seed + 7)
+    if test_mask.shape != labels.shape or not test_mask.any() or test_mask.all():
+        raise ValueError("The loaded pair must contain both training and held-out test rows.")
+    training_pool = ~test_mask
+    visible = np.zeros(len(labels), dtype=bool)
+    visible[training_pool] = make_label_visibility_mask(
+        labels[training_pool], proportion, seed + 17, nested=True
+    )
+    pair = base_pair.copy()
+    pair["test_mask"] = test_mask
+    for domain in ("a", "b"):
+        observed = pair[f"labels_{domain}_true"].copy()
+        observed[~visible] = -1
+        pair[f"train_mask_{domain}"] = visible.copy()
+        pair[f"labels_{domain}_model"] = observed
+    pair["label_mask_perc"] = float(proportion)
+    return pair
 
 
 def select_one_target_per_source_object(
@@ -521,7 +548,7 @@ def validate_max_sample(dataset=None):
         )
 
 
-def make_stratified_subsample_indices(labels, train_mask, max_sample):
+def make_stratified_subsample_indices(labels, train_mask, max_sample, *, seed=None):
     if max_sample is None or len(labels) <= max_sample:
         return np.arange(len(labels))
 
@@ -553,24 +580,14 @@ def make_stratified_subsample_indices(labels, train_mask, max_sample):
         allocations[candidates[np.argmax(ratios)]] += 1
 
     selected = []
+    rng = np.random.default_rng(seed) if seed is not None else None
     for stratum, n_select in zip(unique_strata, allocations):
         if n_select > 0:
-            selected.append(np.flatnonzero(strata == stratum)[:n_select])
+            candidates = np.flatnonzero(strata == stratum)
+            if rng is not None:
+                candidates = rng.permutation(candidates)
+            selected.append(candidates[:n_select])
     return np.sort(np.concatenate(selected)) if selected else np.array([], dtype=int)
-
-
-def apply_subsample(x, y_raw, train_mask, indices):
-    return x[indices], y_raw[indices], train_mask[indices]
-
-
-def standardize_domain(x):
-    return StandardScaler().fit_transform(x)
-
-
-def preprocess_rgbd_domain(x):
-    if STD_NORMALIZE_RGBD:
-        return standardize_domain(x)
-    return x
 
 
 def make_pair_dict(
@@ -658,238 +675,89 @@ def load_sketchy_label_names(classes):
     return np.asarray(display_names, dtype=str)
 
 
-def load_train_test_domain(train_path, test_path, split_func):
-    x_train, y_train_raw = split_func(train_path)
-    x_test, y_test_raw = split_func(test_path)
-
-    x = np.vstack([x_train, x_test])
-    y_raw = np.concatenate([y_train_raw, y_test_raw])
-
-    train_mask = np.r_[np.ones(len(y_train_raw), dtype=bool), np.zeros(len(y_test_raw), dtype=bool)]
-    return x, y_raw, train_mask
+def load_combined_domain(domain, split_func):
+    """Concatenate stored splits, discarding their original membership."""
+    parts = [
+        split_func(DATASET_CONFIG[f"domain_{domain}_{split}_path"])
+        for split in ("train", "test")
+    ]
+    return np.vstack([x for x, _ in parts]), np.concatenate([y for _, y in parts])
 
 
 def split_xy_frame_path(path):
     return split_xy(load_frame(path))
 
 
-def load_rgbd_domain(path, train_mask):
-    x, y_raw = split_xy_array(path)
-    return x, y_raw, train_mask
-
-
-def build_har_pair():
+def load_dataset_pair(seed=0):
+    """Load aligned rows, standardize HAR only, then optionally subsample."""
     validate_max_sample()
-    max_sample = get_max_sample()
-    acc_train = load_frame(DATASET_CONFIG["domain_a_train_path"])
-    acc_test = load_frame(DATASET_CONFIG["domain_a_test_path"])
-    gyro_train = load_frame(DATASET_CONFIG["domain_b_train_path"])
-    gyro_test = load_frame(DATASET_CONFIG["domain_b_test_path"])
-
-    raw_labels = np.concatenate([
-        acc_train.iloc[:, 0].astype(str).to_numpy(),
-        acc_test.iloc[:, 0].astype(str).to_numpy(),
-        gyro_train.iloc[:, 0].astype(str).to_numpy(),
-        gyro_test.iloc[:, 0].astype(str).to_numpy(),
-    ])
-    label_encoder = LabelEncoder().fit(raw_labels)
-
-    x_a, y_a_raw, train_mask_a = load_train_test_domain(
-        DATASET_CONFIG["domain_a_train_path"],
-        DATASET_CONFIG["domain_a_test_path"],
-        split_xy_frame_path,
-    )
-    x_b, y_b_raw, train_mask_b = load_train_test_domain(
-        DATASET_CONFIG["domain_b_train_path"],
-        DATASET_CONFIG["domain_b_test_path"],
-        split_xy_frame_path,
-    )
-    original_n_samples = len(y_a_raw)
-
-    subsample_idx = make_stratified_subsample_indices(y_a_raw, train_mask_a, max_sample)
-    x_a, y_a_raw, train_mask_a = apply_subsample(x_a, y_a_raw, train_mask_a, subsample_idx)
-    x_b, y_b_raw, train_mask_b = apply_subsample(x_b, y_b_raw, train_mask_b, subsample_idx)
-
-    # Scale each modality after train/test union and optional subsampling.
-    x_a = standardize_domain(x_a)
-    x_b = standardize_domain(x_b)
-
-    return make_pair_dict(
-        x_a,
-        y_a_raw,
-        train_mask_a,
-        x_b,
-        y_b_raw,
-        train_mask_b,
-        label_encoder,
-        original_n_samples=original_n_samples,
-    )
-
-
-def build_ave_pair():
-    validate_max_sample()
-    max_sample = get_max_sample()
-    x_a, y_a_raw, train_mask_a = load_train_test_domain(
-        DATASET_CONFIG["domain_a_train_path"],
-        DATASET_CONFIG["domain_a_test_path"],
-        split_xy_pickled_array,
-    )
-    x_b, y_b_raw, train_mask_b = load_train_test_domain(
-        DATASET_CONFIG["domain_b_train_path"],
-        DATASET_CONFIG["domain_b_test_path"],
-        split_xy_pickled_array,
-    )
-
-    if x_a.shape[0] != x_b.shape[0]:
-        raise ValueError(f"Expected paired AVE domains with equal rows, got {x_a.shape[0]} and {x_b.shape[0]}.")
-    if not np.array_equal(train_mask_a, train_mask_b):
-        raise ValueError("AVE train/test masks must be identical across audio and video domains.")
-    if not np.array_equal(y_a_raw, y_b_raw):
-        raise ValueError("Expected AVE audio/video labels to match in the same row order.")
-
-    label_encoder = LabelEncoder().fit(np.concatenate([y_a_raw, y_b_raw]))
-    original_n_samples = len(y_a_raw)
-
-    subsample_idx = make_stratified_subsample_indices(y_a_raw, train_mask_a, max_sample)
-    x_a, y_a_raw, train_mask_a = apply_subsample(x_a, y_a_raw, train_mask_a, subsample_idx)
-    x_b, y_b_raw, train_mask_b = apply_subsample(x_b, y_b_raw, train_mask_b, subsample_idx)
-
-    return make_pair_dict(
-        x_a,
-        y_a_raw,
-        train_mask_a,
-        x_b,
-        y_b_raw,
-        train_mask_b,
-        label_encoder,
-        original_n_samples=original_n_samples,
-    )
-
-
-def build_rgbd_pair():
-    validate_max_sample()
-    max_sample = get_max_sample()
-    labels_a = load_array_labels(DATASET_CONFIG["domain_a_path"])
-    labels_b = load_array_labels(DATASET_CONFIG["domain_b_path"])
-    if labels_a.shape[0] != labels_b.shape[0]:
-        raise ValueError(
-            f"Expected paired RGBD domains with equal rows, got {labels_a.shape[0]} and {labels_b.shape[0]}."
+    kind = DATASET_CONFIG["kind"]
+    extra = {}
+    if kind in {"har_pickle_train_test", "npy_train_test"}:
+        loader = split_xy_frame_path if kind == "har_pickle_train_test" else split_xy_pickled_array
+        x_a, y_a = load_combined_domain("a", loader)
+        x_b, y_b = load_combined_domain("b", loader)
+        if kind == "har_pickle_train_test":
+            # Fit each scaler on the entire concatenated modality, before subsampling.
+            x_a = StandardScaler().fit_transform(x_a)
+            x_b = StandardScaler().fit_transform(x_b)
+    elif kind == "npy_single_file":
+        x_a, y_a = split_xy_array(DATASET_CONFIG["domain_a_path"])
+        x_b, y_b = split_xy_array(DATASET_CONFIG["domain_b_path"])
+    elif kind == "sketchy_npy_object_id":
+        x_a, y_a, ids_a = split_xy_object_id_array(DATASET_CONFIG["domain_a_path"])
+        x_b_full, y_b_full, ids_b_full = split_xy_object_id_array(DATASET_CONFIG["domain_b_path"])
+        x_b, y_b, ids_b, selected = select_one_target_per_source_object(
+            x_b_full, y_b_full, ids_b_full, ids_a, seed + 11
         )
-    if not np.array_equal(labels_a, labels_b):
-        raise ValueError("Expected RGBD modalities to have identical labels in the same row order.")
+        extra = {"object_ids_a": ids_a, "object_ids_b": ids_b, "target_selected_indices": selected}
+    else:
+        raise ValueError(f"Unknown dataset kind: {kind}")
 
-    label_encoder = LabelEncoder().fit(np.concatenate([labels_a, labels_b]))
-    display_classes = load_rgbd_label_names(label_encoder.classes_)
-    train_mask = make_stratified_train_mask(labels_a, RGBD_TRAIN_FRACTION)
+    if x_a.shape[0] != x_b.shape[0] or not np.array_equal(y_a, y_b):
+        raise ValueError("Paired domains must have matching labels in the same row order.")
+    if not len(y_a):
+        raise ValueError("Cannot benchmark an empty dataset.")
+    original_n_samples = len(y_a)
+    encoder = LabelEncoder().fit(np.concatenate([y_a, y_b]))
+    display_classes = None
+    if kind == "npy_single_file":
+        display_classes = load_rgbd_label_names(encoder.classes_)
+    elif kind == "sketchy_npy_object_id":
+        display_classes = load_sketchy_label_names(encoder.classes_)
 
-    x_a, y_a_raw, train_mask_a = load_rgbd_domain(DATASET_CONFIG["domain_a_path"], train_mask)
-    x_b, y_b_raw, train_mask_b = load_rgbd_domain(DATASET_CONFIG["domain_b_path"], train_mask)
-
-    subsample_idx = make_stratified_subsample_indices(y_a_raw, train_mask_a, max_sample)
-    x_a, y_a_raw, train_mask_a = apply_subsample(x_a, y_a_raw, train_mask_a, subsample_idx)
-    x_b, y_b_raw, train_mask_b = apply_subsample(x_b, y_b_raw, train_mask_b, subsample_idx)
-    if not np.array_equal(train_mask_a, train_mask_b):
-        raise ValueError("RGBD label masking must be identical in both modalities.")
-
-    x_a = preprocess_rgbd_domain(x_a)
-    x_b = preprocess_rgbd_domain(x_b)
-
+    # Subsample once, independently of original splits and masking proportions.
+    indices = make_stratified_subsample_indices(
+        y_a, np.ones(len(y_a), dtype=bool), get_max_sample(), seed=SUBSAMPLE_SEED
+    )
+    visible = np.ones(len(indices), dtype=bool)
     return make_pair_dict(
-        x_a,
-        y_a_raw,
-        train_mask_a,
-        x_b,
-        y_b_raw,
-        train_mask_b,
-        label_encoder,
-        display_classes=display_classes,
-        original_n_samples=len(labels_a),
-    )
-
-
-def build_sketchy_pair(seed):
-    validate_max_sample()
-    max_sample = get_max_sample()
-    x_a, y_a_raw, object_ids_a = split_xy_object_id_array(DATASET_CONFIG["domain_a_path"])
-    x_b_full, y_b_raw_full, object_ids_b_full = split_xy_object_id_array(DATASET_CONFIG["domain_b_path"])
-    original_n_samples = len(y_a_raw)
-    source_size = x_a.shape[0]
-    target_size = x_b_full.shape[0]
-
-    x_b, y_b_raw, object_ids_b, target_selected_indices = select_one_target_per_source_object(
-        x_b_full,
-        y_b_raw_full,
-        object_ids_b_full,
-        object_ids_a,
-        seed + 11,
-    )
-
-    if x_a.shape[0] != x_b.shape[0]:
-        raise ValueError(f"Expected paired Sketchy domains with equal rows, got {x_a.shape[0]} and {x_b.shape[0]}.")
-
-    label_encoder = LabelEncoder().fit(np.concatenate([y_a_raw, y_b_raw]))
-    display_classes = load_sketchy_label_names(label_encoder.classes_)
-    train_mask_a = np.ones(len(y_a_raw), dtype=bool)
-    train_mask_b = ~make_source_object_mask(
-        y_a_raw,
-        object_ids_a,
-        object_ids_b,
-        LABEL_MASKING_SKETCH_TARGET,
-        seed + 17,
-    )
-
-    subsample_idx = make_stratified_subsample_indices(y_a_raw, train_mask_b, max_sample)
-    x_a, y_a_raw, train_mask_a = apply_subsample(x_a, y_a_raw, train_mask_a, subsample_idx)
-    x_b, y_b_raw, train_mask_b = apply_subsample(x_b, y_b_raw, train_mask_b, subsample_idx)
-    object_ids_a = np.asarray(object_ids_a).astype(str)[subsample_idx]
-    object_ids_b = np.asarray(object_ids_b).astype(str)[subsample_idx]
-    target_selected_indices = target_selected_indices[subsample_idx]
-
-    if not np.array_equal(object_ids_a, object_ids_b):
-        raise ValueError("Sketchy source and selected target object IDs are not aligned after subsampling.")
-
-    return make_pair_dict(
-        x_a,
-        y_a_raw,
-        train_mask_a,
-        x_b,
-        y_b_raw,
-        train_mask_b,
-        label_encoder,
+        x_a[indices], y_a[indices], visible.copy(),
+        x_b[indices], y_b[indices], visible.copy(), encoder,
         display_classes=display_classes,
         original_n_samples=original_n_samples,
-        source_size=source_size,
-        target_size=target_size,
-        extra_metadata={
-            "object_ids_a": object_ids_a,
-            "object_ids_b": object_ids_b,
-            "target_selected_indices": target_selected_indices,
-        },
+        extra_metadata={key: np.asarray(value)[indices] for key, value in extra.items()},
     )
 
 
-def build_pair(seed=None):
-    if DATASET_CONFIG["kind"] == "har_pickle_train_test":
-        return build_har_pair()
-    if DATASET_CONFIG["kind"] == "npy_train_test":
-        return build_ave_pair()
-    if DATASET_CONFIG["kind"] == "npy_single_file":
-        return build_rgbd_pair()
-    if DATASET_CONFIG["kind"] == "sketchy_npy_object_id":
-        if seed is None:
-            raise ValueError("Sketchy pair construction requires a seed.")
-        return build_sketchy_pair(seed)
-    raise ValueError(f"Unknown dataset kind: {DATASET_CONFIG['kind']}")
+def build_pair(seed=0, label_mask_perc=None):
+    """Convenience entry point for the scaling runner and other callers."""
+    if label_mask_perc is None:
+        validate_label_mask_perc(LABEL_MASK_PERC)
+        label_mask_perc = LABEL_MASK_PERC[0]
+    return apply_label_masking(load_dataset_pair(seed), label_mask_perc, seed)
 
 
 def save_pair_metadata(output_dir, pair):
     metadata = {
+        "label_mask_perc": pair["label_mask_perc"],
         "labels_a": pair["labels_a_true"],
         "labels_b": pair["labels_b_true"],
         "labels_a_obs": pair["labels_a_model"],
         "labels_b_obs": pair["labels_b_model"],
         "train_mask_a": pair["train_mask_a"],
         "train_mask_b": pair["train_mask_b"],
+        "test_mask": pair["test_mask"],
         "classes": pair["classes"],
         "display_classes": pair["display_classes"],
         "source_size": pair["source_size"],
@@ -962,6 +830,7 @@ def result_column_order():
         [
             "dataset",
             "method",
+            "label_mask_perc",
             "n_original_full_samples",
             "source_size",
             "target_size",
@@ -969,6 +838,10 @@ def result_column_order():
             "target_n_features",
             "n_train_samples",
             "n_test_samples",
+            "n_train_samples_b",
+            "n_test_samples_b",
+            "n_labeled_train_samples",
+            "n_masked_train_samples",
             "n_unique_classes",
         ]
         + [label_transfer_metric_name(top_k) for top_k in LABEL_TRANSFER_TOP_KS]
@@ -977,17 +850,24 @@ def result_column_order():
 
 
 def pair_result_metadata(pair):
-    train_mask_key = "train_mask_b" if DATASET_CONFIG["kind"] == "sketchy_npy_object_id" else "train_mask_a"
-    train_mask = np.asarray(pair[train_mask_key], dtype=bool)
+    train_mask = np.asarray(pair["train_mask_a"], dtype=bool)
+    test_mask = np.asarray(pair["test_mask"], dtype=bool)
+    n_test = int(test_mask.sum())
+    n_train = int((~test_mask).sum())
     labels = np.concatenate([pair["labels_a_true"], pair["labels_b_true"]])
     return {
+        "label_mask_perc": pair["label_mask_perc"],
         "n_original_full_samples": int(pair["original_n_samples"]),
         "source_size": int(pair["source_size"]),
         "target_size": int(pair["target_size"]),
         "source_n_features": int(pair["source_n_features"]),
         "target_n_features": int(pair["target_n_features"]),
-        "n_train_samples": int(np.count_nonzero(train_mask)),
-        "n_test_samples": int(train_mask.size - np.count_nonzero(train_mask)),
+        "n_train_samples": n_train,
+        "n_test_samples": n_test,
+        "n_train_samples_b": n_train,
+        "n_test_samples_b": n_test,
+        "n_labeled_train_samples": int(train_mask.sum()),
+        "n_masked_train_samples": n_train - int(train_mask.sum()),
         "n_unique_classes": int(np.unique(labels).size),
     }
 
@@ -1054,33 +934,20 @@ def _directional_topk_label_transfer(train_x, train_y, test_x, test_y, top_ks=LA
 
 
 def bidirectional_label_transfer_topk(emb_a, emb_b, pair, top_ks=LABEL_TRANSFER_TOP_KS):
-    test_mask_a = ~pair["train_mask_a"]
-    test_mask_b = ~pair["train_mask_b"]
     directional_scores = []
-
-    # Domain A labeled train points predict masked test points in domain B.
-    if np.any(test_mask_b):
+    for source, target, train_x, test_x in (("a", "b", emb_a, emb_b), ("b", "a", emb_b, emb_a)):
+        train_mask = pair[f"train_mask_{source}"]
+        test_mask = pair["test_mask"]
+        # Never substitute a one-direction score for the bidirectional average.
+        if not np.any(train_mask) or not np.any(test_mask):
+            return {top_k: np.nan for top_k in top_ks}
         directional_scores.append(_directional_topk_label_transfer(
-            train_x=emb_a[pair["train_mask_a"]],
-            train_y=pair["labels_a_true"][pair["train_mask_a"]],
-            test_x=emb_b[test_mask_b],
-            test_y=pair["labels_b_true"][test_mask_b],
+            train_x=train_x[train_mask],
+            train_y=pair[f"labels_{source}_true"][train_mask],
+            test_x=test_x[test_mask],
+            test_y=pair[f"labels_{target}_true"][test_mask],
             top_ks=top_ks,
         ))
-
-    # Domain B labeled train points predict masked test points in domain A.
-    if np.any(test_mask_a):
-        directional_scores.append(_directional_topk_label_transfer(
-            train_x=emb_b[pair["train_mask_b"]],
-            train_y=pair["labels_b_true"][pair["train_mask_b"]],
-            test_x=emb_a[test_mask_a],
-            test_y=pair["labels_a_true"][test_mask_a],
-            top_ks=top_ks,
-        ))
-
-    if not directional_scores:
-        return {top_k: np.nan for top_k in top_ks}
-
     return {
         top_k: float(np.mean([scores[top_k] for scores in directional_scores]))
         for top_k in top_ks
@@ -1117,137 +984,77 @@ def benchmark_method(method_name, embedding, pair, output_dir, seed):
 # =============================================================================
 # MAIN
 # =============================================================================
+def run_method(method_name, pair, output_dir, seed):
+    """Profile and score one method; retain a complete row on failure."""
+    row = {
+        "dataset": DATASET,
+        "method": method_name,
+        **pair_result_metadata(pair),
+        "seed": seed,
+        "runtime_sec": np.nan,
+        "peak_mem_mb": np.nan,
+        "alignment_score": np.nan,
+        "FOSCTTM": np.nan,
+        **{label_transfer_metric_name(k): np.nan for k in LABEL_TRANSFER_TOP_KS},
+    }
+    try:
+        seed_everything(seed)
+        (out_name, embedding), runtime, memory = profile_fit_transform(
+            prepare_method_fit, (method_name, pair, seed),
+            timeout_sec=MAX_FIT_TRANSFORM_SEC,
+        )
+        row.update(runtime_sec=runtime, peak_mem_mb=memory)
+        row.update(benchmark_method(out_name, embedding, pair, output_dir, seed))
+        row["status"] = "ok"
+    except Exception as exc:
+        row["runtime_sec"] = getattr(exc, "runtime_sec", row["runtime_sec"])
+        row["peak_mem_mb"] = getattr(exc, "peak_mem_mb", row["peak_mem_mb"])
+        row["status"] = "Crash: timeout" if isinstance(exc, TimeoutError) else f"error: {exc}"
+    return order_result_row(row)
+
+
 def main():
     validate_datasets()
     validate_max_samples()
+    validate_label_mask_perc(LABEL_MASK_PERC)
+    if not DATASETS or not SEEDS or not MODELS_TO_RUN:
+        raise ValueError("DATASETS, SEEDS, and MODELS_TO_RUN must not be empty.")
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     root_dir = PROJECT_ROOT / "results_multimodal" / timestamp
     root_dir.mkdir(parents=True, exist_ok=True)
     results_csv = root_dir / "results_multimodal.csv"
-
     all_rows = []
     for dataset in DATASETS:
         set_active_dataset(dataset)
         validate_config()
         is_sketchy = DATASET_CONFIG["kind"] == "sketchy_npy_object_id"
-        pair = None if is_sketchy else build_pair()
-        pair_metadata = None if is_sketchy else pair_result_metadata(pair)
-
+        base_pair = None if is_sketchy else load_dataset_pair()
         dataset_dir = root_dir / dataset
         dataset_dir.mkdir(parents=True, exist_ok=True)
         save_experiment_metadata(dataset_dir, timestamp)
-        if not is_sketchy:
-            save_pair_metadata(dataset_dir, pair)
-
-        # Track methods that have failed for this dataset; skip remaining seeds for them.
-        failed_methods = set()
-
         for seed in SEEDS:
-            print(f"\n### STARTING DATASET: {dataset} | SEED: {seed} ###")
-            seed_dir = dataset_dir / f"seed_{seed}"
-            seed_dir.mkdir(parents=True, exist_ok=True)
             if is_sketchy:
-                pair = build_pair(seed)
-                pair_metadata = pair_result_metadata(pair)
-                save_pair_metadata(seed_dir, pair)
-
-            for method_name in MODELS_TO_RUN:
-                if method_name in failed_methods:
-                    out_name = next(iter(FOSTA_CONFIGS)) if method_name == "FoSTA" else method_name
-                    print(f"Skipping {method_name} for dataset {dataset} (previous failure)")
-                    row = {
-                        "dataset": dataset,
-                        "method": out_name,
-                        **pair_metadata,
-                        "alignment_score": np.nan,
-                        "FOSCTTM": np.nan,
-                        "seed": seed,
-                        "runtime_sec": np.nan,
-                        "peak_mem_mb": np.nan,
-                        "status": "skipped: previous failure",
-                    }
-                    row.update({
-                        label_transfer_metric_name(top_k): np.nan
-                        for top_k in LABEL_TRANSFER_TOP_KS
-                    })
-                    all_rows.append(row)
-                    append_result_row(results_csv, order_result_row(row))
-                    continue
-                out_name = next(iter(FOSTA_CONFIGS)) if method_name == "FoSTA" else method_name
-                runtime_sec = np.nan
-                try:
+                base_pair = load_dataset_pair(seed)
+            for proportion in LABEL_MASK_PERC:
+                pair = apply_label_masking(base_pair, proportion, seed)
+                run_dir = dataset_dir / f"mask_{float(proportion)}" / f"seed_{seed}"
+                run_dir.mkdir(parents=True, exist_ok=True)
+                save_pair_metadata(run_dir, pair)
+                print(f"\n### {dataset} | mask={proportion} | seed={seed} ###")
+                for method_name in MODELS_TO_RUN:
                     print(f"Running {method_name}...")
-                    seed_everything(seed)
-                    peak_mem_mb = np.nan
-                    (
-                        (out_name, embedding),
-                        runtime_sec,
-                        peak_mem_mb,
-                    ) = profile_fit_transform(
-                        prepare_method_fit,
-                        (method_name, pair, seed),
-                        timeout_sec=MAX_FIT_TRANSFORM_SEC,
-                    )
-                    row = benchmark_method(out_name, embedding, pair, seed_dir, seed)
-                    row.update(
-                        dataset=dataset,
-                        **pair_metadata,
-                        seed=seed,
-                        runtime_sec=runtime_sec,
-                        peak_mem_mb=peak_mem_mb,
-                        status="ok",
-                    )
-                except Exception as exc:
-                    runtime_sec = getattr(exc, "runtime_sec", runtime_sec)
-                    peak_mem_mb = getattr(exc, "peak_mem_mb", peak_mem_mb)
-                    if isinstance(exc, TimeoutError) or "fit_transform timeout" in str(exc):
-                        status_text = "Crash: timeout"
-                    else:
-                        status_text = f"error: {exc}"
-                    # mark this method as failed for this dataset so we skip remaining seeds
-                    failed_methods.add(method_name)
-                    row = {
-                        "dataset": dataset,
-                        "method": out_name,
-                        **pair_metadata,
-                        "alignment_score": np.nan,
-                        "FOSCTTM": np.nan,
-                        "seed": seed,
-                        "runtime_sec": runtime_sec,
-                        "peak_mem_mb": peak_mem_mb if 'peak_mem_mb' in locals() else np.nan,
-                        "status": status_text,
-                    }
-                    row.update({
-                        label_transfer_metric_name(top_k): np.nan
-                        for top_k in LABEL_TRANSFER_TOP_KS
-                    })
+                    row = run_method(method_name, pair, run_dir, seed)
+                    all_rows.append(row)
+                    append_result_row(results_csv, row)
+                    print(f"  {row['status']} | Top1={row['label_transfer_top1']:.4f} "
+                          f"| {row['runtime_sec']:.1f}s")
 
-                all_rows.append(row)
-                append_result_row(results_csv, order_result_row(row))
-                if row["status"] == "ok":
-                    topk_text = " | ".join(
-                        f"Top{top_k}={row[label_transfer_metric_name(top_k)]:.4f}"
-                        for top_k in LABEL_TRANSFER_TOP_KS
-                    )
-                    print(
-                        f"  {topk_text} | "
-                        f"AS={row['alignment_score']:.4f} | "
-                        f"FOSCTTM={row['FOSCTTM']:.4f} | "
-                        f"{row['runtime_sec']:.1f}s"
-                    )
-                else:
-                    print(f"  FAILED: {row['status']}")
-
-    results_df = pd.DataFrame(all_rows).sort_values(["dataset", "seed", "method"], kind="stable")
-    ordered_cols = result_column_order()
-    results_df = results_df[
-        [col for col in ordered_cols if col in results_df.columns]
-        + [col for col in results_df.columns if col not in ordered_cols]
-    ]
+    results_df = pd.DataFrame(all_rows).sort_values(
+        ["dataset", "label_mask_perc", "seed", "method"], kind="stable"
+    )
     results_df.to_csv(results_csv, index=False)
-    print(f"\nFinished. Results saved to: {root_dir}")
-    print(f"Metrics CSV: {results_csv}")
+    print(f"\nFinished. Metrics CSV: {results_csv}")
 
 
 if __name__ == "__main__":
