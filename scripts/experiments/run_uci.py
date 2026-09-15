@@ -64,9 +64,7 @@ DATASETS = [
 METHODS = [
 
 
-    "FoSTA_gap_auto",  # Default
-
-
+    "FoSTA_gap_auto",
     "FoSTA_gap_t2",
     "FoSTA_kerf_auto",
     "FoSTA_umap",
