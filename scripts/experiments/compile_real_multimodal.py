@@ -5,7 +5,7 @@ import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_ROOT = PROJECT_ROOT / "results_multimodal"
-TIMESTAMP = "20260915_103715"
+TIMESTAMP = "20260915_150749"
 OUTPUT_FILENAME = "results_multimodal_table.tex"
 MARKDOWN_OUTPUT_FILENAME = "results_multimodal_table.md"
 
@@ -25,11 +25,11 @@ METHODS = [
 ]
 
 METHOD_DISPLAY_MAP = {
-    "FoSTA_t2": "FoSTA ($t=2$)",
+    "FoSTA_t2": "FoSTA",
     "FoSTA_tauto": "FoSTA (auto $t$)",
     "KEMAlin": "KEMAlin",
     "KEMArbf": "KEMArbf",
-    "MALI_t2": "MALI ($t=2$)",
+    "MALI_t2": "MALI",
     "MALI_tauto": "MALI (auto $t$)",
     "Pamona": "Pamona",
     "Unintegrated": "Unintegrated",
@@ -374,7 +374,8 @@ def build_latex_table(
         r"\centering",
         TABLE_FONT_SIZE,
         r"\setlength{\tabcolsep}{2pt}",
-        r"\renewcommand{\arraystretch}{1.08}",
+        r"\setlength{\fboxsep}{1pt}",
+        r"\renewcommand{\arraystretch}{1.0}",
         "",
         f"\\begin{{tabular}}{{{make_column_spec(len(methods))}}}",
         r"\toprule",

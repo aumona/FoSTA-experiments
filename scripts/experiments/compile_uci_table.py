@@ -9,11 +9,17 @@ from pathlib import Path
 
 # results_csv = "results_uci/results_20260503_015528_general.csv"
 
-results_csv = "results_uci/results_20260503_122708_general_distort05.csv"
+results_csv = "results_uci/results_20260915_143959_general_uci.csv"
 
 
 # Set this to 1, 2, or 3 to control how many top ranks are colored
 desired_top = 3
+
+INCLUDE_STDS = True
+TABLE_FONT_SIZE = r"\small"
+METHOD_CELL_WIDTH = "1.5cm"
+
+RANK_MACROS = {1: r"\gold", 2: r"\silver", 3: r"\bronze"}
 
 metrics = {
     "label_transfer": "Acc",
@@ -23,16 +29,16 @@ metrics = {
 
 lower_is_better = ["foscttm"]
 
-# split_order = [
-#     "add_gaussian_noise_features",
-#     "alternate_importance",
-#     "distort",
-#     "importance",
-#     "random",
-#     "rotate"
-# ]
+split_order = [
+    "add_gaussian_noise_features",
+    "alternate_importance",
+    "distort",
+    "importance",
+    "random",
+    "rotate"
+]
 
-split_order = ["distort"]
+# split_order = ["distort"]
 
 
 split_display_map = {
@@ -54,34 +60,34 @@ markdown_split_display_map = {
 }
 
 method_order = [
-    "FoSTA_gap_auto",
 
-    # "FoSTA_gap_t2",
+    "FoSTA_gap_t2",
+
     # "FoSTA_gap_auto",
     # "FoSTA_kerf_t2",
     # "FoSTA_kerf_auto",
+    # "FoSTA_rotf",
+
+    "KEMAlin",
+    "KEMArbf",
 
 
 
-    "MALI_auto",
+    # "MALI_auto",
     "MALI_t2",
     # "MALI_nodpt",
-    "Pamona", 
-    "KEMAlin", 
-    "KEMArbf"
+    "Pamona"
+
 ]
 
 method_display_map = {
-    "FoSTA_ICML_auto": "FoSTA_ICML ($t=\\texttt{auto}$)",
-    "FoSTA_ICML_t2": "FoSTA_ICML ($t=2$)",
-    "FoSTA_gap_t2": "FoSTA ($t=2$)",
+    "FoSTA_gap_t2": "FoSTA",
     "FoSTA_gap_auto": "FoSTA ($t=\\texttt{auto}$)",
-    "FoSTA_gap_mauto_t2": "FoSTA (mauto, $t=2$)",
     "FoSTA_kerf_t2": "FoSTA-KeRF ($t=2$)",
     "FoSTA_kerf_auto": "FoSTA-KeRF ($t=\\texttt{auto}$)",
-    "FoSTA_kerf_mauto_t2": "FoSTA-KeRF (mauto, $t=2$)",
-    "MALI_auto": "MALI (auto)",
-    "MALI_t2": "MALI (t=2)",
+    "FoSTA_rotf": "FoSTA-RotF",
+    "MALI_auto": "MALI ($t=\\texttt{auto}$)",
+    "MALI_t2": "MALI",
     "MALI_nodpt": "MALI (w/o DPT)",
     "Pamona": "Pamona", 
     "KEMAlin": "KEMAlin", 
@@ -104,19 +110,40 @@ def get_rank(val, m_key, split_name, all_summaries):
     return None
 
 
-def get_highlighted_value(val, m_key, split_name, all_summaries):
+def format_ranked_value(formatted: str, rank: int) -> str:
+    rank_macro = RANK_MACROS[rank]
+    highlighted = f"{rank_macro}{{{formatted}}}"
+    if rank in (1, 2):
+        # Share geometry instead of relying on differently sized external macros.
+        fill = "[rgb]{1,0.95,0.8}" if rank == 1 else "[gray]{0.85}"
+        highlighted = (
+            f"\\colorbox{fill}{{"
+            f"\\makebox[\\dimexpr {METHOD_CELL_WIDTH}-2\\fboxsep\\relax][c]"
+            r"{\raisebox{0pt}[\ht\strutbox][\dp\strutbox]{"
+            f"\\textcolor{{black}}{{\\textbf{{{formatted}}}}}}}}}}}"
+        )
+    return f"\\makebox[{METHOD_CELL_WIDTH}][c]{{{highlighted}}}"
+
+
+def format_plain_value(formatted: str) -> str:
+    return f"\\makebox[{METHOD_CELL_WIDTH}][c]{{{formatted}}}"
+
+
+def format_mean_std(mean: float, std: float) -> str:
+    if not INCLUDE_STDS:
+        return f"{mean:.3f}"
+    return f"{mean:.3f}{{\\tiny $\\pm${std:.2f}}}"
+
+
+
+def get_highlighted_value(val, m_key, split_name, all_summaries, std=0.0):
     if pd.isna(val):
         return "---"
-    formatted = f"{val:.3f}"
-
+    formatted = format_mean_std(val, std)
     rank = get_rank(val, m_key, split_name, all_summaries)
-    if rank == 1:
-        return f"\\gold{{{formatted}}}" 
-    if rank == 2:
-        return f"\\silver{{{formatted}}}" 
-    if rank == 3:
-        return f"\\bronze{{{formatted}}}" 
-    return formatted
+    if rank is not None:
+        return format_ranked_value(formatted, rank)
+    return format_plain_value(formatted)
 
 
 def get_markdown_value(val, m_key, split_name, all_summaries):
@@ -182,124 +209,126 @@ def summarize_results(df):
     return all_summaries, all_stds
 
 # =========================================================
-# TABLE GENERATION - TWO-ROW FORMAT
+# TABLE GENERATION - METHODS AS COLUMNS
 # =========================================================
-def build_latex_table(all_summaries, all_stds):
-    metric_count = len(metrics)
-    column_spec = "l " + " ".join("c" * metric_count for _ in split_order)
-    header_row = " "
-    sub_header = "Model "
-    column_rules = []
-    for split_index, split in enumerate(split_order):
-        header_row += (
-            f"& \\multicolumn{{{metric_count}}}{{c}}{{{split_display_map[split]}}} "
-        )
-        first_column = 2 + split_index * metric_count
-        column_rules.append(
-            fr"\cmidrule(lr){{{first_column}-{first_column + metric_count - 1}}}"
-        )
-        for metric_key, metric_label in metrics.items():
-            arrow = r"\downarrow" if metric_key in lower_is_better else r"\uparrow"
-            sub_header += f"& {metric_label}${arrow}$ "
+def average_scores(all_summaries, all_stds):
+    """Equally average displayed splits, requiring complete values for each method."""
+    def average(values):
+        return {
+            key: summary.reindex(index=method_order, columns=split_order)
+            .mean(axis=1, skipna=False).to_frame("average")
+            for key, summary in values.items()
+        }
 
+    return average(all_summaries), average(all_stds)
+
+
+def build_latex_table(all_summaries, all_stds):
+    column_spec = "lr " + " ".join(["c"] * len(method_order))
+    header = ["Split", "Metric"] + [
+        format_plain_value(method_display_map[method]) for method in method_order
+    ]
     lines = [
         r"\begin{table}[t]",
-        r"% \small",
+        r"{\small",
         (
             r"\caption{Aggregated performance over UCI datasets and seeds under "
-            r"the selected distortion splits. Means are reported with the average "
-            r"within-dataset standard deviation across seeds on the following row. "
+            r"the selected distortion splits. Each cell reports mean $\pm$ the "
+            r"average within-dataset standard deviation across seeds. "
             r"Results are shown for label transfer accuracy (Acc), alignment score "
             r"(AS), and correspondence recovery measured by FOSCTTM (FOS). Higher "
             r"is better for accuracy and AS, while lower is better for FOSCTTM. "
             + {
-                1: "The best result for each metric is highlighted in gold (1st).",
-                2: "The top two results for each metric are highlighted in gold (1st) and silver (2nd).",
-                3: "The top three results for each metric are highlighted in gold (1st), silver (2nd), and bronze (3rd).",
+                1: "The best result for each metric is highlighted in gold (1st). ",
+                2: "The top two results for each metric are highlighted in gold (1st) and silver (2nd). ",
+                3: "The top three results for each metric are highlighted in gold (1st), silver (2nd), and bronze (3rd). ",
             }[desired_top]
-            + "}"
+            + "The final three rows report average scores across the displayed splits, "
+            "with standard deviations also averaged across splits.}"
         ),
+        r"}",
         r"\label{tab:uci_full}",
         r"\centering",
-        r"\setlength{\tabcolsep}{3pt}",
-        r"\renewcommand{\arraystretch}{1.08}",
+        TABLE_FONT_SIZE,
+        r"\setlength{\tabcolsep}{2pt}",
+        r"\setlength{\fboxsep}{1pt}",
+        r"\renewcommand{\arraystretch}{1.0}",
         "",
-        r"\begin{adjustbox}{width=\columnwidth}",
         fr"\begin{{tabular}}{{{column_spec}}}",
         r"\toprule",
-        header_row + r"\\",
-        " ".join(column_rules),
-        sub_header + r"\\",
-        r"\midrule",
+        " & ".join(header) + r" \\",
     ]
-    for method in method_order:
-        row_means = [method_display_map[method]]
-        row_errors = [r"\scriptsize{$\pm$ std.}"]
-        for split in split_order:
-            for metric_key in metrics:
+    for split in split_order:
+        lines.append(r"\midrule")
+        for metric_key, metric_label in metrics.items():
+            arrow = r"\downarrow" if metric_key in lower_is_better else r"\uparrow"
+            row = [split_display_map[split] if metric_key == "alignment_score" else "",
+                   f"{metric_label}${arrow}$"]
+            for method in method_order:
                 mean = all_summaries[metric_key].loc[method, split]
                 std = all_stds[metric_key].loc[method, split]
-                row_means.append(
-                    get_highlighted_value(
-                        mean, metric_key, split, all_summaries
-                    )
-                )
-                row_errors.append(
-                    fr"\scriptsize{{$\pm${std:.2f}}}"
-                    if not pd.isna(std)
-                    else " "
-                )
-        lines.append(" & ".join(row_means) + r" \\")
-        lines.append(" & ".join(row_errors) + r" \\[0.5ex]")
+                row.append(get_highlighted_value(mean, metric_key, split, all_summaries, std))
+            lines.append(" & ".join(row) + r" \\")
+
+    avg_means, avg_stds = average_scores(all_summaries, all_stds)
+    lines.append(r"\midrule")
+    for metric_key, metric_label in metrics.items():
+        arrow = r"\downarrow" if metric_key in lower_is_better else r"\uparrow"
+        row = ["Average score" if metric_key == "alignment_score" else "",
+               f"{metric_label}${arrow}$"]
+        row.extend(
+            get_highlighted_value(
+                avg_means[metric_key].loc[method, "average"],
+                metric_key, "average", avg_means,
+                avg_stds[metric_key].loc[method, "average"],
+            )
+            for method in method_order
+        )
+        lines.append(" & ".join(row) + r" \\")
 
     lines.extend([
         r"\bottomrule",
         r"\end{tabular}",
-        r"\end{adjustbox}",
         r"\end{table}",
     ])
     return "\n".join(lines) + "\n"
 
 
 def build_markdown_table(all_summaries, all_stds):
-    header = ["Model"]
-    for split in split_order:
-        split_name = markdown_split_display_map[split]
-        header.extend(
-            f"{split_name} {metric_label}"
-            for metric_label in metrics.values()
-        )
-
+    header = ["Split", "Metric"] + [markdown_method_name(method) for method in method_order]
     lines = [
         (
-            "UCI benchmark results averaged over datasets and seeds. Each "
-            "model's second row reports the mean within-dataset standard "
-            "deviation. First place is bold and italic, second place is bold, "
-            "and third place is italic."
+            "UCI benchmark results averaged over datasets and seeds. Each cell "
+            "reports mean ± average within-dataset standard deviation. First place "
+            "is bold and italic, second place is bold, and third place is italic. "
+            "The final rows report scores and standard deviations averaged across "
+            "the displayed splits."
         ),
         "",
         "| " + " | ".join(header) + " |",
         "| " + " | ".join(["---"] * len(header)) + " |",
     ]
-
-    for method in method_order:
-        row_means = [markdown_method_name(method)]
-        row_errors = ["± std."]
-        for split in split_order:
-            for metric_key in metrics:
+    for split in split_order:
+        for metric_key, metric_label in metrics.items():
+            arrow = "↓" if metric_key in lower_is_better else "↑"
+            row = [markdown_split_display_map[split], metric_label + arrow]
+            for method in method_order:
                 mean = all_summaries[metric_key].loc[method, split]
                 std = all_stds[metric_key].loc[method, split]
-                row_means.append(
-                    get_markdown_value(
-                        mean, metric_key, split, all_summaries
-                    )
-                )
-                row_errors.append(
-                    f"± {std:.2f}" if not pd.isna(std) else ""
-                )
-        lines.append("| " + " | ".join(row_means) + " |")
-        lines.append("| " + " | ".join(row_errors) + " |")
+                value = get_markdown_value(mean, metric_key, split, all_summaries)
+                row.append(value + (f" ± {std:.2f}" if pd.notna(std) else ""))
+            lines.append("| " + " | ".join(row) + " |")
 
+    avg_means, avg_stds = average_scores(all_summaries, all_stds)
+    for metric_key, metric_label in metrics.items():
+        arrow = "↓" if metric_key in lower_is_better else "↑"
+        row = ["Average score", metric_label + arrow]
+        for method in method_order:
+            mean = avg_means[metric_key].loc[method, "average"]
+            std = avg_stds[metric_key].loc[method, "average"]
+            value = get_markdown_value(mean, metric_key, "average", avg_means)
+            row.append(value + (f" ± {std:.2f}" if pd.notna(mean) and pd.notna(std) else ""))
+        lines.append("| " + " | ".join(row) + " |")
     return "\n".join(lines) + "\n"
 
 
