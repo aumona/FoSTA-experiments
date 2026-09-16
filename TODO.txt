@@ -1,2 +1,0 @@
-- Rerun experiments with MALI+PHATE instead of spectral (both UCI and real multimodal).
-This is for better consistency with the scaling experiments where we use Landmark PHATE for both
