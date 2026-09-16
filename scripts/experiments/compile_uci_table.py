@@ -185,14 +185,50 @@ def summarize_results(df):
 # TABLE GENERATION - TWO-ROW FORMAT
 # =========================================================
 def build_latex_table(all_summaries, all_stds):
-    header_row = "Model "
-    sub_header = " "
-    for split in split_order:
-        header_row += f"& \\multicolumn{{3}}{{c}}{{{split_display_map[split]}}} "
-        sub_header += "& Acc & AS & FOS "
+    metric_count = len(metrics)
+    column_spec = "l " + " ".join("c" * metric_count for _ in split_order)
+    header_row = " "
+    sub_header = "Model "
+    column_rules = []
+    for split_index, split in enumerate(split_order):
+        header_row += (
+            f"& \\multicolumn{{{metric_count}}}{{c}}{{{split_display_map[split]}}} "
+        )
+        first_column = 2 + split_index * metric_count
+        column_rules.append(
+            fr"\cmidrule(lr){{{first_column}-{first_column + metric_count - 1}}}"
+        )
+        for metric_key, metric_label in metrics.items():
+            arrow = r"\downarrow" if metric_key in lower_is_better else r"\uparrow"
+            sub_header += f"& {metric_label}${arrow}$ "
 
     lines = [
+        r"\begin{table}[t]",
+        r"% \small",
+        (
+            r"\caption{Aggregated performance over UCI datasets and seeds under "
+            r"the selected distortion splits. Means are reported with the average "
+            r"within-dataset standard deviation across seeds on the following row. "
+            r"Results are shown for label transfer accuracy (Acc), alignment score "
+            r"(AS), and correspondence recovery measured by FOSCTTM (FOS). Higher "
+            r"is better for accuracy and AS, while lower is better for FOSCTTM. "
+            + {
+                1: "The best result for each metric is highlighted in gold (1st).",
+                2: "The top two results for each metric are highlighted in gold (1st) and silver (2nd).",
+                3: "The top three results for each metric are highlighted in gold (1st), silver (2nd), and bronze (3rd).",
+            }[desired_top]
+            + "}"
+        ),
+        r"\label{tab:uci_full}",
+        r"\centering",
+        r"\setlength{\tabcolsep}{3pt}",
+        r"\renewcommand{\arraystretch}{1.08}",
+        "",
+        r"\begin{adjustbox}{width=\columnwidth}",
+        fr"\begin{{tabular}}{{{column_spec}}}",
+        r"\toprule",
         header_row + r"\\",
+        " ".join(column_rules),
         sub_header + r"\\",
         r"\midrule",
     ]
@@ -216,7 +252,12 @@ def build_latex_table(all_summaries, all_stds):
         lines.append(" & ".join(row_means) + r" \\")
         lines.append(" & ".join(row_errors) + r" \\[0.5ex]")
 
-    lines.append(r"\bottomrule")
+    lines.extend([
+        r"\bottomrule",
+        r"\end{tabular}",
+        r"\end{adjustbox}",
+        r"\end{table}",
+    ])
     return "\n".join(lines) + "\n"
 
 
