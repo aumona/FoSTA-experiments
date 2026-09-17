@@ -27,12 +27,11 @@ plt.rcParams.update({
     "legend.fontsize": GLOBAL_FONTSIZE,
 })
 
-RESULTS_CSV = Path("./results_uci/results_20260503_171832.csv")
+RESULTS_CSV = Path("./results_uci/results_20260916_141907_mask_ablation.csv")
 OUT_DIR = Path("./results_uci/mask_fraction_plots")
 
 SELECTED_METHODS = [
-    "FoSTA_gap_auto",
-    "MALI_auto",
+    "FoSTA_gap_t2",
     "MALI_t2",
     "Pamona",
     "KEMAlin",
@@ -40,25 +39,25 @@ SELECTED_METHODS = [
 ]
 
 METHOD_DISPLAY_NAMES = {
-    "FoSTA_gap_auto": "FoSTA",
-    "MALI_auto": "MALI (auto)",
-    "MALI_t2": "MALI (t=2)",
+    "FoSTA_gap_t2": "FoSTA",
+    "MALI_t2": "MALI",
     "Pamona": "Pamona",
     "KEMAlin": "KEMAlin",
     "KEMArbf": "KEMArbf",
 }
 
 METHOD_COLORS = {
-    "FoSTA_gap_auto": "#E69F00",  # orange
-    "MALI_auto": "#7F7F7F",
-    "MALI_t2": "#4C78A8",            # gray
+    "FoSTA_gap_t2": "#E69F00",  # orange
+    "MALI_t2": "#7F7F7F",
+    "Pamona": "#4C78A8",            # gray
+    "KEMAlin": "#5DA5DA",            # blue
+    "KEMArbf": "#FA8072",            # red
 }
 
 METHOD_STYLES = {
-    "FoSTA_gap_auto": dict(linestyle="-", linewidth=3.2, alpha=1.0),
-    "MALI_auto": dict(linestyle="--", linewidth=1.9, alpha=0.70),
+    "FoSTA_gap_t2": dict(linestyle="-", linewidth=3.2, alpha=1.0),
     "MALI_t2": dict(linestyle=":", linewidth=1.9, alpha=0.85),
-    "Pamona": dict(linestyle="--", linewidth=1.9, alpha=0.70),
+    "Pamona": dict(linestyle="-.", linewidth=1.9, alpha=0.70),
     "KEMAlin": dict(linestyle="--", linewidth=1.9, alpha=0.70),
     "KEMArbf": dict(linestyle="--", linewidth=1.9, alpha=0.70),
 }
@@ -83,18 +82,8 @@ REQUIRED_COLUMNS = {
     "status",
 }
 
-SPLIT_DISPLAY_NAMES = {
-    "add_gaussian_noise_features": "Noise",
-    "alternate_importance": "Alt. Importance",
-    "distort": "Distort",
-    "importance": "Importance",
-    "random": "Random",
-    "rotate": "Rotate",
-}
-
-
 # =============================================================================
-# DATA HELPERS (Unchanged logic)
+# DATA HELPERS
 # =============================================================================
 
 def load_results(path: Path) -> pd.DataFrame:
@@ -110,8 +99,12 @@ def load_results(path: Path) -> pd.DataFrame:
     return df
 
 def aggregate_by_mask_fraction(df: pd.DataFrame, metric: str) -> pd.DataFrame:
+    # Average seeds within each split, then weight splits equally per dataset.
+    per_split = df.groupby(
+        ["dataset", "split", "method", "mask_fraction"], dropna=False
+    )[metric].mean()
     per_dataset = (
-        df.groupby(["dataset", "method", "mask_fraction"], dropna=False)[metric]
+        per_split.groupby(level=["dataset", "method", "mask_fraction"], dropna=False)
         .mean()
         .reset_index(name="dataset_mean")
     )
@@ -126,13 +119,12 @@ def aggregate_by_mask_fraction(df: pd.DataFrame, metric: str) -> pd.DataFrame:
 
 def save_compiled_summary(df: pd.DataFrame, out_dir: Path) -> None:
     summaries = []
-    for split, df_split in df.groupby("split", dropna=True):
-        for metric, metric_name in METRICS.items():
-            agg = aggregate_by_mask_fraction(df_split, metric)
-            agg["split"] = split
-            agg["metric"] = metric
-            agg["metric_name"] = metric_name
-            summaries.append(agg)
+    for metric, metric_name in METRICS.items():
+        agg = aggregate_by_mask_fraction(df, metric)
+        agg["split"] = "average"
+        agg["metric"] = metric
+        agg["metric_name"] = metric_name
+        summaries.append(agg)
     summary = pd.concat(summaries, axis=0, ignore_index=True)
     summary_path = out_dir / "mask_fraction_compiled_summary.csv"
     summary.to_csv(summary_path, index=False)
@@ -142,84 +134,62 @@ def save_compiled_summary(df: pd.DataFrame, out_dir: Path) -> None:
 # =============================================================================
 # PLOTTING
 # =============================================================================
-def plot_metric_split_grid(df: pd.DataFrame, out_dir: Path) -> None:
-    splits = sorted(df["split"].dropna().unique())
+def plot_metric_averages(df: pd.DataFrame, out_dir: Path) -> None:
     metrics = list(METRICS.items())
     mask_ticks = np.sort(df["mask_fraction"].dropna().unique())
-
     fig, axes = plt.subplots(
-        len(splits),
-        len(metrics),
-        figsize=(FIG_WIDTH, 8.8),
-        sharex=True,
-        squeeze=False,
+        1, len(metrics), figsize=(FIG_WIDTH, 2.5), sharex=True, squeeze=False,
     )
-
-    for r, split in enumerate(splits):
-        df_split = df[df["split"] == split]
-
-        for c, (metric, metric_name) in enumerate(metrics):
-            ax = axes[r, c]
-
-            if df_split.empty:
-                ax.axis("off")
+    for c, (metric, metric_name) in enumerate(metrics):
+        ax = axes[0, c]
+        ax.set_box_aspect(1)
+        agg = aggregate_by_mask_fraction(df, metric)
+        for method in SELECTED_METHODS:
+            sub = agg[agg["method"] == method].sort_values("mask_fraction")
+            if sub.empty:
                 continue
+            ax.plot(
+                sub["mask_fraction"].to_numpy(float),
+                sub["mean"].to_numpy(float),
+                label=METHOD_DISPLAY_NAMES.get(method, method),
+                color=METHOD_COLORS.get(method),
+                **METHOD_STYLES.get(method, DEFAULT_STYLE),
+            )
+        ax.set_title(metric_name, fontsize=GLOBAL_FONTSIZE)
+        ax.set_xlabel("% Masked Labels", fontsize=GLOBAL_FONTSIZE)
+        ax.set_xticks(mask_ticks)
+        ax.set_xticklabels([f"{x:g}" for x in mask_ticks])
+        ax.grid(True, alpha=0.25)
+        ax.tick_params(axis="both", which="both", length=0, labelsize=TICK_FONTSIZE)
+        ax.yaxis.set_major_formatter(FormatStrFormatter("%.3f"))
 
-            agg = aggregate_by_mask_fraction(df_split, metric)
-
-            for method in SELECTED_METHODS:
-                sub = agg[agg["method"] == method].sort_values("mask_fraction")
-                if sub.empty:
-                    continue
-
-                ax.plot(
-                    sub["mask_fraction"].to_numpy(float),
-                    sub["mean"].to_numpy(float),
-                    label=METHOD_DISPLAY_NAMES.get(method, method),
-                    color=METHOD_COLORS.get(method),
-                    **METHOD_STYLES.get(method, DEFAULT_STYLE),
-                )
-
-            # Titles only on the top row
-            if r == 0:
-                ax.set_title(metric_name, fontsize=GLOBAL_FONTSIZE)
-
-            # Y-Labels only on the first column
-            if c == 0:
-                ax.set_ylabel(SPLIT_DISPLAY_NAMES.get(split, split), fontsize=GLOBAL_FONTSIZE)
-
-            # X-Labels only on the bottom row
-            if r == len(splits) - 1:
-                ax.set_xlabel("% Masked Labels", fontsize=GLOBAL_FONTSIZE)
-
-            ax.set_xticks(mask_ticks)
-            ax.set_xticklabels([f"{x:g}" for x in mask_ticks])
-            ax.grid(True, alpha=0.25)
-            
-            # Ticks explicitly use GLOBAL_FONTSIZE - 1
-            ax.tick_params(axis="both", which="both", length=0, labelsize=TICK_FONTSIZE)
-            ax.yaxis.set_major_formatter(FormatStrFormatter("%.3f"))
-
+    fig.tight_layout(rect=[0, 0, 1, 0.90])
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    title_top = max(
+        ax.title.get_window_extent(renderer).transformed(fig.transFigure.inverted()).y1
+        for ax in axes.flat
+    )
+    legend_gap = 5 / 72 / fig.get_figheight()  # Five points above the subplot titles.
     handles, labels = axes[0, 0].get_legend_handles_labels()
     fig.legend(
         handles,
         labels,
-        loc="upper center",
+        loc="lower center",
         ncol=len(labels),
         frameon=True,
         fontsize=GLOBAL_FONTSIZE,
-        bbox_to_anchor=(0.5, 1.015),
+        bbox_to_anchor=(0.5, title_top + legend_gap),
+        borderaxespad=0,
         columnspacing=1.4,
         handlelength=2.5,
     )
-
-    fig.tight_layout(rect=[0, 0, 1, 0.99])
 
     for ext, kwargs in {
         "png": dict(dpi=300, bbox_inches="tight"),
         "pdf": dict(bbox_inches="tight"),
     }.items():
-        out_path = out_dir / f"mask_fraction_metric_split_grid.{ext}"
+        out_path = out_dir / f"mask_fraction_metric_averages.{ext}"
         fig.savefig(out_path, **kwargs)
         print(f"Saved: {out_path}")
 
@@ -231,7 +201,7 @@ def main() -> None:
     if df.empty:
         raise ValueError("No successful rows found for the selected methods.")
     save_compiled_summary(df, OUT_DIR)
-    plot_metric_split_grid(df, OUT_DIR)
+    plot_metric_averages(df, OUT_DIR)
 
 if __name__ == "__main__":
     main()
