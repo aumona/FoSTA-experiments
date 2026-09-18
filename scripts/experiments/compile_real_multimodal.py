@@ -10,7 +10,7 @@ OUTPUT_FILENAME = "results_multimodal_table.tex"
 MARKDOWN_OUTPUT_FILENAME = "results_multimodal_table.md"
 
 DESIRED_TOP = 3
-COMPACT = True  # Hide top-k accuracy and average RGB-D/Sketchy encoder variants.
+COMPACT = True  # Hide top-k accuracy and use only ResNet18 for RGB-D/Sketchy.
 INCLUDE_STDS = True
 TABLE_FONT_SIZE = r"\small"
 METHOD_CELL_WIDTH = "1.5cm"
@@ -38,8 +38,8 @@ METHOD_DISPLAY_MAP = {
 }
 
 DATASET_DISPLAY_MAP = {
-    "rgbd": (r"Image $\leftrightarrow$ Depth crop", "RGB-D"),
-    "sketchy": (r"Image $\leftrightarrow$ Human sketch", "Sketchy"),
+    "rgbd": (r"Image $\leftrightarrow$ Depth crop", "RGB-D ResNet18"),
+    "sketchy": (r"Image $\leftrightarrow$ Human sketch", "Sketchy ResNet18"),
     "ave": (r"Audio $\leftrightarrow$ Video", "AVE"),
     "har": (r"Sensor 1 $\leftrightarrow$ Sensor 2", "HAR"),
     "rgbd_resnet18": (r"Image $\leftrightarrow$ Depth crop", "RGB-D ResNet18"),
@@ -49,8 +49,8 @@ DATASET_DISPLAY_MAP = {
 }
 
 MARKDOWN_DATASET_DISPLAY_MAP = {
-    "rgbd": ("Image ↔ Depth crop", "RGB-D"),
-    "sketchy": ("Image ↔ Human sketch", "Sketchy"),
+    "rgbd": ("Image ↔ Depth crop", "RGB-D ResNet18"),
+    "sketchy": ("Image ↔ Human sketch", "Sketchy ResNet18"),
     "ave": ("Audio ↔ Video", "AVE"),
     "har": ("Sensor 1 ↔ Sensor 2", "HAR"),
     "rgbd_resnet18": ("Image ↔ Depth crop", "RGB-D ResNet18"),
@@ -222,33 +222,22 @@ def metrics_for_dataset(dataset: str) -> list[tuple[str, str, bool]]:
 
 
 def compact_results(means, stds, datasets, methods, class_counts):
-    """Give each encoder equal weight; require both variants for merged values."""
-    means, stds = means.copy(), stds.copy()
-    datasets, class_counts = list(datasets), dict(class_counts)
-    for merged, variants in {
-        "rgbd": ["rgbd_resnet18", "rgbd_dinov2base"],
-        "sketchy": ["sketchy_resnet18", "sketchy_dinov2base"],
-    }.items():
-        present = [variant for variant in variants if variant in datasets]
-        if not present:
-            continue
-        counts = {class_counts[variant] for variant in present}
-        if len(counts) != 1:
-            raise ValueError(f"Inconsistent class counts for {merged}: {counts}")
-        for frame in (means, stds):
-            for method in methods:
-                index = pd.MultiIndex.from_product(
-                    [variants, [method]], names=frame.index.names
-                )
-                frame.loc[(merged, method), :] = frame.reindex(index).mean(
-                    axis=0, skipna=False
-                )
-        means = means.drop(index=present, level="dataset")
-        stds = stds.drop(index=present, level="dataset")
-        datasets = [dataset for dataset in datasets if dataset not in present]
-        datasets.append(merged)
-        class_counts[merged] = counts.pop()
-    return means, stds, sorted(datasets, key=dataset_sort_key), class_counts
+    """Select ResNet18 for RGB-D/Sketchy; DINO variants do not enter compact averages."""
+    selected = [
+        dataset for dataset in datasets
+        if not dataset.startswith(("rgbd_", "sketchy_"))
+        or dataset in ("rgbd_resnet18", "sketchy_resnet18")
+    ]
+    names = {"rgbd_resnet18": "rgbd", "sketchy_resnet18": "sketchy"}
+
+    def select(frame):
+        return frame.loc[frame.index.get_level_values("dataset").isin(selected)].rename(
+            index=names, level="dataset"
+        ).copy()
+
+    counts = {names.get(dataset, dataset): class_counts[dataset] for dataset in selected}
+    compact_datasets = sorted(counts, key=dataset_sort_key)
+    return select(means), select(stds), compact_datasets, counts
 
 
 def table_caption(markdown=False):
@@ -258,10 +247,8 @@ def table_caption(markdown=False):
             "(Acc and, where applicable, Acc@5 or Acc@10)", "(Acc)"
         )
         caption += (
-            " RGB-D and Sketchy scores and standard deviations are averaged "
-            "equally over ResNet18 and DINOv2-B; both variants are required. "
-            "The final average retains equal weighting of the original dataset "
-            "variants, as in the full table."
+            " RGB-D and Sketchy use ResNet18 features only. "
+            "DINOv2-B results are excluded."
         )
     return caption
 
@@ -415,7 +402,6 @@ def build_latex_table(
     header = ["Alignment task", "Metric"] + [
         f"\\makebox[{METHOD_CELL_WIDTH}][c]{{{display_method(method)}}}" for method in methods
     ]
-    avg_means, avg_stds = average_scores(means, stds, datasets, methods)
     if COMPACT:
         means, stds, datasets, class_counts = compact_results(
             means, stds, datasets, methods, class_counts
@@ -455,15 +441,17 @@ def build_latex_table(
         if dataset_idx < len(datasets) - 1:
             lines.append(r"\midrule")
 
-    lines.append(r"\midrule")
-    for metric_idx, (metric, metric_label, lower_is_better) in enumerate(METRICS):
-        dataset_cell = (
-            f"\\multirow{{{len(METRICS)}}}{{*}}{{Average score}}" if metric_idx == 0 else ""
-        )
-        row = [dataset_cell, metric_label]
-        for method in methods:
-            row.append(highlighted_summary_value(avg_means, avg_stds, method, metric, lower_is_better))
-        lines.append(" & ".join(row) + r" \\")
+    if not COMPACT:
+        avg_means, avg_stds = average_scores(means, stds, datasets, methods)
+        lines.append(r"\midrule")
+        for metric_idx, (metric, metric_label, lower_is_better) in enumerate(METRICS):
+            dataset_cell = (
+                f"\\multirow{{{len(METRICS)}}}{{*}}{{Average score}}" if metric_idx == 0 else ""
+            )
+            row = [dataset_cell, metric_label]
+            for method in methods:
+                row.append(highlighted_summary_value(avg_means, avg_stds, method, metric, lower_is_better))
+            lines.append(" & ".join(row) + r" \\")
 
     lines.extend(
         [
@@ -491,7 +479,6 @@ def build_markdown_table(
         "| " + " | ".join(header) + " |",
         "| " + " | ".join(["---"] * len(header)) + " |",
     ]
-    avg_means, avg_stds = average_scores(means, stds, datasets, methods)
     if COMPACT:
         means, stds, datasets, class_counts = compact_results(
             means, stds, datasets, methods, class_counts
@@ -523,24 +510,26 @@ def build_markdown_table(
                 )
             lines.append("| " + " | ".join(row) + " |")
 
-    for metric_idx, (metric, metric_label, lower_is_better) in enumerate(METRICS):
-        row = [
-            "Average score" if metric_idx == 0 else "",
-            metric_label.replace("$\\uparrow$", " ↑").replace("$\\downarrow$", " ↓"),
-        ]
-        for method in methods:
-            if method not in avg_means.index:
-                row.append("---")
-                continue
-            row.append(
-                markdown_value(
-                    avg_means[metric],
-                    avg_means.loc[method, metric],
-                    avg_stds.loc[method, metric] if method in avg_stds.index else 0.0,
-                    lower_is_better,
+    if not COMPACT:
+        avg_means, avg_stds = average_scores(means, stds, datasets, methods)
+        for metric_idx, (metric, metric_label, lower_is_better) in enumerate(METRICS):
+            row = [
+                "Average score" if metric_idx == 0 else "",
+                metric_label.replace("$\\uparrow$", " ↑").replace("$\\downarrow$", " ↓"),
+            ]
+            for method in methods:
+                if method not in avg_means.index:
+                    row.append("---")
+                    continue
+                row.append(
+                    markdown_value(
+                        avg_means[metric],
+                        avg_means.loc[method, metric],
+                        avg_stds.loc[method, metric] if method in avg_stds.index else 0.0,
+                        lower_is_better,
+                    )
                 )
-            )
-        lines.append("| " + " | ".join(row) + " |")
+            lines.append("| " + " | ".join(row) + " |")
 
     return "\n".join(lines) + "\n"
 
