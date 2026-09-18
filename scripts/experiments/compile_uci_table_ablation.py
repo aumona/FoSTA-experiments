@@ -341,6 +341,8 @@ def build_markdown_table(all_summaries, all_stds):
 def main():
     results_path = Path(results_csv)
     df = pd.read_csv(results_path)
+    # Some experiment exports use a lowercase FoSTA prefix.
+    df["method"] = df["method"].str.replace(r"(?i)^fosta_", "FoSTA_", regex=True)
     # Historical MALI runs used the automatic diffusion-time setting.
     df["method"] = df["method"].replace({"MALI": "MALI_auto", "mali_auto": "MALI_auto", "mali_t2": "MALI_t2"})
     select_variants(df)
