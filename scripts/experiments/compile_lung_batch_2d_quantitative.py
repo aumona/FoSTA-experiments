@@ -12,7 +12,7 @@ SELECTED_TIMESTAMPS = [
 
     # "./results_sc_experiments/20260507_025335",
 
-    "./results_sc_experiments/20260917_154221",
+    "./results_sc_experiments/20260917_210917",
 
 ]
 
@@ -113,7 +113,7 @@ def get_full_script():
     # Square Formatting
     ax.set_aspect('equal', adjustable='box')
     ax.grid(True, linestyle='--', alpha=0.5)
-    ax.set_title("Real B batches lung, 3 seeds")
+    ax.set_title("Bio conservation vs Batch correction (Lung 2D)", fontsize=14)
     ax.set_xlabel("Batch correction", fontsize=12)
     ax.set_ylabel("Bio conservation", fontsize=12)
 
