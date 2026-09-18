@@ -5,7 +5,7 @@ import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_ROOT = PROJECT_ROOT / "results_multimodal"
-TIMESTAMP = "20260915_150749"
+TIMESTAMP = "20260915_150749_final_results"
 OUTPUT_FILENAME = "results_multimodal_table.tex"
 MARKDOWN_OUTPUT_FILENAME = "results_multimodal_table.md"
 
@@ -71,31 +71,16 @@ TOP5_DATASETS = ("ave",)
 TOP10_DATASET_PREFIXES = ("rgbd_", "sketchy_")
 
 CAPTION = (
-    "Aggregated performance over real multimodal datasets and seeds. Results are "
-    "reported for label transfer accuracy (Acc and, where applicable, Acc@5 or "
-    "Acc@10), "
-    "alignment score (AS), and "
-    "correspondence recovery measured by FOSCTTM. Label transfer accuracy and "
-    "top-k accuracy use photo-to-sketch (A to B) transfer only for Sketchy; "
-    "for HAR, AVE, and RGB-D, they average both directions (A to B and B to A). "
-    "Higher is better for accuracy "
-    "and AS, while lower is better for FOSCTTM. The top three results for each "
-    "metric are highlighted with filled gold (1st) and silver (2nd) boxes, "
-    "and bronze text (3rd)."
-    " Missing Pamona values correspond to runs with excessive runtimes."
+    "Performance on real-world multimodal alignment benchmarks. Results are "
+    "averaged over five seeds for label transfer accuracy (Acc), alignment score "
+    r"(AS), and FOSCTTM (FOS), with $\uparrow$/$\downarrow$ indicating better "
+    "performance. Gold, silver, and bronze denote the top three methods. "
 )
 MARKDOWN_CAPTION = (
-    "Aggregated performance over real multimodal datasets and seeds. Results are "
-    "reported for label transfer accuracy (Acc and, where applicable, Acc@5 or "
-    "Acc@10), "
-    "alignment score (AS), and "
-    "correspondence recovery measured by FOSCTTM. Label transfer accuracy and "
-    "top-k accuracy use photo-to-sketch (A to B) transfer only for Sketchy; "
-    "for HAR, AVE, and RGB-D, they average both directions (A to B and B to A). "
-    "Higher is better for accuracy "
-    "and AS, while lower is better for FOSCTTM. The best result for each metric "
-    "is bold and italic, and the second-best result is bold."
-    " Missing Pamona values correspond to runs with excessive runtimes."
+    "Performance on real-world multimodal alignment benchmarks. Results are "
+    "averaged over five seeds for label transfer accuracy (Acc), alignment score "
+    "(AS), and FOSCTTM (FOS), with ↑/↓ indicating better performance. "
+    "First place is bold and italic, second place is bold, and third place is italic. "
 )
 LABEL = "tab:real_multimodal"
 
@@ -181,7 +166,18 @@ def display_dataset(dataset: str, class_count: int) -> str:
         return f"{latex_escape(dataset)} ({class_count} classes)"
 
     alignment_task, dataset_name = DATASET_DISPLAY_MAP[dataset]
-    return rf"\shortstack[l]{{{alignment_task} \\ ({dataset_name}, {class_count} classes)}}"
+    return (
+        r"\begin{tabular}[c]{@{}l@{}}"
+        + rf"{alignment_task} \\ ({dataset_name}, {class_count} classes)"
+        + r"\end{tabular}"
+    )
+
+
+def centered_group_cell(content: str, row_count: int) -> str:
+    # Each highlighted row adds fboxsep above and below its strut. Multirow
+    # uses the unpadded strut height, so lower its center by (rows - 1) * fboxsep.
+    offset = fr"-\dimexpr {row_count - 1}\fboxsep\relax"
+    return fr"\multirow[c]{{{row_count}}}{{*}}[{offset}]{{{content}}}"
 
 
 def markdown_escape(text: str) -> str:
@@ -243,13 +239,16 @@ def compact_results(means, stds, datasets, methods, class_counts):
 def table_caption(markdown=False):
     caption = MARKDOWN_CAPTION if markdown else CAPTION
     if COMPACT:
-        caption = caption.replace(
-            "(Acc and, where applicable, Acc@5 or Acc@10)", "(Acc)"
-        )
+        caption += "RGB-D and Sketchy use ResNet18 features. "
+    else:
         caption += (
-            " RGB-D and Sketchy use ResNet18 features only. "
-            "DINOv2-B results are excluded."
+            "RGB-D and Sketchy include both ResNet18 and DINOv2-B features. "
+            "Top-k accuracy (Acc@5 or Acc@10) is also reported where applicable. "
         )
+    caption += (
+        "RGB-D scores are not reported for Pamona due to excessive runtimes "
+        + ("(>10 hours)." if markdown else r"($>10$ hours).")
+    )
     return caption
 
 
@@ -409,9 +408,7 @@ def build_latex_table(
 
     lines = [
         r"\begin{table}[t]",
-        r"{\small",
         f"\\caption{{{table_caption()}}}",
-        r"}",
         f"\\label{{{LABEL}}}",
         r"\centering",
         TABLE_FONT_SIZE,
@@ -429,7 +426,7 @@ def build_latex_table(
         dataset_metrics = metrics_for_dataset(dataset)
         for metric_idx, (metric, metric_label, lower_is_better) in enumerate(dataset_metrics):
             dataset_cell = (
-                f"\\multirow{{{len(dataset_metrics)}}}{{*}}{{{display_dataset(dataset, class_counts[dataset])}}}"
+                centered_group_cell(display_dataset(dataset, class_counts[dataset]), len(dataset_metrics))
                 if metric_idx == 0
                 else ""
             )
@@ -446,7 +443,7 @@ def build_latex_table(
         lines.append(r"\midrule")
         for metric_idx, (metric, metric_label, lower_is_better) in enumerate(METRICS):
             dataset_cell = (
-                f"\\multirow{{{len(METRICS)}}}{{*}}{{Average score}}" if metric_idx == 0 else ""
+                centered_group_cell("Average score", len(METRICS)) if metric_idx == 0 else ""
             )
             row = [dataset_cell, metric_label]
             for method in methods:
