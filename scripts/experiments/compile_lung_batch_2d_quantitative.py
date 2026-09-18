@@ -10,7 +10,10 @@ SELECTED_TIMESTAMPS = [
     # "./results_sc_experiments/20260506_233231",
     # "./results_sc_experiments/20260507_013401"
 
-    "./results_sc_experiments/20260507_025335",
+    # "./results_sc_experiments/20260507_025335",
+
+    "./results_sc_experiments/20260917_154221",
+
 ]
 
 EXACT_SYMBOL_MAP = {
@@ -110,7 +113,7 @@ def get_full_script():
     # Square Formatting
     ax.set_aspect('equal', adjustable='box')
     ax.grid(True, linestyle='--', alpha=0.5)
-    ax.set_title("Real B batches lung, 3 seeds, 0% masking")
+    ax.set_title("Real B batches lung, 3 seeds")
     ax.set_xlabel("Batch correction", fontsize=12)
     ax.set_ylabel("Bio conservation", fontsize=12)
 

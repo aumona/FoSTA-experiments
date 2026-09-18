@@ -4,6 +4,8 @@ import pandas as pd
 import os
 import sys
 import json
+import platform
+from importlib.metadata import PackageNotFoundError, version
 import warnings
 import scanorama
 from datetime import datetime
@@ -35,10 +37,10 @@ BASE_RESULT_DIR = os.path.join(PROJECT_ROOT, "results_sc_experiments")
 
 BATCH_KEY = "batch"
 LABEL_KEY = "cell_type"
-BATCH_LIST = ['B1', 'B2', 'B3', 'B4']
-# BATCH_LIST = ['1', '2', '3', '4', '5', '6']
+# BATCH_LIST = ['B1', 'B2', 'B3', 'B4']
+BATCH_LIST = ['1', '2', '3', '4', '5', '6']
 
-SEEDS = [39041, 56089, 79121] 
+SEEDS = [39041, 56089, 79121, 444, 777] 
 MASK = True
 MASK_FRACTION = 0.20 
 MIN_CELLS_FOR_MASKING = 10 
@@ -79,6 +81,80 @@ SUPERVISED_CLASSES = {
 # =============================================================================
 # HELPERS
 # =============================================================================
+def save_experiment_metadata(result_dir, adata, seed=None, batches=None):
+    package_versions = {}
+    for package in ("numpy", "pandas", "scanpy", "anndata", "scvi-tools",
+                    "scib-metrics", "torch", "scikit-learn", "scanorama", "pyliger"):
+        try:
+            package_versions[package] = version(package)
+        except PackageNotFoundError:
+            package_versions[package] = None
+    metadata = {
+        "created_at": datetime.now().astimezone().isoformat(),
+        "script": os.path.abspath(__file__),
+        "data_path": DATA_PATH,
+        "result_dir": os.path.abspath(result_dir),
+        "seeds": SEEDS,
+        "batches": BATCH_LIST,
+        "batch_pairs": list(combinations(BATCH_LIST, 2)),
+        "batch_key": BATCH_KEY,
+        "label_key": LABEL_KEY,
+        "masking": {
+            "enabled": MASK,
+            "fraction": MASK_FRACTION,
+            "min_cells_for_masking": MIN_CELLS_FOR_MASKING,
+            "eligibility": "Within-domain class count >= min_cells_for_masking / fraction",
+            "sampling": "Class-stratified independently within each unpaired domain",
+            "random_state": "CURRENT_SEED for each domain",
+            "unlabeled_category": "Unknown",
+        },
+        "preprocessing": {
+            "highly_variable_genes": 2000,
+            "hvg_flavor": "cell_ranger",
+            "hvg_batch_key": BATCH_KEY,
+            "computed_pca_components": 30,
+            "use_pca_for_supervised": USE_PCA_FOR_SUPERVISED,
+            "supervised_pca_components": PCA_COMPONENTS,
+            "supervised_input": "PCA" if USE_PCA_FOR_SUPERVISED else "Highly variable gene expression",
+        },
+        "models": {
+            "requested": MODELS_TO_RUN,
+            "always_evaluated": ["Unintegrated"],
+            "n_components": N_DIM,
+            "fosta_configs": FOSTA_CONFIGS,
+            "scvi_training": {"accelerator": "mps", "devices": 1, "max_epochs": "scvi default"},
+            "scanvi_training": {
+                "max_epochs": 20, "n_samples_per_label": 100,
+                "accelerator": "mps", "devices": 1, "drop_last": True,
+            },
+        },
+        "evaluation": {
+            "scope": "All cells in the batch pair",
+            "label_key": "ground_truth_labels",
+            "ground_truth_labels_modified": False,
+            "min_max_scale": False,
+            "aggregate_weights": {"bio_conservation": 0.6, "batch_correction": 0.4},
+        },
+        "input_shape": {"cells": int(adata.n_obs), "genes": int(adata.n_vars)},
+        "environment": {"python": platform.python_version(), "platform": platform.platform(),
+                        "packages": package_versions},
+    }
+    if seed is not None:
+        metadata["current_seed"] = seed
+        metadata["current_batch_pair"] = list(batches)
+        metadata["masking_counts"] = [
+            {"batch": str(batch), "cell_type": str(label), "cells": len(group),
+             "masked_cells": int(group["is_masked"].sum())}
+            for (batch, label), group in adata.obs.groupby(
+                [BATCH_KEY, "ground_truth_labels"], observed=True
+            )
+        ]
+    path = os.path.join(result_dir, "experiment_metadata.json")
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(metadata, handle, indent=2, allow_nan=False)
+        handle.write("\n")
+
+
 def stratified_sample_mask(obs_df, label_col, frac, min_cells, seed):
     counts = obs_df[label_col].value_counts()
     eligible_labels = counts[counts >= (min_cells / frac)].index
@@ -140,6 +216,7 @@ def prepare_fosta_labels(series):
 full_adata_orig = sc.read(DATA_PATH)
 ROOT_RESULT_DIR = os.path.join(BASE_RESULT_DIR, datetime.now().strftime("%Y%m%d_%H%M%S"))
 os.makedirs(ROOT_RESULT_DIR, exist_ok=True)
+save_experiment_metadata(ROOT_RESULT_DIR, full_adata_orig)
 
 for CURRENT_SEED in SEEDS:
     print(f"\n### STARTING SEED: {CURRENT_SEED} ###")
@@ -170,6 +247,8 @@ for CURRENT_SEED in SEEDS:
                 ))
             adata.obs.loc[mask_idx, LABEL_KEY] = "Unknown"
             adata.obs.loc[mask_idx, "is_masked"] = True
+
+        save_experiment_metadata(RESULT_DIR, adata, CURRENT_SEED, (BATCH_1, BATCH_2))
         
         adata.layers["counts"] = adata.X.copy()
         sc.pp.highly_variable_genes(adata, n_top_genes=2000, flavor="cell_ranger", batch_key=BATCH_KEY)
