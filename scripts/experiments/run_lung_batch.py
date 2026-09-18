@@ -133,6 +133,7 @@ def save_experiment_metadata(result_dir, adata, seed=None, batches=None):
             "always_evaluated": ["Unintegrated"],
             "n_components": N_DIM,
             "scanorama_dimred": N_DIM,
+            "scanorama_approx": False,
             "fosta_configs": FOSTA_CONFIGS,
             "scvi_training": {"accelerator": TRAINING_ACCELERATOR, "devices": 1, "max_epochs": "scvi default"},
             "scanvi_training": {
@@ -343,7 +344,8 @@ for CURRENT_SEED in SEEDS:
                 sc.pp.normalize_total(ad, target_sum=1e4)
                 sc.pp.log1p(ad)
             # Integrate directly in the benchmark dimension, without truncating.
-            scanorama.integrate_scanpy(adata_list, dimred=N_DIM)
+            # Exact search avoids the Annoy backend returning only one neighbour.
+            scanorama.integrate_scanpy(adata_list, dimred=N_DIM, approx=False)
             adata.obsm["Scanorama"] = np.zeros((adata.shape[0], N_DIM))
             for i, b in enumerate(batch_cats):
                 adata.obsm["Scanorama"][adata.obs[BATCH_KEY] == b] = adata_list[i].obsm["X_scanorama"]
