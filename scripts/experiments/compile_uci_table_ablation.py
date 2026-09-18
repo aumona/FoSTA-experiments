@@ -65,7 +65,7 @@ method_order = [
     "FoSTA_gap_t2",  # default
     "FoSTA_rotf",
     "FoSTA_et",
-    # "FoSTA_kerf_t2",  # forest kernel
+    "FoSTA_kerf_t2",  # forest kernel
     # "FoSTA_kerf_auto",
     "FoSTA_dpt",
     "FoSTA_dense",
