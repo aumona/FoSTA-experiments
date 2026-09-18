@@ -227,7 +227,6 @@ def build_latex_table(all_summaries, all_stds):
     lines = [
         r"% Requires \usepackage{booktabs,xcolor,adjustbox}",
         r"\begin{table}[t]",
-        r"{\small",
         (
             r"\caption{FoSTA ablation performance over UCI datasets and seeds under "
             r"the selected distortion splits. Each cell reports mean $\pm$ the "
@@ -247,7 +246,6 @@ def build_latex_table(all_summaries, all_stds):
             "The final three rows report average scores across the displayed splits, "
             "with standard deviations also averaged across splits.}"
         ),
-        r"}",
         r"\label{tab:uci_ablation}",
         r"\centering",
         TABLE_FONT_SIZE,
