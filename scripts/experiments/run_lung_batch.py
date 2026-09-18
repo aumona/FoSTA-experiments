@@ -121,6 +121,7 @@ def save_experiment_metadata(result_dir, adata, seed=None, batches=None):
             "requested": MODELS_TO_RUN,
             "always_evaluated": ["Unintegrated"],
             "n_components": N_DIM,
+            "scanorama_dimred": N_DIM,
             "fosta_configs": FOSTA_CONFIGS,
             "scvi_training": {"accelerator": "mps", "devices": 1, "max_epochs": "scvi default"},
             "scanvi_training": {
@@ -129,6 +130,7 @@ def save_experiment_metadata(result_dir, adata, seed=None, batches=None):
             },
         },
         "evaluation": {
+            "embedding_dimensions": N_DIM,
             "scope": "All cells in the batch pair",
             "label_key": "ground_truth_labels",
             "ground_truth_labels_modified": False,
@@ -181,6 +183,15 @@ def add_custom_aggregates(df_res):
 
 def benchmark_method_and_update_csv(adata, method_key, metrics_csv, seed):
     # Label masking affects training; evaluation always includes all cells.
+    embedding = np.asarray(adata.obsm[method_key])
+    expected_shape = (adata.n_obs, N_DIM)
+    if embedding.shape != expected_shape:
+        raise ValueError(
+            f"{method_key}: expected full-cell embedding {expected_shape}, "
+            f"got {embedding.shape}."
+        )
+    if not np.isfinite(embedding).all():
+        raise ValueError(f"{method_key}: embedding contains non-finite values.")
     print(f"Benchmarking {method_key} (Seed {seed}) - FULL DATASET...")
     
     bm = Benchmarker(adata, batch_key=BATCH_KEY, label_key="ground_truth_labels", 
@@ -320,12 +331,11 @@ for CURRENT_SEED in SEEDS:
             for ad in adata_list:
                 sc.pp.normalize_total(ad, target_sum=1e4)
                 sc.pp.log1p(ad)
-            scanorama.integrate_scanpy(adata_list)
-            scan_dim = adata_list[0].obsm["X_scanorama"].shape[1]
-            adata.obsm["Scanorama_full"] = np.zeros((adata.shape[0], scan_dim))
+            # Integrate directly in the benchmark dimension, without truncating.
+            scanorama.integrate_scanpy(adata_list, dimred=N_DIM)
+            adata.obsm["Scanorama"] = np.zeros((adata.shape[0], N_DIM))
             for i, b in enumerate(batch_cats):
-                adata.obsm["Scanorama_full"][adata.obs[BATCH_KEY] == b] = adata_list[i].obsm["X_scanorama"]
-            adata.obsm["Scanorama"] = adata.obsm["Scanorama_full"][:, :N_DIM]
+                adata.obsm["Scanorama"][adata.obs[BATCH_KEY] == b] = adata_list[i].obsm["X_scanorama"]
             benchmark_method_and_update_csv(adata, "Scanorama", METRICS_CSV, CURRENT_SEED)
             save_method_plot(adata, "Scanorama", RESULT_DIR)
 
