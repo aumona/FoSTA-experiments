@@ -39,14 +39,14 @@ BATCH_LIST = ['B1', 'B2', 'B3', 'B4']
 # BATCH_LIST = ['1', '2', '3', '4', '5', '6']
 
 SEEDS = [39041, 56089, 79121] 
-MASK = False 
+MASK = True
 MASK_FRACTION = 0.20 
 MIN_CELLS_FOR_MASKING = 10 
 
 PCA_COMPONENTS = 30
 # Apply PCA inputs to FoSTA, KEMAlin, KEMArbf, MALI, and Pamona.
 # False uses the selected highly variable gene expression directly.
-USE_PCA_FOR_SUPERVISED = True
+USE_PCA_FOR_SUPERVISED = False
 N_DIM = 2
 
 # Set to [] to run Unintegrated only
@@ -160,7 +160,14 @@ for CURRENT_SEED in SEEDS:
         if MASK:
             if "Unknown" not in adata.obs[LABEL_KEY].cat.categories:
                 adata.obs[LABEL_KEY] = adata.obs[LABEL_KEY].cat.add_categories(["Unknown"])
-            mask_idx = stratified_sample_mask(adata.obs, "ground_truth_labels", MASK_FRACTION, MIN_CELLS_FOR_MASKING, CURRENT_SEED)
+            # Mask each unpaired domain independently, including class eligibility.
+            mask_idx = []
+            for batch in (BATCH_1, BATCH_2):
+                batch_obs = adata.obs.loc[adata.obs[BATCH_KEY] == batch]
+                mask_idx.extend(stratified_sample_mask(
+                    batch_obs, "ground_truth_labels", MASK_FRACTION,
+                    MIN_CELLS_FOR_MASKING, CURRENT_SEED,
+                ))
             adata.obs.loc[mask_idx, LABEL_KEY] = "Unknown"
             adata.obs.loc[mask_idx, "is_masked"] = True
         
@@ -194,7 +201,14 @@ for CURRENT_SEED in SEEDS:
                         adata.obsm[m] = vae.get_latent_representation()
                     else:
                         lvae = scvi.model.SCANVI.from_scvi_model(vae, adata=adata, labels_key=LABEL_KEY, unlabeled_category="Unknown")
-                        lvae.train(max_epochs=20, n_samples_per_label=100, accelerator="mps", devices=1)
+                        # The label-subsampled loader can end in a single cell,
+                        # which BatchNorm cannot process during training.
+                        # Only training minibatches are dropped; evaluation uses all cells.
+                        lvae.train(
+                            max_epochs=20, n_samples_per_label=100,
+                            accelerator="mps", devices=1,
+                            datasplitter_kwargs={"drop_last": True},
+                        )
                         adata.obsm[m] = lvae.get_latent_representation()
                     benchmark_method_and_update_csv(adata, m, METRICS_CSV, CURRENT_SEED)
                     save_method_plot(adata, m, RESULT_DIR)
