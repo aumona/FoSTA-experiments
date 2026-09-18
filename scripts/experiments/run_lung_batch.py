@@ -17,6 +17,7 @@ from scipy.sparse import issparse
 from scib_metrics.benchmark import Benchmarker
 import scvi
 import pyliger
+import torch
 
 warnings.filterwarnings("ignore")
 
@@ -52,6 +53,14 @@ PCA_COMPONENTS = 30
 # False uses the selected highly variable gene expression directly.
 USE_PCA_FOR_SUPERVISED = False
 N_DIM = 2
+
+# Prefer CUDA, then Apple Metal, with CPU as the fallback.
+if torch.cuda.is_available():
+    TRAINING_ACCELERATOR = "cuda"
+elif torch.backends.mps.is_available():
+    TRAINING_ACCELERATOR = "mps"
+else:
+    TRAINING_ACCELERATOR = "cpu"
 
 # Set to [] to run Unintegrated only
 MODELS_TO_RUN = [
@@ -125,10 +134,10 @@ def save_experiment_metadata(result_dir, adata, seed=None, batches=None):
             "n_components": N_DIM,
             "scanorama_dimred": N_DIM,
             "fosta_configs": FOSTA_CONFIGS,
-            "scvi_training": {"accelerator": "mps", "devices": 1, "max_epochs": "scvi default"},
+            "scvi_training": {"accelerator": TRAINING_ACCELERATOR, "devices": 1, "max_epochs": "scvi default"},
             "scanvi_training": {
                 "max_epochs": 20, "n_samples_per_label": 100,
-                "accelerator": "mps", "devices": 1, "drop_last": True,
+                "accelerator": TRAINING_ACCELERATOR, "devices": 1, "drop_last": True,
             },
         },
         "evaluation": {
@@ -286,7 +295,7 @@ for CURRENT_SEED in SEEDS:
         if any(m in MODELS_TO_RUN for m in ["scVI", "scANVI"]):
             scvi.model.SCVI.setup_anndata(adata, layer="counts", batch_key=BATCH_KEY)
             vae = scvi.model.SCVI(adata, n_latent=N_DIM)
-            vae.train(accelerator="mps", devices=1) 
+            vae.train(accelerator=TRAINING_ACCELERATOR, devices=1)
             for m in ["scVI", "scANVI"]:
                 if m in MODELS_TO_RUN:
                     if m == "scVI":
@@ -298,7 +307,7 @@ for CURRENT_SEED in SEEDS:
                         # Only training minibatches are dropped; evaluation uses all cells.
                         lvae.train(
                             max_epochs=20, n_samples_per_label=100,
-                            accelerator="mps", devices=1,
+                            accelerator=TRAINING_ACCELERATOR, devices=1,
                             datasplitter_kwargs={"drop_last": True},
                         )
                         adata.obsm[m] = lvae.get_latent_representation()
