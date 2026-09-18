@@ -67,6 +67,7 @@ METHODS = [
     "FoSTA_gap_auto",
     "FoSTA_gap_t2",
     "FoSTA_kerf_auto",
+    "FoSTA_kerf_t2",
     "FoSTA_umap",
     "FoSTA_dense",
     "FoSTA_et",
