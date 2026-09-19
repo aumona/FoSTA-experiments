@@ -12,7 +12,7 @@ SELECTED_TIMESTAMPS = [
 
     # "./results_sc_experiments/20260507_025335",
 
-    "./results_sc_experiments/20260918_100506",
+    "./results_sc_experiments/20260918_141746",
 
 ]
 
