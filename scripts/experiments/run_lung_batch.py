@@ -40,8 +40,7 @@ BATCH_KEY = "batch"
 LABEL_KEY = "cell_type"
 # BATCH_LIST = ["A1", "A2", "A3", "A4", "A5", "A6"]
 # BATCH_LIST = ['B1', 'B2', 'B3', 'B4']
-# BATCH_LIST = ['1', '2', '3', '4', '5', '6']
-BATCH_LIST = ["1", "2", "3", "4", "5", "6", "A1", "A2", "A3", "A4", "A5", "A6", "B1", "B2", "B3", "B4"]
+BATCH_LIST = ['1', '2', '3', '4', '5', '6']
 
 SEEDS = [39041, 56089, 79121, 444, 777] 
 MASK = True
