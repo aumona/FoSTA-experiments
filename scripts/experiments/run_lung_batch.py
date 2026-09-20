@@ -53,10 +53,8 @@ PCA_COMPONENTS = 30
 USE_PCA_FOR_SUPERVISED = False
 N_DIM = 2
 
-# Prefer CUDA, then Apple Metal, with CPU as the fallback.
-if torch.cuda.is_available():
-    TRAINING_ACCELERATOR = "cuda"
-elif torch.backends.mps.is_available():
+# Prefer Apple Metal, with CPU as the fallback.
+if torch.backends.mps.is_available():
     TRAINING_ACCELERATOR = "mps"
 else:
     TRAINING_ACCELERATOR = "cpu"
