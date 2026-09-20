@@ -1,7 +1,18 @@
+import os
+
+# Configure XLA before imports that can initialize JAX (including scvi).
+# JAX 0.6.2's Triton GEMM compiler can fail on HiRef's matrix shapes with
+# "Too small divisible part of the contracting dimension" (openxla/xla#33157).
+# Keep GPU execution, but use the non-Triton GEMM path. Honor explicit overrides.
+if "--xla_gpu_enable_triton_gemm" not in os.environ.get("XLA_FLAGS", ""):
+    os.environ["XLA_FLAGS"] = (
+        os.environ.get("XLA_FLAGS", "") + " --xla_gpu_enable_triton_gemm=false"
+    ).strip()
+
+
 import scanpy as sc
 import numpy as np
 import pandas as pd
-import os
 import sys
 import json
 import platform
