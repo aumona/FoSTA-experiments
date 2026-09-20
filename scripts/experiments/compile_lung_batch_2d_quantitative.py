@@ -7,8 +7,11 @@ from matplotlib.legend_handler import HandlerTuple
 
 # --- CONFIGURATION ---
 SELECTED_TIMESTAMPS = [
-    # "./results_sc_experiments/20260919_185500_1-6_20",
-    "./results_sc_experiments/20260920_033154",
+    "./results_sc_experiments/20260919_185500_1to6_20",
+    "./results_sc_experiments/20260920_105524_B1toB4_20",
+
+    # "./results_sc_experiments/20260920_033154_1to6_50",
+    # "./results_sc_experiments/20260920_100839_B1toB4_50"
 
 ]
 
@@ -68,14 +71,12 @@ def get_full_script():
     mean_df = full_df.groupby("Method")[["Bio conservation", "Batch correction"]].mean()
     std_df = full_df.groupby("Method")[["Bio conservation", "Batch correction"]].std().fillna(0)
 
-    # --- RANKING BY WEIGHTED MEAN SCORE ---
+    # --- RANKING BY AVERAGE RANK ---
     mean_df['Bio_Rank'] = mean_df['Bio conservation'].rank(ascending=False, method='min').astype(int)
     mean_df['Batch_Rank'] = mean_df['Batch correction'].rank(ascending=False, method='min').astype(int)
     
-    mean_df['Weighted_Score'] = (
-        0.6 * mean_df['Bio conservation'] + 0.4 * mean_df['Batch correction']
-    )
-    mean_df = mean_df.sort_values('Weighted_Score', ascending=False, kind='stable')
+    mean_df['Avg_Rank'] = (mean_df['Bio_Rank'] + mean_df['Batch_Rank']) / 2
+    mean_df = mean_df.sort_values(['Avg_Rank', 'Bio_Rank'], ascending=True)
 
     # --- PLOTTING ---
     fig, ax = plt.subplots(figsize=(7, 7))
@@ -113,7 +114,7 @@ def get_full_script():
     ax.set_ylim(limit_min, limit_max)
 
     lgd = ax.legend(handles=legend_handles, labels=legend_labels,
-                    title="Ordered by score: 60% Bio + 40% Batch",
+                    title="Ordered by average Bio/Batch rank",
                     handler_map={tuple: HandlerTuple(ndivide=None, pad=-2)},
                     bbox_to_anchor=(1.05, 0.9), loc='upper left', frameon=True)
 
@@ -121,7 +122,7 @@ def get_full_script():
     save_path = os.path.join(SELECTED_TIMESTAMPS[-1], "formatted_tradeoff_plot.pdf")
     plt.savefig(save_path, bbox_extra_artists=(lgd,), bbox_inches='tight')
     
-    print(f"Plot saved with weighted score sorting (60% Bio / 40% Batch): {save_path}")
+    print(f"Plot saved with average Bio/Batch rank sorting: {save_path}")
     plt.show()
 
 if __name__ == "__main__":

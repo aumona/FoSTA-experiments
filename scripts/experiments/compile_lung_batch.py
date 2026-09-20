@@ -45,9 +45,11 @@ else:
     if "Seed" in summary.columns:
         summary = summary.drop(columns=["Seed"])
 
-    # Optional: Sort by Total mean to make the plot easier to read
-    if "Total mean" in summary.columns:
-        summary = summary.sort_values("Total mean", ascending=False)
+    # Order by average Bio/Batch rank; lower average rank is better.
+    summary["Bio_Rank"] = summary["Bio conservation mean"].rank(ascending=False, method="min")
+    summary["Batch_Rank"] = summary["Batch correction mean"].rank(ascending=False, method="min")
+    summary["Avg_Rank"] = (summary["Bio_Rank"] + summary["Batch_Rank"]) / 2
+    summary = summary.sort_values(["Avg_Rank", "Bio_Rank"])
 
     # 4. Output LaTeX Table
     print(f"\n--- Aggregated Results ---")

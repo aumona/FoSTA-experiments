@@ -21,7 +21,7 @@ from compile_lung_batch_2d_quantitative import EXPECTED_COLORS, EXACT_SYMBOL_MAP
 # CONFIG: paths relative to the repository root; pool all selected results.
 # =============================================================================
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SELECTED_TIMESTAMPS = ["results_sc_experiments/20260918_141746"]
+SELECTED_TIMESTAMPS = ["results_sc_experiments/20260920_033154_1to6_50"]
 EMBEDDING_TIMESTAMP = SELECTED_TIMESTAMPS[-1]
 BATCH_PAIR = ("2", "3")  # e.g. ("B1", "B2"); must exist in the selected run.
 EMBEDDING_SEED = 39041
