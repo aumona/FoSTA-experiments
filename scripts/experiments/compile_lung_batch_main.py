@@ -18,7 +18,7 @@ import pandas as pd
 from compile_lung_batch_2d_quantitative import EXPECTED_COLORS, EXACT_SYMBOL_MAP
 
 # =============================================================================
-# CONFIG: paths relative to the repository root; later folders override reruns.
+# CONFIG: paths relative to the repository root; pool all selected results.
 # =============================================================================
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SELECTED_TIMESTAMPS = ["results_sc_experiments/20260918_141746"]
@@ -106,7 +106,6 @@ def load_quantitative_results():
     frame = pd.DataFrame(records)
     if frame.empty:
         raise ValueError("No results for the selected quantitative methods.")
-    frame = frame.drop_duplicates(["method", "seed", "pair"], keep="last")
     frame = frame.replace([np.inf, -np.inf], np.nan).dropna(subset=["bio", "batch"])
     if frame.empty:
         raise ValueError("No finite quantitative scores.")
@@ -317,10 +316,10 @@ def main():
         "text_font_size_pt": TEXT_FONT_SIZE_PT, "legend_font_size_pt": LEGEND_FONT_SIZE_PT,
         "output_svgs": output_files,
         "quantitative_aggregation": "Mean and sample SD over available seed-pair runs per method",
-        "duplicate_policy": "Later configured timestamp wins for each method, seed, and pair",
+        "duplicate_policy": "None; every loaded result contributes equally",
         "error_bars": "Clipped at axes; axis limits use mean points only",
         "embedding_label_colors": LABEL_KEY,
-        "available_seed_pair_runs": len(raw[['seed', 'pair']].drop_duplicates()),
+        "loaded_result_rows": len(raw),
     }
     (output_dir / f"{OUTPUT_PREFIX}_metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
     print(f"Embedding pair: {BATCH_PAIR}, seed {EMBEDDING_SEED}; quantitative counts:\n{summary['count']}")

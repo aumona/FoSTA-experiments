@@ -7,11 +7,7 @@ from matplotlib.legend_handler import HandlerTuple
 
 # --- CONFIGURATION ---
 SELECTED_TIMESTAMPS = [
-    # "./results_sc_experiments/20260506_233231",
-    # "./results_sc_experiments/20260507_013401"
-
-    # "./results_sc_experiments/20260507_025335",
-
+    # "./results_sc_experiments/20260919_185500_1-6_20",
     "./results_sc_experiments/20260920_033154",
 
 ]
@@ -33,7 +29,7 @@ EXPECTED_COLORS = {
 def get_full_script():
     df_list = []
     
-    for priority, base_dir in enumerate(SELECTED_TIMESTAMPS):
+    for base_dir in SELECTED_TIMESTAMPS:
         if not os.path.exists(base_dir): continue
         
         found_files = glob.glob(os.path.join(base_dir, "**/benchmark_metrics_seed*.csv"), recursive=True)
@@ -57,11 +53,7 @@ def get_full_script():
                 temp_df["Bio conservation"] = pd.to_numeric(temp_df["Bio conservation"], errors='coerce')
                 temp_df["Batch correction"] = pd.to_numeric(temp_df["Batch correction"], errors='coerce')
                 
-                # Metadata for deduplication
-                temp_df['Timestamp_Priority'] = priority
-                temp_df['Run_ID'] = os.path.dirname(f) 
-                
-                df_list.append(temp_df[["Method", "Bio conservation", "Batch correction", "Timestamp_Priority", "Run_ID"]])
+                df_list.append(temp_df[["Method", "Bio conservation", "Batch correction"]])
             except Exception as e:
                 print(f"Skipping {f}: {e}")
 
@@ -69,12 +61,8 @@ def get_full_script():
         print("No data found.")
         return
 
-    full_raw = pd.concat(df_list, ignore_index=True)
-
-    # --- DEDUPLICATION ---
-    # Latest folder priority wins for identical Method + Run_ID
-    full_df = full_raw.sort_values("Timestamp_Priority", ascending=True)
-    full_df = full_df.drop_duplicates(subset=["Method", "Run_ID"], keep="last")
+    # Every loaded result contributes equally, including repeated runs.
+    full_df = pd.concat(df_list, ignore_index=True)
 
     # --- AGGREGATION ---
     mean_df = full_df.groupby("Method")[["Bio conservation", "Batch correction"]].mean()
