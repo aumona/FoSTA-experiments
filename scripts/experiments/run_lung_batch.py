@@ -5,6 +5,10 @@ import os
 import sys
 import json
 import platform
+import atexit
+import logging
+import re
+import threading
 from importlib.metadata import PackageNotFoundError, version
 import warnings
 import scanorama
@@ -89,6 +93,71 @@ SUPERVISED_CLASSES = {
 # =============================================================================
 # HELPERS
 # =============================================================================
+class TimestampedTee:
+    """Mirror a Python output stream into a shared, line-oriented run log."""
+
+    def __init__(self, terminal, logfile, lock):
+        self.terminal = terminal
+        self.logfile = logfile
+        self.lock = lock
+        self.pending = ""
+
+    def _log_line(self, line):
+        # Progress bars use carriage returns and ANSI cursor/color sequences.
+        line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", line)
+        if line.strip():
+            stamp = datetime.now().astimezone().isoformat(timespec="seconds")
+            self.logfile.write(f"[{stamp}] {line}\n")
+            self.logfile.flush()
+
+    def write(self, text):
+        with self.lock:
+            self.terminal.write(text)
+            self.pending += text
+            lines = re.split(r"[\r\n]", self.pending)
+            self.pending = lines.pop()
+            for line in lines:
+                self._log_line(line)
+        return len(text)
+
+    def flush(self):
+        with self.lock:
+            if self.pending:
+                self._log_line(self.pending)
+                self.pending = ""
+            self.terminal.flush()
+            self.logfile.flush()
+
+    def __getattr__(self, name):
+        return getattr(self.terminal, name)
+
+
+def start_run_logging(result_dir):
+    path = os.path.join(result_dir, "run.log")
+    logfile = open(path, "a", encoding="utf-8", buffering=1)
+    lock = threading.RLock()
+    original_stdout, original_stderr = sys.stdout, sys.stderr
+    sys.stdout = TimestampedTee(original_stdout, logfile, lock)
+    sys.stderr = TimestampedTee(original_stderr, logfile, lock)
+    # Libraries may have installed logging handlers before the tee was enabled.
+    loggers = [logging.getLogger()] + [
+        logger for logger in logging.Logger.manager.loggerDict.values()
+        if isinstance(logger, logging.Logger)
+    ]
+    for logger in loggers:
+        for handler in logger.handlers:
+            if isinstance(handler, logging.StreamHandler):
+                if handler.stream is original_stdout:
+                    handler.setStream(sys.stdout)
+                elif handler.stream is original_stderr:
+                    handler.setStream(sys.stderr)
+    # Keep the file open through interpreter shutdown so late errors are saved.
+    atexit.register(sys.stdout.flush)
+    atexit.register(sys.stderr.flush)
+    print(f"Logging stdout and stderr to: {path}")
+    return path
+
+
 def save_experiment_metadata(result_dir, adata, seed=None, batches=None):
     package_versions = {}
     for package in ("numpy", "pandas", "scanpy", "anndata", "scvi-tools",
@@ -102,6 +171,7 @@ def save_experiment_metadata(result_dir, adata, seed=None, batches=None):
         "script": os.path.abspath(__file__),
         "data_path": DATA_PATH,
         "result_dir": os.path.abspath(result_dir),
+        "log_file": RUN_LOG_PATH,
         "seeds": SEEDS,
         "batches": BATCH_LIST,
         "batch_pairs": list(combinations(BATCH_LIST, 2)),
@@ -233,9 +303,12 @@ def prepare_fosta_labels(series):
 # =============================================================================
 # MAIN LOOP
 # =============================================================================
-full_adata_orig = sc.read(DATA_PATH)
 ROOT_RESULT_DIR = os.path.join(BASE_RESULT_DIR, datetime.now().strftime("%Y%m%d_%H%M%S"))
 os.makedirs(ROOT_RESULT_DIR, exist_ok=True)
+RUN_LOG_PATH = start_run_logging(ROOT_RESULT_DIR)
+print(f"Training accelerator: {TRAINING_ACCELERATOR}")
+print(f"Loading data: {DATA_PATH}")
+full_adata_orig = sc.read(DATA_PATH)
 save_experiment_metadata(ROOT_RESULT_DIR, full_adata_orig)
 
 for CURRENT_SEED in SEEDS:
