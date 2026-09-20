@@ -53,9 +53,12 @@ BASE_RESULT_DIR = os.path.join(PROJECT_ROOT, "results_sc_experiments")
 
 BATCH_KEY = "batch"
 LABEL_KEY = "cell_type"
-# BATCH_LIST = ["A1", "A2", "A3", "A4", "A5", "A6"]
-# BATCH_LIST = ['B1', 'B2', 'B3', 'B4']
-BATCH_LIST = ['1', '2', '3', '4', '5', '6']
+BATCH_FAMILIES = ["1_6"]  # Select any of ["A", "B", "1_6"], in run order.
+BATCH_FAMILY_MEMBERS = {
+    "A": ["A1", "A2", "A3", "A4", "A5", "A6"],
+    "B": ["B1", "B2", "B3", "B4"],
+    "1_6": ["1", "2", "3", "4", "5", "6"],
+}
 
 SEEDS = [39041, 56089, 79121, 444, 777] 
 MASK = True
@@ -104,6 +107,16 @@ SUPERVISED_CLASSES = {
 # =============================================================================
 # HELPERS
 # =============================================================================
+def make_batch_pairs(families):
+    if not families or len(set(families)) != len(families):
+        raise ValueError("BATCH_FAMILIES must be nonempty and contain no duplicates.")
+    unknown = set(families) - BATCH_FAMILY_MEMBERS.keys()
+    if unknown:
+        raise ValueError(f"Unknown batch families: {sorted(unknown)}. Choose A, B, or 1_6.")
+    return [pair for family in families
+            for pair in combinations(BATCH_FAMILY_MEMBERS[family], 2)]
+
+
 class TimestampedTee:
     """Mirror a Python output stream into a shared, line-oriented run log."""
 
@@ -184,8 +197,9 @@ def save_experiment_metadata(result_dir, adata, seed=None, batches=None):
         "result_dir": os.path.abspath(result_dir),
         "log_file": RUN_LOG_PATH,
         "seeds": SEEDS,
-        "batches": BATCH_LIST,
-        "batch_pairs": list(combinations(BATCH_LIST, 2)),
+        "batch_families": BATCH_FAMILIES,
+        "batches": [batch for family in BATCH_FAMILIES for batch in BATCH_FAMILY_MEMBERS[family]],
+        "batch_pairs": BATCH_PAIRS,
         "batch_key": BATCH_KEY,
         "label_key": LABEL_KEY,
         "masking": {
@@ -314,12 +328,18 @@ def prepare_fosta_labels(series):
 # =============================================================================
 # MAIN LOOP
 # =============================================================================
+BATCH_PAIRS = make_batch_pairs(BATCH_FAMILIES)
 ROOT_RESULT_DIR = os.path.join(BASE_RESULT_DIR, datetime.now().strftime("%Y%m%d_%H%M%S"))
 os.makedirs(ROOT_RESULT_DIR, exist_ok=True)
 RUN_LOG_PATH = start_run_logging(ROOT_RESULT_DIR)
 print(f"Training accelerator: {TRAINING_ACCELERATOR}")
 print(f"Loading data: {DATA_PATH}")
 full_adata_orig = sc.read(DATA_PATH)
+available_batches = set(full_adata_orig.obs[BATCH_KEY].astype(str))
+missing_batches = {batch for pair in BATCH_PAIRS for batch in pair} - available_batches
+if missing_batches:
+    raise ValueError(f"Selected families contain batches missing from the input: {sorted(missing_batches)}")
+print(f"Batch families: {BATCH_FAMILIES}; {len(BATCH_PAIRS)} within-family pairs per seed")
 save_experiment_metadata(ROOT_RESULT_DIR, full_adata_orig)
 
 for CURRENT_SEED in SEEDS:
@@ -327,7 +347,7 @@ for CURRENT_SEED in SEEDS:
     np.random.seed(CURRENT_SEED)
     scvi.settings.seed = CURRENT_SEED
 
-    for BATCH_1, BATCH_2 in combinations(BATCH_LIST, 2):
+    for BATCH_1, BATCH_2 in BATCH_PAIRS:
         PAIR_NAME = f"{BATCH_1}_vs_{BATCH_2}"
         RESULT_DIR = os.path.join(ROOT_RESULT_DIR, f"seed_{CURRENT_SEED}", PAIR_NAME)
         os.makedirs(RESULT_DIR, exist_ok=True)
