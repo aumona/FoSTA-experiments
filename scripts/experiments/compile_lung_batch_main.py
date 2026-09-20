@@ -21,10 +21,18 @@ from compile_lung_batch_2d_quantitative import EXPECTED_COLORS, EXACT_SYMBOL_MAP
 # CONFIG: paths relative to the repository root; pool all selected results.
 # =============================================================================
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SELECTED_TIMESTAMPS = ["results_sc_experiments/20260920_033154_1to6_50"]
+SELECTED_TIMESTAMPS = [
+    # "results_sc_experiments/20260919_185500_1to6_20",
+    # "results_sc_experiments/20260920_105524_B1toB4_20",
+    # "results_sc_experiments/20260920_143010_A1toA6_20",
+
+    "results_sc_experiments/20260920_033154_1to6_50",
+    "results_sc_experiments/20260920_100839_B1toB4_50"
+    "results_sc_experiments/20260920_142945_A1toA6_50"
+                       ]
 EMBEDDING_TIMESTAMP = SELECTED_TIMESTAMPS[-1]
-BATCH_PAIR = ("2", "3")  # e.g. ("B1", "B2"); must exist in the selected run.
-EMBEDDING_SEED = 39041
+BATCH_PAIR = ("B2", "B3")  # e.g. ("B1", "B2"); must exist in the selected run.
+EMBEDDING_SEED = 56089
 EMBEDDING_METHODS = [("Unintegrated", "PCA"), ("FoSTA_t2", "FoSTA"), ("scANVI", "scANVI")]
 QUANTITATIVE_METHODS = ["Unintegrated", "FoSTA", "scANVI", "scVI", "LIGER", "MALI", "KEMAlin", "KEMArbf", "Pamona", "Scanorama"]
 
@@ -117,7 +125,9 @@ def load_quantitative_results():
     summary["bio_rank"] = summary.bio_mean.rank(ascending=False, method="min").astype(int)
     summary["batch_rank"] = summary.batch_mean.rank(ascending=False, method="min").astype(int)
     summary["average_rank"] = (summary.bio_rank + summary.batch_rank) / 2
-    return summary.sort_values(["average_rank", "bio_rank"]), frame
+    # Alphabetical method order breaks average-rank ties.
+    summary = summary.sort_index(key=lambda names: names.str.casefold())
+    return summary.sort_values("average_rank", kind="stable"), frame
 
 
 def point_limits(values):

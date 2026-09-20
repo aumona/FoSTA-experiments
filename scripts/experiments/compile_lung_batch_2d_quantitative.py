@@ -7,13 +7,18 @@ from matplotlib.legend_handler import HandlerTuple
 
 # --- CONFIGURATION ---
 SELECTED_TIMESTAMPS = [
-    "./results_sc_experiments/20260919_185500_1to6_20",
-    "./results_sc_experiments/20260920_105524_B1toB4_20",
+    # "results_sc_experiments/20260919_185500_1to6_20",
+    # "results_sc_experiments/20260920_105524_B1toB4_20",
+    # "results_sc_experiments/20260920_143010_A1toA6_20",
 
-    # "./results_sc_experiments/20260920_033154_1to6_50",
-    # "./results_sc_experiments/20260920_100839_B1toB4_50"
+    "results_sc_experiments/20260920_033154_1to6_50",
+    "results_sc_experiments/20260920_100839_B1toB4_50",
+    "results_sc_experiments/20260920_142945_A1toA6_50"
 
-]
+
+                       ]
+
+
 
 EXACT_SYMBOL_MAP = {
     "scANVI": r"$\beta$", "scVI": r"$\gamma$", "KEMArbf": r"$\epsilon$",
@@ -76,7 +81,9 @@ def get_full_script():
     mean_df['Batch_Rank'] = mean_df['Batch correction'].rank(ascending=False, method='min').astype(int)
     
     mean_df['Avg_Rank'] = (mean_df['Bio_Rank'] + mean_df['Batch_Rank']) / 2
-    mean_df = mean_df.sort_values(['Avg_Rank', 'Bio_Rank'], ascending=True)
+    # Alphabetical method order breaks average-rank ties.
+    mean_df = mean_df.sort_index(key=lambda names: names.str.casefold())
+    mean_df = mean_df.sort_values('Avg_Rank', ascending=True, kind='stable')
 
     # --- PLOTTING ---
     fig, ax = plt.subplots(figsize=(7, 7))
