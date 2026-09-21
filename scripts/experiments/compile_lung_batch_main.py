@@ -18,43 +18,81 @@ import pandas as pd
 from compile_lung_batch_2d_quantitative import EXPECTED_COLORS, EXACT_SYMBOL_MAP
 
 # =============================================================================
-# CONFIG: paths relative to the repository root; pool all selected results.
+# DATA AND OUTPUT: relative paths resolve from the repository root.
 # =============================================================================
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# All selected results contribute to quantitative means and standard deviations.
 SELECTED_TIMESTAMPS = [
-    # "results_sc_experiments/20260919_185500_1to6_20",
-    # "results_sc_experiments/20260920_105524_B1toB4_20",
-    # "results_sc_experiments/20260920_143010_A1toA6_20",
+    "results_sc_experiments/20260919_185500_1to6_20",
+    "results_sc_experiments/20260920_105524_B1toB4_20",
+    "results_sc_experiments/20260920_143010_A1toA6_20",
 
-    "results_sc_experiments/20260920_033154_1to6_50",
-    "results_sc_experiments/20260920_100839_B1toB4_50"
-    "results_sc_experiments/20260920_142945_A1toA6_50"
-                       ]
-EMBEDDING_TIMESTAMP = SELECTED_TIMESTAMPS[-1]
-BATCH_PAIR = ("B2", "B3")  # e.g. ("B1", "B2"); must exist in the selected run.
-EMBEDDING_SEED = 56089
-EMBEDDING_METHODS = [("Unintegrated", "PCA"), ("FoSTA_t2", "FoSTA"), ("scANVI", "scANVI")]
-QUANTITATIVE_METHODS = ["Unintegrated", "FoSTA", "scANVI", "scVI", "LIGER", "MALI", "KEMAlin", "KEMArbf", "Pamona", "Scanorama"]
+    # "results_sc_experiments/20260920_033154_1to6_50",
+    # "results_sc_experiments/20260920_100839_B1toB4_50",
+    # "results_sc_experiments/20260920_142945_A1toA6_50"
 
-# Match \linewidth and desired final figure text size in Overleaf.
-COLUMN_WIDTH_PT = 397.48499
-EMBEDDING_ROW_WIDTH_PT = COLUMN_WIDTH_PT
-QUANTITATIVE_WIDTH_PT = 0.65 * COLUMN_WIDTH_PT
-TEXT_FONT_SIZE_PT = 10
-LEGEND_FONT_SIZE_PT = 8
-# Positive integers controlling each legend category independently.
-BATCH_LEGEND_MAX_ITEMS_PER_ROW = 5
-SHARED_LABEL_LEGEND_MAX_ITEMS_PER_ROW = 5
-BATCH_1_SPECIFIC_LEGEND_MAX_ITEMS_PER_ROW = 5
-BATCH_2_SPECIFIC_LEGEND_MAX_ITEMS_PER_ROW = 5
-METHOD_LEGEND_MAX_ITEMS_PER_ROW = 3
-PT_PER_INCH = 72.27
+]
 OUTPUT_PREFIX = "lung_batch_main"
-OUTPUT_SUBDIR = "lung_batch_main"
+OUTPUT_SUBDIR = "lung_batch_main"  # Inside the last selected timestamp folder.
+
+# Saved AnnData observation columns.
 BATCH_KEY = "batch"
 LABEL_KEY = "ground_truth_labels"
 MASK_KEY = "is_masked"
+
+# =============================================================================
+# SHARED FIGURE SIZING AND FONTS
+# =============================================================================
+COLUMN_WIDTH_PT = 397.48499  # Match the manuscript's LaTeX linewidth.
+PT_PER_INCH = 72.27
+TEXT_FONT_SIZE_PT = 10  # Plot titles and axis labels.
+LEGEND_FONT_SIZE_PT = 8  # All legends and quantitative axis tick labels.
+
+# =============================================================================
+# EMBEDDING ROWS: batch-colored and cell-type-colored plots
+# =============================================================================
+# One source run for both rows, independent of quantitative folder selection.
+EMBEDDING_TIMESTAMP = "results_sc_experiments/20260920_105524_B1toB4_20"
+BATCH_PAIR = ("B2", "B3")
+EMBEDDING_SEED = 56089
+EMBEDDING_METHODS = [("Unintegrated", "PCA"), ("FoSTA_t2", "FoSTA"), ("scANVI", "scANVI")]
+EMBEDDING_ROW_WIDTH_PT = COLUMN_WIDTH_PT
+
+# Unmasked points in both embedding rows.
+UNMASKED_POINT_SIZE = 1  # Scatter area in points squared.
+UNMASKED_POINT_ALPHA = 0.50  # Opacity: 0 (transparent) to 1 (opaque).
+UNMASKED_POINT_MARKER = "o"
+
+# Masked points in both embedding rows.
+MASKED_POINT_SIZE = 1
+MASKED_POINT_ALPHA = 0.90
+MASKED_POINT_MARKER = "^"
+
+# =============================================================================
+# QUANTITATIVE PLOT: Bio conservation vs Batch correction
+# =============================================================================
+QUANTITATIVE_METHODS = ["Unintegrated", "FoSTA", "scANVI", "scVI", "LIGER", "MALI", "KEMAlin", "KEMArbf", "Pamona", "Scanorama"]
+QUANTITATIVE_WIDTH_PT = 0.65 * COLUMN_WIDTH_PT
+QUANTITATIVE_POINT_SIZE = 200  # Scatter area in points squared; symbols scale with it.
 POINT_LIMIT_PADDING = 0.14  # Fraction of the mean-point range; ignores error bars.
+
+# =============================================================================
+# LEGENDS: positive integer item limits; extra entries wrap to new rows.
+# =============================================================================
+# Batch colors and visible/masked marker legend.
+BATCH_LEGEND_MAX_ITEMS_PER_ROW = 5
+
+# Cell-type labels shared by the two selected batches.
+SHARED_LABEL_LEGEND_MAX_ITEMS_PER_ROW = 5
+
+# Cell-type labels unique to BATCH_PAIR[0]; omitted if empty.
+BATCH_1_SPECIFIC_LEGEND_MAX_ITEMS_PER_ROW = 5
+
+# Cell-type labels unique to BATCH_PAIR[1]; omitted if empty.
+BATCH_2_SPECIFIC_LEGEND_MAX_ITEMS_PER_ROW = 5
+
+# Quantitative method legend, ordered by average Bio/Batch rank.
+METHOD_LEGEND_MAX_ITEMS_PER_ROW = 3
 
 
 def resolve(path):
@@ -142,7 +180,10 @@ def point_limits(values):
 def draw_embedding(ax, coords, categories, colors, masked):
     for category, color in colors.items():
         selected = categories == category
-        for is_masked, marker, size, alpha in [(False, "o", 1.8, 0.40), (True, "*", 9, 0.9)]:
+        for is_masked, marker, size, alpha in [
+            (False, UNMASKED_POINT_MARKER, UNMASKED_POINT_SIZE, UNMASKED_POINT_ALPHA),
+            (True, MASKED_POINT_MARKER, MASKED_POINT_SIZE, MASKED_POINT_ALPHA),
+        ]:
             idx = selected & (masked == is_masked)
             ax.scatter(coords[idx, 0], coords[idx, 1], s=size, marker=marker,
                        color=color, alpha=alpha, linewidths=0, rasterized=True)
@@ -158,29 +199,34 @@ def draw_embedding(ax, coords, categories, colors, masked):
 
 def masking_handles():
     return [
-        Line2D([], [], marker="o", color="0.55", linestyle="", markersize=3, label="Visible"),
-        Line2D([], [], marker="*", color="0.35", linestyle="", markersize=5, label="Masked"),
+        Line2D([], [], marker=UNMASKED_POINT_MARKER, color="0.55", linestyle="", markersize=3, label="Visible"),
+        Line2D([], [], marker=MASKED_POINT_MARKER, color="0.35", linestyle="", markersize=5, label="Masked"),
     ]
 
 
-def make_embedding_row(obs, embeddings, category_key, colors):
-    """Identical square panel sizes and coordinate limits in both exported rows."""
+def make_embedding_grid(obs, embeddings, cell_colors, batch_colors):
+    """Cell types above batches, with square panels and shared column titles."""
     width = EMBEDDING_ROW_WIDTH_PT / PT_PER_INCH
     spacing = 0.025
     panel_count = len(EMBEDDING_METHODS)
-    panel_size = width * (0.99 - 0.045) / (panel_count + spacing * (panel_count - 1))
-    top = 0.99 if category_key == BATCH_KEY else 0.86
-    fig, axes = plt.subplots(1, len(EMBEDDING_METHODS), squeeze=False,
-                             figsize=(width, panel_size / (top - 0.05)))
-    fig.subplots_adjust(left=0.045, right=0.99, bottom=0.05, top=top, wspace=spacing)
-    categories = obs[category_key].astype(str).to_numpy()
+    panel_size = width * (0.99 - 0.065) / (panel_count + spacing * (panel_count - 1))
+    plot_height = panel_size * (2 + spacing)
+    bottom_margin, top_margin = 0.04, 0.25
+    height = plot_height + bottom_margin + top_margin
+    fig, axes = plt.subplots(2, panel_count, squeeze=False, figsize=(width, height))
+    fig.subplots_adjust(left=0.065, right=0.99, bottom=bottom_margin / height,
+                        top=1 - top_margin / height, wspace=spacing, hspace=spacing)
     masked = obs[MASK_KEY].to_numpy(dtype=bool)
-    for ax, (key, title) in zip(axes[0], EMBEDDING_METHODS):
-        draw_embedding(ax, embeddings[key], categories, colors, masked)
-        if category_key != BATCH_KEY:
-            ax.set_title("Unintegrated PCA" if key == "Unintegrated" else title, pad=3,
-                         fontweight="bold" if title == "FoSTA" else "normal")
-    axes[0, 0].set_ylabel("Batch" if category_key == BATCH_KEY else "Cell type", labelpad=3)
+    for row, (category_key, colors, row_title) in enumerate([
+        (LABEL_KEY, cell_colors, "Cell type"), (BATCH_KEY, batch_colors, "Batch"),
+    ]):
+        categories = obs[category_key].astype(str).to_numpy()
+        for ax, (key, title) in zip(axes[row], EMBEDDING_METHODS):
+            draw_embedding(ax, embeddings[key], categories, colors, masked)
+            if row == 0:
+                ax.set_title("Unintegrated PCA" if key == "Unintegrated" else title, pad=3,
+                             fontweight="bold" if title == "FoSTA" else "normal")
+        axes[row, 0].set_ylabel(row_title, labelpad=3)
     return fig
 
 
@@ -211,9 +257,13 @@ def make_horizontal_legend(handles, labels, title, max_items_per_row):
     return fig, bounds.padded(0.02)
 
 
-def make_category_legend(colors, title, max_items_per_row, batch=False, include_masking=True):
+def make_category_legend(colors, title, max_items_per_row, batch=False, include_masking=True,
+                         cell_counts=None):
     handles = [Line2D([], [], marker="o", color=color, linestyle="", markersize=4,
-                      label=f"Batch {label}" if batch else textwrap.fill(label.replace("_", " "), 29))
+                      label=f"Batch {label}" if batch else (
+                          textwrap.fill(label.replace("_", " "), 29)
+                          + (f" ({cell_counts[label][0]} / {cell_counts[label][1]})"
+                             if cell_counts is not None else "")))
                for label, color in colors.items()]
     if include_masking:
         handles += masking_handles()
@@ -230,9 +280,11 @@ def make_quantitative_plot(summary):
         color = EXPECTED_COLORS.get(method, "#777777")
         symbol = EXACT_SYMBOL_MAP.get(method, "$?$")
         ax.errorbar(row.batch_mean, row.bio_mean, xerr=row.batch_std, yerr=row.bio_std,
-                    fmt="none", ecolor=color, alpha=0.32, elinewidth=0.65, capsize=2, zorder=1)
-        ax.scatter(row.batch_mean, row.bio_mean, s=65, color=color, zorder=3)
-        ax.scatter(row.batch_mean, row.bio_mean, s=24, marker=symbol, color="white", zorder=4)
+                    fmt="none", ecolor=color, alpha=0.40, elinewidth=0.8,
+                    capsize=2.5, capthick=0.6, zorder=1)
+        ax.scatter(row.batch_mean, row.bio_mean, s=QUANTITATIVE_POINT_SIZE, color=color, zorder=3)
+        ax.scatter(row.batch_mean, row.bio_mean, s=QUANTITATIVE_POINT_SIZE * (24 / 65),
+                   marker=symbol, color="white", zorder=4)
     ax.set_xlim(*point_limits(summary.batch_mean))
     ax.set_ylim(*point_limits(summary.bio_mean))
     ax.set_xlabel("Batch correction", labelpad=3)
@@ -282,10 +334,17 @@ def main():
         batch_legend, batch_bounds = make_category_legend(
             batch_colors, "Batch / label masking", BATCH_LEGEND_MAX_ITEMS_PER_ROW, batch=True)
         batch_names = list(map(str, BATCH_PAIR))
+        counts_by_batch = [
+            obs.loc[obs[BATCH_KEY].astype(str) == batch, LABEL_KEY].astype(str).value_counts()
+            for batch in batch_names
+        ]
+        cell_counts = {label: tuple(int(counts.get(label, 0)) for counts in counts_by_batch)
+                       for label in types}
         label_sets = [set(obs.loc[obs[BATCH_KEY].astype(str) == batch, LABEL_KEY].astype(str))
                       for batch in batch_names]
         label_groups = [
-            ("shared", "Shared labels", label_sets[0] & label_sets[1], SHARED_LABEL_LEGEND_MAX_ITEMS_PER_ROW),
+            ("shared", f"Shared cell types (Batch {batch_names[0]} count / Batch {batch_names[1]} count)",
+             label_sets[0] & label_sets[1], SHARED_LABEL_LEGEND_MAX_ITEMS_PER_ROW),
             ("batch_1_specific", f"Batch {batch_names[0]}-specific labels", label_sets[0] - label_sets[1], BATCH_1_SPECIFIC_LEGEND_MAX_ITEMS_PER_ROW),
             ("batch_2_specific", f"Batch {batch_names[1]}-specific labels", label_sets[1] - label_sets[0], BATCH_2_SPECIFIC_LEGEND_MAX_ITEMS_PER_ROW),
         ]
@@ -294,13 +353,13 @@ def main():
             if not present:
                 continue
             colors = {label: color for label, color in cell_colors.items() if label in present}
-            legend, bounds = make_category_legend(colors, title, limit, include_masking=False)
+            legend, bounds = make_category_legend(colors, title, limit, include_masking=False,
+                                                  cell_counts=cell_counts)
             cell_legends.append((f"4_cell_type_legend_{suffix}", legend, bounds))
         method_legend, method_bounds = make_method_legend(summary)
         panels = [
-            ("1_batch_embeddings", make_embedding_row(obs, embeddings, BATCH_KEY, batch_colors), None),
+            ("1_embeddings", make_embedding_grid(obs, embeddings, cell_colors, batch_colors), None),
             ("2_batch_legend", batch_legend, batch_bounds),
-            ("3_cell_type_embeddings", make_embedding_row(obs, embeddings, LABEL_KEY, cell_colors), None),
             *cell_legends,
             ("5_quantitative", make_quantitative_plot(summary), "tight"),
             ("6_method_legend", method_legend, method_bounds),
