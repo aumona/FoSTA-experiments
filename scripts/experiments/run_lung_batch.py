@@ -53,7 +53,7 @@ BASE_RESULT_DIR = os.path.join(PROJECT_ROOT, "results_sc_experiments")
 
 BATCH_KEY = "batch"
 LABEL_KEY = "cell_type"
-BATCH_FAMILIES = ["1_6"]  # Select any of ["A", "B", "1_6"], in run order.
+BATCH_FAMILIES = ["A", "B", "1_6"]  # Select any of ["A", "B", "1_6"], in run order.
 BATCH_FAMILY_MEMBERS = {
     "A": ["A1", "A2", "A3", "A4", "A5", "A6"],
     "B": ["B1", "B2", "B3", "B4"],
