@@ -80,19 +80,19 @@ POINT_LIMIT_PADDING = 0.14  # Fraction of the mean-point range; ignores error ba
 # LEGENDS: positive integer item limits; extra entries wrap to new rows.
 # =============================================================================
 # Batch colors and visible/masked marker legend.
-BATCH_LEGEND_MAX_ITEMS_PER_ROW = 5
+BATCH_LEGEND_MAX_ITEMS_PER_ROW = 1
 
 # Cell-type labels shared by the two selected batches.
-SHARED_LABEL_LEGEND_MAX_ITEMS_PER_ROW = 5
+SHARED_LABEL_LEGEND_MAX_ITEMS_PER_ROW = 3
 
 # Cell-type labels unique to BATCH_PAIR[0]; omitted if empty.
-BATCH_1_SPECIFIC_LEGEND_MAX_ITEMS_PER_ROW = 5
+BATCH_1_SPECIFIC_LEGEND_MAX_ITEMS_PER_ROW = 3
 
 # Cell-type labels unique to BATCH_PAIR[1]; omitted if empty.
-BATCH_2_SPECIFIC_LEGEND_MAX_ITEMS_PER_ROW = 5
+BATCH_2_SPECIFIC_LEGEND_MAX_ITEMS_PER_ROW = 3
 
 # Quantitative method legend, ordered by average Bio/Batch rank.
-METHOD_LEGEND_MAX_ITEMS_PER_ROW = 3
+METHOD_LEGEND_MAX_ITEMS_PER_ROW = 2
 
 
 def resolve(path):
@@ -187,8 +187,6 @@ def draw_embedding(ax, coords, categories, colors, masked):
             idx = selected & (masked == is_masked)
             ax.scatter(coords[idx, 0], coords[idx, 1], s=size, marker=marker,
                        color=color, alpha=alpha, linewidths=0, rasterized=True)
-    ax.set_aspect("equal", adjustable="datalim")
-    ax.set_box_aspect(1)
     ax.set_xticks([])
     ax.set_yticks([])
     ax.margins(0.06)
@@ -199,20 +197,21 @@ def draw_embedding(ax, coords, categories, colors, masked):
 
 def masking_handles():
     return [
-        Line2D([], [], marker=UNMASKED_POINT_MARKER, color="0.55", linestyle="", markersize=3, label="Visible"),
-        Line2D([], [], marker=MASKED_POINT_MARKER, color="0.35", linestyle="", markersize=5, label="Masked"),
+        Line2D([], [], marker=UNMASKED_POINT_MARKER, color="0.55", linestyle="", markersize=3, label="Visible label"),
+        Line2D([], [], marker=MASKED_POINT_MARKER, color="0.35", linestyle="", markersize=5, label="Masked label"),
     ]
 
 
 def make_embedding_grid(obs, embeddings, cell_colors, batch_colors):
-    """Cell types above batches, with square panels and shared column titles."""
+    """Cell types above batches, using Matplotlib's default automatic axes aspect."""
     width = EMBEDDING_ROW_WIDTH_PT / PT_PER_INCH
     spacing = 0.025
     panel_count = len(EMBEDDING_METHODS)
-    panel_size = width * (0.99 - 0.065) / (panel_count + spacing * (panel_count - 1))
-    plot_height = panel_size * (2 + spacing)
+    # Preserve the configured manuscript width and Matplotlib's default figure
+    # proportions; axes fill the grid without imposing square panels.
+    default_width, default_height = plt.rcParams["figure.figsize"]
+    height = width * default_height / default_width
     bottom_margin, top_margin = 0.04, 0.25
-    height = plot_height + bottom_margin + top_margin
     fig, axes = plt.subplots(2, panel_count, squeeze=False, figsize=(width, height))
     fig.subplots_adjust(left=0.065, right=0.99, bottom=bottom_margin / height,
                         top=1 - top_margin / height, wspace=spacing, hspace=spacing)
@@ -332,7 +331,7 @@ def main():
         "axes.linewidth": 0.6,
     }):
         batch_legend, batch_bounds = make_category_legend(
-            batch_colors, "Batch / label masking", BATCH_LEGEND_MAX_ITEMS_PER_ROW, batch=True)
+            batch_colors, "Batch / masking", BATCH_LEGEND_MAX_ITEMS_PER_ROW, batch=True)
         batch_names = list(map(str, BATCH_PAIR))
         counts_by_batch = [
             obs.loc[obs[BATCH_KEY].astype(str) == batch, LABEL_KEY].astype(str).value_counts()
