@@ -1,4 +1,4 @@
-# RF-MALI
+# FoSTA-experiments
 
 This repository contains the code for the multimodal integration, empirical
 scaling, single-cell batch correction, and UCI experiments. The instructions
