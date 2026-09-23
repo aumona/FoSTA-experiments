@@ -40,8 +40,6 @@ method_order = [
     # "FoSTA_orig",
     # "FoSTA_orig_tsem=auto_avg",
 
-    "FoSTA_ICML_t2",
-    'FoSTA_ICML_auto',
     "FoSTA_gap_t2",
     "FoSTA_gap_auto",
     "FoSTA_gap_mauto_t2",
@@ -65,8 +63,6 @@ method_display_map = {
     # "FoSTA_orig": "FoSTA original",
     # "FoSTA_orig_dense": "FoSTA original dense",
 
-    "FoSTA_ICML_t2": "FoSTA ICML t2",
-    "FoSTA_ICML_auto": "FoSTA ICML auto",
     "FoSTA_gap": "FoSTA gap",
     "FoSTA_gap_t2": "FoSTA gap t2",
     "FoSTA_gap_mauto_t2": "FoSTA gap mauto t2",
@@ -107,18 +103,6 @@ method_style = {
     # },
 
 
-    "FoSTA_ICML_t2": {
-        "facecolor": "#4C78A8",
-        "edgecolor": "black",
-        "hatch": "",
-        "linewidth": 1.0,
-    },
-    "FoSTA_ICML_auto": {
-        "facecolor": "#4C78A8",
-        "edgecolor": "black",
-        "hatch": "\\",
-        "linewidth": 1.0,
-    },
     "FoSTA_gap_t2": {
         "facecolor": "#4C78A8",
         "edgecolor": "black",

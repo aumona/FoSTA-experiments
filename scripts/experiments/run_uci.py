@@ -29,7 +29,6 @@ from src.Pamona.eval import (
 )
 
 from src.fosta import FoSTA as FoSTA
-from src.fosta_icml import FoSTA as FoSTA_ICML
 from src.mali import MALI
 from src.pamona import Pamona
 from src.kemalin import KEMAlin
@@ -297,22 +296,6 @@ def mask_pair_labels(y_true, mask_fraction, seed):
 
 def build_model(method: str, seed: int):
     m = method.lower()
-
-    if m == "fosta_icml_t2":
-        return FoSTA_ICML(
-            t=2,
-            random_state=seed,
-            n_jobs=N_JOBS,
-            verbose=VERBOSE,
-        )
-    if m == "fosta_icml_auto":
-        return FoSTA_ICML(
-            n_components=N_COMPONENTS,
-            t='auto',
-            random_state=seed,
-            n_jobs=N_JOBS,
-            verbose=VERBOSE,
-        )
 
     if m == "fosta_gap_t2":
         return FoSTA(
