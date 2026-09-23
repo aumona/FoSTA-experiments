@@ -109,7 +109,7 @@ def build_table(means, stds):
         r"\toprule",
     ]
     for i, (title, metrics) in enumerate([
-        ("Batch correction", BATCH_METRICS), ("Biological conservation", BIO_METRICS),
+        ("Biological conservation", BIO_METRICS), ("Batch correction", BATCH_METRICS),
     ]):
         if i:
             lines.extend([r"\addlinespace[0.8ex]", r"\midrule"])
