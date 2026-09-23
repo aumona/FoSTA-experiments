@@ -43,6 +43,17 @@ uv pip install -r requirements.txt
 These commands follow the [uv environment setup workflow](https://docs.astral.sh/uv/pip/environments/).
 Activate `.venv` again when opening a new terminal before running experiments.
 
+On Apple Silicon with Apple Clang 21, `louvain`'s bundled C library needs
+compatibility flags when building from source. If installation fails with
+`-Wuninitialized-const-pointer` or `-Wdefault-const-init-var-unsafe`, clear its
+cached build and retry:
+
+```sh
+uv cache clean louvain
+CFLAGS='-Wno-error=uninitialized-const-pointer -Wno-error=default-const-init-var-unsafe' \
+  ARCHFLAGS='-arch arm64' uv pip install -r requirements.txt
+```
+
 The supplied requirements include `jax[cuda12]` for NVIDIA GPU support. For a
 CPU-only or macOS setup, replace that entry with `jax` before installation.
 They also include `rpy2` for Splatter, which requires an R installation available
