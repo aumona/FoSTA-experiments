@@ -105,8 +105,9 @@ TRANSFORM = "standardize"
 # Fraction of target labels masked; source labels always remain visible.
 # Target masks are nested; source-to-target transfer evaluates masked targets.
 # All features remain available to alignment methods.
+LABEL_MASK_PERC = [0.2, 0.4, 0.5, 0.6, 0.8]  # Reasonable range of masking levels to explore.
 # LABEL_MASK_PERC = [0.2, 0.4, 0.6, 0.8]  # Reasonable range of masking levels to explore.
-LABEL_MASK_PERC = [0.5]
+# LABEL_MASK_PERC = [0.5]
 
 
 
