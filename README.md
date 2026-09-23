@@ -1,46 +1,96 @@
 # RF-MALI
 
+This repository contains the code for the multimodal integration, empirical
+scaling, single-cell batch correction, and UCI experiments. The instructions
+below describe setup and execution for reviewers.
+
 ## Setup
 
-From the repository root, with Conda available:
+Run all commands from the project root. Use **Python 3.12.3**, the version used
+for this project, and [uv](https://docs.astral.sh/uv/getting-started/installation/)
+to manage the environment. Git must be installed to fetch the dependencies
+specified by Git URLs in `requirements.txt`.
+
+### 1. Extract the data
+
+Place the supplied `data.zip` in the project root and extract it there:
 
 ```sh
-conda create -p ./.condaenv python=3.10.4
-conda activate ./.condaenv
-pip install -r requirements.txt
+unzip data.zip -d .
 ```
 
-## Paths and launchers
+The extracted `data_*` folders should sit directly beside `scripts/` and `src/`,
+with the following layout:
 
-Run Python experiment scripts from the repository root. Run notebooks with
-`notebooks/` as the working directory; the RF-GAP demos use `src/rfgap/`.
-Paths formerly tied to a workstation or cluster are now relative to these
-working directories. Legacy notebooks that use MALI expect a sibling `MALI/`
-checkout. Adjust dataset and saved-run paths for the experiments you use.
+```text
+data_ave/
+data_har/
+data_rgbd/
+data_sc/
+data_sketchy/
+data_uci/
+```
 
-Scripts importing `personal_paths.py` support these environment overrides:
+### 2. Create the environment and install requirements
 
-| Variable | Default relative to repository root |
-| --- | --- |
-| `RF_MALI_ROOT` | Location of `personal_paths.py` |
-| `RF_MALI_LUNG_DATA` | `data_sc/lung_batches.h5ad` |
-| `RF_MALI_IMMUNE_DATA` | `data_sc/Immune_ALL_human.h5ad` |
-| `RF_MALI_PAIRED_DATA` | `data/` |
-| `RF_MALI_UCI_DATA` | `data_uci/` |
-| `RF_MALI_RESULTS` | `results_sc/` |
+```sh
+uv python install 3.12.3
+uv venv --python 3.12.3 .venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
+```
 
-Experiment utilities live in `scripts/experiments/`. Local shell launchers use
-`*_local.sh` names and locate the repository relative to the script, with an
-optional `RF_MALI_ROOT` override. Their log directory can be overridden with
-`RF_MALI_LOG_DIR`. Select the appropriate Python environment before running;
-existing launcher activation commands may need adjustment for your installation.
+These commands follow the [uv environment setup workflow](https://docs.astral.sh/uv/pip/environments/).
+Activate `.venv` again when opening a new terminal before running experiments.
 
-Submit Slurm scripts from the repository root, or set `RF_MALI_ROOT` explicitly.
-Slurm output defaults to `slurm-%x-%A_%a.out` and `.err` in the submission
-directory. Override output/error paths with `sbatch --output=... --error=...`;
-create the destination directory before submission. Email notifications are
-opt-in through `sbatch --mail-user=... --mail-type=END,FAIL`.
+The supplied requirements include `jax[cuda12]` for NVIDIA GPU support. For a
+CPU-only or macOS setup, replace that entry with `jax` before installation.
+They also include `rpy2` for Splatter, which requires an R installation available
+to the environment.
 
-Notebook outputs and execution metadata are cleared for sharing. Third-party
-citations, source attribution, dependency URLs, and license text are retained.
-Git history and ignored local datasets/results have not been anonymized.
+## Run the experiments
+
+Run each command from the project root with `.venv` activated. Experiment
+settings are defined in the configuration sections near the top of the scripts;
+these include datasets, methods, seeds, and sample sizes where applicable.
+
+### Real-world multimodal data integration
+
+Run the HAR, AVE, RGB-D, and Sketchy integration benchmarks:
+
+```sh
+python scripts/experiments/run_real_multimodal.py
+```
+
+Results are written under `results_multimodal/`.
+
+### Empirical scaling validation
+
+Measure runtime and peak memory as the number of samples increases:
+
+```sh
+python scripts/experiments/run_real_multimodal_scaling.py
+```
+
+This script reuses the multimodal data loading and experiment protocol. Results
+are written under `results_multimodal_scaling/`.
+
+### Single-cell batch correction
+
+Run the lung batch correction experiments using `data_sc/lung_batches.h5ad`:
+
+```sh
+python scripts/experiments/run_lung_batch.py
+```
+
+Results are written under `results_sc_experiments/`.
+
+### UCI experiments
+
+Run the UCI benchmarks using the datasets in `data_uci/`:
+
+```sh
+python scripts/experiments/run_uci.py
+```
+
+Results are written under `results_uci/`.
