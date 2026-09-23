@@ -13,7 +13,8 @@ specified by Git URLs in `requirements.txt`.
 
 ### 1. Extract the data
 
-Place the supplied `data.zip` in the project root and extract it there:
+Download `data.zip` from the [Google Drive folder](https://drive.google.com/drive/folders/1YKdFEE0SUbfucr71fvM3x_shxHmPh25K?usp=sharing),
+place it in the project root, and extract it there:
 
 ```sh
 unzip data.zip -d .
